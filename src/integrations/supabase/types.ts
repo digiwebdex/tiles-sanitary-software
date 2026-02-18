@@ -988,6 +988,7 @@ export type Database = {
     }
     Functions: {
       get_user_dealer_id: { Args: { _user_id: string }; Returns: string }
+      has_active_subscription: { Args: never; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

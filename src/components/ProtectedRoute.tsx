@@ -1,6 +1,7 @@
-import { ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { ReactNode, useEffect } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth, AccessLevel } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -9,7 +10,36 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps) => {
-  const { user, loading, accessLevel } = useAuth();
+  const { user, loading, accessLevel, profile } = useAuth();
+  const location = useLocation();
+
+  // Log expired-subscription access attempts
+  useEffect(() => {
+    if (
+      !loading &&
+      user &&
+      (accessLevel === "readonly" || accessLevel === "blocked") &&
+      !allowReadonly
+    ) {
+      supabase
+        .from("audit_logs")
+        .insert([
+          {
+            dealer_id: profile?.dealer_id ?? null,
+            user_id: user.id,
+            action: "EXPIRED_SUBSCRIPTION_ACCESS",
+            table_name: "route_guard",
+            record_id: location.pathname,
+            new_data: {
+              access_level: accessLevel,
+              path: location.pathname,
+              timestamp: new Date().toISOString(),
+            } as any,
+          },
+        ])
+        .then(() => {});
+    }
+  }, [loading, user, accessLevel, allowReadonly, location.pathname]);
 
   if (loading) {
     return (
