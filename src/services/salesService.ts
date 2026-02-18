@@ -1,6 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
 import { customerLedgerService, cashLedgerService } from "@/services/ledgerService";
+import { logAudit } from "@/services/auditService";
+import { validateInput, createSaleServiceSchema } from "@/lib/validators";
 
 export interface SaleItemInput {
   product_id: string;
@@ -22,6 +24,8 @@ export interface CreateSaleInput {
   items: SaleItemInput[];
 }
 
+const PAGE_SIZE = 25;
+
 async function generateInvoiceNumber(dealerId: string): Promise<string> {
   const { count } = await supabase
     .from("sales")
@@ -32,14 +36,18 @@ async function generateInvoiceNumber(dealerId: string): Promise<string> {
 }
 
 export const salesService = {
-  async list(dealerId: string) {
-    const { data, error } = await supabase
+  async list(dealerId: string, page = 1) {
+    const from = (page - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const { data, error, count } = await supabase
       .from("sales")
-      .select("*, customers(name, type)")
+      .select("*, customers(name, type)", { count: "exact" })
       .eq("dealer_id", dealerId)
-      .order("sale_date", { ascending: false });
+      .order("sale_date", { ascending: false })
+      .range(from, to);
     if (error) throw new Error(error.message);
-    return data;
+    return { data: data ?? [], total: count ?? 0 };
   },
 
   async getById(id: string) {
@@ -53,6 +61,9 @@ export const salesService = {
   },
 
   async create(input: CreateSaleInput) {
+    // Service-level validation
+    validateInput(createSaleServiceSchema, input);
+
     // Fetch product details + stock for avg cost
     const productIds = input.items.map((i) => i.product_id);
 
@@ -67,7 +78,6 @@ export const salesService = {
     const productMap = new Map(productsRes.data!.map((p) => [p.id, p]));
     const stockMap = new Map(stockRes.data!.map((s) => [s.product_id, s]));
 
-    // Calculate item-level data
     let totalBox = 0;
     let totalSft = 0;
     let totalPiece = 0;
@@ -91,11 +101,7 @@ export const salesService = {
 
       totalCogs += itemCogs;
 
-      return {
-        ...item,
-        total: itemTotal,
-        total_sft: itemSft,
-      };
+      return { ...item, total: itemTotal, total_sft: itemSft };
     });
 
     const subtotal = itemsCalc.reduce((s, i) => s + i.total, 0);
@@ -103,10 +109,8 @@ export const salesService = {
     const dueAmount = totalAmount - input.paid_amount;
     const profit = totalAmount - totalCogs;
 
-    // Generate invoice number
     const invoiceNumber = await generateInvoiceNumber(input.dealer_id);
 
-    // Insert sale header
     const { data: sale, error: sErr } = await supabase
       .from("sales")
       .insert({
@@ -133,7 +137,6 @@ export const salesService = {
       .single();
     if (sErr) throw new Error(sErr.message);
 
-    // Insert sale items
     const itemRows = itemsCalc.map((item) => ({
       sale_id: sale!.id,
       dealer_id: input.dealer_id,
@@ -147,12 +150,10 @@ export const salesService = {
     const { error: iErr } = await supabase.from("sale_items").insert(itemRows);
     if (iErr) throw new Error(iErr.message);
 
-    // Deduct stock for each item
     for (const item of input.items) {
       await stockService.deductStock(item.product_id, item.quantity, input.dealer_id);
     }
 
-    // Auto ledger: Customer Ledger (sale = positive receivable)
     await customerLedgerService.addEntry({
       dealer_id: input.dealer_id,
       customer_id: input.customer_id,
@@ -163,7 +164,6 @@ export const salesService = {
       entry_date: input.sale_date,
     });
 
-    // Auto ledger: Customer Ledger (payment received)
     if (input.paid_amount > 0) {
       await customerLedgerService.addEntry({
         dealer_id: input.dealer_id,
@@ -176,7 +176,6 @@ export const salesService = {
       });
     }
 
-    // Auto ledger: Cash Ledger (cash in from payment)
     if (input.paid_amount > 0) {
       await cashLedgerService.addEntry({
         dealer_id: input.dealer_id,
@@ -188,6 +187,21 @@ export const salesService = {
         entry_date: input.sale_date,
       });
     }
+
+    // Audit log
+    await logAudit({
+      dealer_id: input.dealer_id,
+      user_id: input.created_by,
+      action: "sale_create",
+      table_name: "sales",
+      record_id: sale!.id,
+      new_data: {
+        invoice_number: invoiceNumber,
+        customer_id: input.customer_id,
+        total_amount: totalAmount,
+        item_count: input.items.length,
+      },
+    });
 
     return sale;
   },

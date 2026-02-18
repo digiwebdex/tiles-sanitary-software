@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { expenseLedgerService } from "@/services/ledgerService";
 import { cashLedgerService } from "@/services/ledgerService";
+import { validateInput, createExpenseServiceSchema } from "@/lib/validators";
 
 export interface CreateExpenseInput {
   dealer_id: string;
@@ -23,6 +24,9 @@ export const expenseService = {
   },
 
   async create(input: CreateExpenseInput) {
+    // Service-level validation
+    validateInput(createExpenseServiceSchema, input);
+
     const { data: expense, error } = await supabase
       .from("expenses")
       .insert({
@@ -37,7 +41,6 @@ export const expenseService = {
       .single();
     if (error) throw new Error(error.message);
 
-    // Auto-entry: Expense Ledger
     await expenseLedgerService.addEntry({
       dealer_id: input.dealer_id,
       expense_id: expense!.id,
@@ -47,7 +50,6 @@ export const expenseService = {
       entry_date: input.expense_date,
     });
 
-    // Auto-entry: Cash Ledger (cash out)
     await cashLedgerService.addEntry({
       dealer_id: input.dealer_id,
       type: "expense",

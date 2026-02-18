@@ -2,16 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { productService } from "@/services/productService";
+import Pagination from "@/components/Pagination";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Plus, Search, Pencil } from "lucide-react";
@@ -20,16 +16,23 @@ interface ProductListProps {
   dealerId: string;
 }
 
+const PAGE_SIZE = 25;
+
 const ProductList = ({ dealerId }: ProductListProps) => {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ["products", dealerId, search],
-    queryFn: () => productService.list(dealerId, search),
+  const { data, isLoading } = useQuery({
+    queryKey: ["products", dealerId, search, page],
+    queryFn: () => productService.list(dealerId, search, page),
     enabled: !!dealerId,
   });
+
+  const products = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
@@ -55,7 +58,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         <Input
           placeholder="Search by SKU or name…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="pl-9"
         />
       </div>
@@ -65,52 +68,51 @@ const ProductList = ({ dealerId }: ProductListProps) => {
       ) : products.length === 0 ? (
         <p className="text-muted-foreground">No products found.</p>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>SKU</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Unit</TableHead>
-                <TableHead className="text-right">Rate</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {products.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-mono text-sm">{p.sku}</TableCell>
-                  <TableCell>{p.name}</TableCell>
-                  <TableCell className="capitalize">{p.category}</TableCell>
-                  <TableCell>{p.unit_type === "box_sft" ? "Box/SFT" : "Piece"}</TableCell>
-                  <TableCell className="text-right">₹{p.default_sale_rate}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={p.active ? "default" : "secondary"}
-                      className="cursor-pointer"
-                      onClick={() =>
-                        toggleMutation.mutate({ id: p.id, active: !p.active })
-                      }
-                    >
-                      {p.active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => navigate(`/products/${p.id}/edit`)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+        <>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead className="text-right">Rate</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {products.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-mono text-sm">{p.sku}</TableCell>
+                    <TableCell>{p.name}</TableCell>
+                    <TableCell className="capitalize">{p.category}</TableCell>
+                    <TableCell>{p.unit_type === "box_sft" ? "Box/SFT" : "Piece"}</TableCell>
+                    <TableCell className="text-right">₹{p.default_sale_rate}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={p.active ? "default" : "secondary"}
+                        className="cursor-pointer"
+                        onClick={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
+                      >
+                        {p.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button size="icon" variant="ghost" onClick={() => navigate(`/products/${p.id}/edit`)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {totalPages > 1 && (
+            <Pagination page={page} totalItems={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+          )}
+        </>
       )}
     </div>
   );

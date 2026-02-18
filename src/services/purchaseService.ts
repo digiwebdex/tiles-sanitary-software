@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
 import { supplierLedgerService, cashLedgerService } from "@/services/ledgerService";
 import { logAudit } from "@/services/auditService";
+import { validateInput, createPurchaseServiceSchema } from "@/lib/validators";
 
 export interface PurchaseItemInput {
   product_id: string;
@@ -23,31 +24,31 @@ export interface CreatePurchaseInput {
   items: PurchaseItemInput[];
 }
 
+const PAGE_SIZE = 25;
+
 function calcLandedCost(item: PurchaseItemInput): number {
   const itemTotal = item.quantity * item.purchase_rate;
   return itemTotal + item.transport_cost + item.labor_cost + item.other_cost;
 }
 
-function calcTotalSft(
-  quantity: number,
-  unitType: string,
-  perBoxSft: number | null
-): number | null {
-  if (unitType === "box_sft" && perBoxSft) {
-    return quantity * perBoxSft;
-  }
+function calcTotalSft(quantity: number, unitType: string, perBoxSft: number | null): number | null {
+  if (unitType === "box_sft" && perBoxSft) return quantity * perBoxSft;
   return null;
 }
 
 export const purchaseService = {
-  async list(dealerId: string) {
-    const { data, error } = await supabase
+  async list(dealerId: string, page = 1) {
+    const from = (page - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const { data, error, count } = await supabase
       .from("purchases")
-      .select("*, suppliers(name)")
+      .select("*, suppliers(name)", { count: "exact" })
       .eq("dealer_id", dealerId)
-      .order("purchase_date", { ascending: false });
+      .order("purchase_date", { ascending: false })
+      .range(from, to);
     if (error) throw new Error(error.message);
-    return data;
+    return { data: data ?? [], total: count ?? 0 };
   },
 
   async getById(id: string) {
@@ -61,7 +62,9 @@ export const purchaseService = {
   },
 
   async create(input: CreatePurchaseInput) {
-    // Fetch product details for all items
+    // Service-level validation
+    validateInput(createPurchaseServiceSchema, input);
+
     const productIds = input.items.map((i) => i.product_id);
     const { data: products, error: pErr } = await supabase
       .from("products")
@@ -71,19 +74,15 @@ export const purchaseService = {
 
     const productMap = new Map(products!.map((p) => [p.id, p]));
 
-    // Calculate totals
     const itemsWithCalc = input.items.map((item) => {
       const product = productMap.get(item.product_id);
       const landed = calcLandedCost(item);
-      const totalSft = product
-        ? calcTotalSft(item.quantity, product.unit_type, product.per_box_sft)
-        : null;
+      const totalSft = product ? calcTotalSft(item.quantity, product.unit_type, product.per_box_sft) : null;
       return { ...item, landed_cost: landed, total_sft: totalSft };
     });
 
     const totalAmount = itemsWithCalc.reduce((sum, i) => sum + i.landed_cost, 0);
 
-    // Insert purchase header
     const { data: purchase, error: hErr } = await supabase
       .from("purchases")
       .insert({
@@ -99,7 +98,6 @@ export const purchaseService = {
       .single();
     if (hErr) throw new Error(hErr.message);
 
-    // Insert purchase items
     const itemRows = itemsWithCalc.map((item) => ({
       purchase_id: purchase!.id,
       dealer_id: input.dealer_id,
@@ -115,25 +113,15 @@ export const purchaseService = {
       total: item.landed_cost,
     }));
 
-    const { error: iErr } = await supabase
-      .from("purchase_items")
-      .insert(itemRows);
+    const { error: iErr } = await supabase.from("purchase_items").insert(itemRows);
     if (iErr) throw new Error(iErr.message);
 
-    // Update stock and average cost for each item
     for (const item of itemsWithCalc) {
       await stockService.addStock(item.product_id, item.quantity, input.dealer_id);
-      const costPerUnit =
-        item.quantity > 0 ? item.landed_cost / item.quantity : 0;
-      await stockService.updateAverageCost(
-        item.product_id,
-        input.dealer_id,
-        item.quantity,
-        costPerUnit
-      );
+      const costPerUnit = item.quantity > 0 ? item.landed_cost / item.quantity : 0;
+      await stockService.updateAverageCost(item.product_id, input.dealer_id, item.quantity, costPerUnit);
     }
 
-    // Auto ledger: Supplier Ledger (purchase = payable)
     await supplierLedgerService.addEntry({
       dealer_id: input.dealer_id,
       supplier_id: input.supplier_id,
@@ -144,7 +132,6 @@ export const purchaseService = {
       entry_date: input.purchase_date,
     });
 
-    // Auto ledger: Cash Ledger (cash out for purchase)
     await cashLedgerService.addEntry({
       dealer_id: input.dealer_id,
       type: "purchase",
@@ -155,7 +142,6 @@ export const purchaseService = {
       entry_date: input.purchase_date,
     });
 
-    // Audit log
     await logAudit({
       dealer_id: input.dealer_id,
       user_id: input.created_by,

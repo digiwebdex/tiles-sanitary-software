@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
 import { logAudit } from "@/services/auditService";
+import { validateInput, createSalesReturnServiceSchema } from "@/lib/validators";
 
 export interface CreateSalesReturnInput {
   dealer_id: string;
@@ -35,7 +36,9 @@ export const salesReturnService = {
   },
 
   async create(input: CreateSalesReturnInput) {
-    // Get the sale to find customer_id
+    // Service-level validation
+    validateInput(createSalesReturnServiceSchema, input);
+
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
       .select("customer_id")
@@ -43,7 +46,6 @@ export const salesReturnService = {
       .single();
     if (saleErr || !sale) throw new Error("Sale not found");
 
-    // Insert sales return
     const { data: returnRecord, error: rErr } = await supabase
       .from("sales_returns")
       .insert({
@@ -61,12 +63,10 @@ export const salesReturnService = {
       .single();
     if (rErr) throw new Error(rErr.message);
 
-    // Restore stock only if not broken
     if (!input.is_broken) {
       await stockService.restoreStock(input.product_id, input.qty, input.dealer_id);
     }
 
-    // Update customer ledger with refund entry
     const { error: lErr } = await supabase.from("customer_ledger").insert({
       dealer_id: input.dealer_id,
       customer_id: sale.customer_id,
@@ -78,7 +78,6 @@ export const salesReturnService = {
     });
     if (lErr) throw new Error(lErr.message);
 
-    // Audit log for refund
     await logAudit({
       dealer_id: input.dealer_id,
       user_id: input.created_by,
