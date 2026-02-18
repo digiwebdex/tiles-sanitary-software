@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
+import { supplierLedgerService, cashLedgerService } from "@/services/ledgerService";
 
 export interface PurchaseItemInput {
   product_id: string;
@@ -130,6 +131,28 @@ export const purchaseService = {
         costPerUnit
       );
     }
+
+    // Auto ledger: Supplier Ledger (purchase = payable)
+    await supplierLedgerService.addEntry({
+      dealer_id: input.dealer_id,
+      supplier_id: input.supplier_id,
+      purchase_id: purchase!.id,
+      type: "purchase",
+      amount: -totalAmount,
+      description: `Purchase ${input.invoice_number || purchase!.id}`,
+      entry_date: input.purchase_date,
+    });
+
+    // Auto ledger: Cash Ledger (cash out for purchase)
+    await cashLedgerService.addEntry({
+      dealer_id: input.dealer_id,
+      type: "purchase",
+      amount: -totalAmount,
+      description: `Purchase payment: ${input.invoice_number || purchase!.id}`,
+      reference_type: "purchases",
+      reference_id: purchase!.id,
+      entry_date: input.purchase_date,
+    });
 
     return purchase;
   },

@@ -58,6 +58,50 @@ export type Database = {
           },
         ]
       }
+      cash_ledger: {
+        Row: {
+          amount: number
+          created_at: string
+          dealer_id: string
+          description: string | null
+          entry_date: string
+          id: string
+          reference_id: string | null
+          reference_type: string | null
+          type: Database["public"]["Enums"]["ledger_entry_type"]
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          dealer_id: string
+          description?: string | null
+          entry_date?: string
+          id?: string
+          reference_id?: string | null
+          reference_type?: string | null
+          type: Database["public"]["Enums"]["ledger_entry_type"]
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          dealer_id?: string
+          description?: string | null
+          entry_date?: string
+          id?: string
+          reference_id?: string | null
+          reference_type?: string | null
+          type?: Database["public"]["Enums"]["ledger_entry_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_ledger_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_ledger: {
         Row: {
           amount: number
@@ -65,6 +109,7 @@ export type Database = {
           customer_id: string
           dealer_id: string
           description: string | null
+          entry_date: string
           id: string
           sale_id: string | null
           sales_return_id: string | null
@@ -76,6 +121,7 @@ export type Database = {
           customer_id: string
           dealer_id: string
           description?: string | null
+          entry_date?: string
           id?: string
           sale_id?: string | null
           sales_return_id?: string | null
@@ -87,6 +133,7 @@ export type Database = {
           customer_id?: string
           dealer_id?: string
           description?: string | null
+          entry_date?: string
           id?: string
           sale_id?: string | null
           sales_return_id?: string | null
@@ -184,6 +231,54 @@ export type Database = {
           phone?: string | null
         }
         Relationships: []
+      }
+      expense_ledger: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          dealer_id: string
+          description: string | null
+          entry_date: string
+          expense_id: string | null
+          id: string
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          created_at?: string
+          dealer_id: string
+          description?: string | null
+          entry_date?: string
+          expense_id?: string | null
+          id?: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          dealer_id?: string
+          description?: string | null
+          entry_date?: string
+          expense_id?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_ledger_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_ledger_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       expenses: {
         Row: {
@@ -767,6 +862,64 @@ export type Database = {
           },
         ]
       }
+      supplier_ledger: {
+        Row: {
+          amount: number
+          created_at: string
+          dealer_id: string
+          description: string | null
+          entry_date: string
+          id: string
+          purchase_id: string | null
+          supplier_id: string
+          type: Database["public"]["Enums"]["ledger_entry_type"]
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          dealer_id: string
+          description?: string | null
+          entry_date?: string
+          id?: string
+          purchase_id?: string | null
+          supplier_id: string
+          type: Database["public"]["Enums"]["ledger_entry_type"]
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          dealer_id?: string
+          description?: string | null
+          entry_date?: string
+          id?: string
+          purchase_id?: string | null
+          supplier_id?: string
+          type?: Database["public"]["Enums"]["ledger_entry_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_ledger_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_ledger_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_ledger_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -841,6 +994,15 @@ export type Database = {
     Enums: {
       app_role: "super_admin" | "dealer_admin" | "salesman"
       customer_type: "retailer" | "customer" | "project"
+      ledger_entry_type:
+        | "sale"
+        | "purchase"
+        | "payment"
+        | "refund"
+        | "expense"
+        | "receipt"
+        | "adjustment"
+      ledger_type: "customer" | "supplier" | "cash" | "expense"
       product_category: "tiles" | "sanitary"
       subscription_status: "active" | "expired" | "suspended"
       unit_type: "box_sft" | "piece"
@@ -974,6 +1136,16 @@ export const Constants = {
     Enums: {
       app_role: ["super_admin", "dealer_admin", "salesman"],
       customer_type: ["retailer", "customer", "project"],
+      ledger_entry_type: [
+        "sale",
+        "purchase",
+        "payment",
+        "refund",
+        "expense",
+        "receipt",
+        "adjustment",
+      ],
+      ledger_type: ["customer", "supplier", "cash", "expense"],
       product_category: ["tiles", "sanitary"],
       subscription_status: ["active", "expired", "suspended"],
       unit_type: ["box_sft", "piece"],

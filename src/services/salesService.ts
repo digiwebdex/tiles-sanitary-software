@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
+import { customerLedgerService, cashLedgerService } from "@/services/ledgerService";
 
 export interface SaleItemInput {
   product_id: string;
@@ -149,6 +150,43 @@ export const salesService = {
     // Deduct stock for each item
     for (const item of input.items) {
       await stockService.deductStock(item.product_id, item.quantity, input.dealer_id);
+    }
+
+    // Auto ledger: Customer Ledger (sale = positive receivable)
+    await customerLedgerService.addEntry({
+      dealer_id: input.dealer_id,
+      customer_id: input.customer_id,
+      sale_id: sale!.id,
+      type: "sale",
+      amount: totalAmount,
+      description: `Sale ${invoiceNumber}`,
+      entry_date: input.sale_date,
+    });
+
+    // Auto ledger: Customer Ledger (payment received)
+    if (input.paid_amount > 0) {
+      await customerLedgerService.addEntry({
+        dealer_id: input.dealer_id,
+        customer_id: input.customer_id,
+        sale_id: sale!.id,
+        type: "payment",
+        amount: -input.paid_amount,
+        description: `Payment received for ${invoiceNumber}`,
+        entry_date: input.sale_date,
+      });
+    }
+
+    // Auto ledger: Cash Ledger (cash in from payment)
+    if (input.paid_amount > 0) {
+      await cashLedgerService.addEntry({
+        dealer_id: input.dealer_id,
+        type: "receipt",
+        amount: input.paid_amount,
+        description: `Payment received: ${invoiceNumber}`,
+        reference_type: "sales",
+        reference_id: sale!.id,
+        entry_date: input.sale_date,
+      });
     }
 
     return sale;
