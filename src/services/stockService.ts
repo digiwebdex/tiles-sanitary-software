@@ -85,17 +85,15 @@ async function applyStockChange(
 
   if (error) throw new Error(`Stock update failed: ${error.message}`);
 
-  // Audit log for manual stock adjustments
-  if (type === "add" || type === "deduct") {
-    await logAudit({
-      dealer_id: dealerId,
-      action: "stock_adjustment",
-      table_name: "stock",
-      record_id: stock.id,
-      old_data: { box_qty: stock.box_qty, sft_qty: stock.sft_qty, piece_qty: stock.piece_qty },
-      new_data: { ...updates, adjustment_type: type, quantity },
-    });
-  }
+  // Audit log for every stock change (DB trigger also logs, this adds app-level context)
+  await logAudit({
+    dealer_id: dealerId,
+    action: `stock_${type}`,
+    table_name: "stock",
+    record_id: stock.id,
+    old_data: { box_qty: stock.box_qty, sft_qty: stock.sft_qty, piece_qty: stock.piece_qty },
+    new_data: { ...updates, adjustment_type: type, quantity },
+  });
 }
 
 async function updateAverageCost(
