@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
 import { supplierLedgerService, cashLedgerService } from "@/services/ledgerService";
+import { logAudit } from "@/services/auditService";
 
 export interface PurchaseItemInput {
   product_id: string;
@@ -152,6 +153,21 @@ export const purchaseService = {
       reference_type: "purchases",
       reference_id: purchase!.id,
       entry_date: input.purchase_date,
+    });
+
+    // Audit log
+    await logAudit({
+      dealer_id: input.dealer_id,
+      user_id: input.created_by,
+      action: "purchase_create",
+      table_name: "purchases",
+      record_id: purchase!.id,
+      new_data: {
+        supplier_id: input.supplier_id,
+        invoice_number: input.invoice_number,
+        total_amount: totalAmount,
+        item_count: input.items.length,
+      },
     });
 
     return purchase;

@@ -1,6 +1,8 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { productService } from "@/services/productService";
+import { logAudit } from "@/services/auditService";
+import { useAuth } from "@/contexts/AuthContext";
 import ProductForm from "@/modules/products/ProductForm";
 import type { ProductFormValues } from "@/modules/products/productSchema";
 import { toast } from "sonner";
@@ -11,6 +13,7 @@ const EditProductPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { profile, user } = useAuth();
 
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", id],
@@ -20,12 +23,34 @@ const EditProductPage = () => {
 
   const mutation = useMutation({
     mutationFn: async (values: ProductFormValues) => {
-      await productService.update(id!, {
+      const updatePayload = {
         ...values,
         brand: values.brand || null,
         size: values.size || null,
         color: values.color || null,
         per_box_sft: values.per_box_sft ?? null,
+      };
+      await productService.update(id!, updatePayload);
+
+      // Detect price change
+      const action = product && product.default_sale_rate !== values.default_sale_rate
+        ? "price_change"
+        : "product_edit";
+
+      await logAudit({
+        dealer_id: profile?.dealer_id ?? "",
+        user_id: user?.id,
+        action,
+        table_name: "products",
+        record_id: id!,
+        old_data: product ? {
+          name: product.name, sku: product.sku, default_sale_rate: product.default_sale_rate,
+          brand: product.brand, size: product.size, color: product.color, active: product.active,
+        } : null,
+        new_data: {
+          name: values.name, sku: values.sku, default_sale_rate: values.default_sale_rate,
+          brand: values.brand, size: values.size, color: values.color, active: values.active,
+        },
       });
     },
     onSuccess: () => {

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { logAudit } from "@/services/auditService";
 
 interface StockProduct {
   id: string;
@@ -82,6 +83,18 @@ async function applyStockChange(
     .eq("dealer_id", dealerId);
 
   if (error) throw new Error(`Stock update failed: ${error.message}`);
+
+  // Audit log for manual stock adjustments
+  if (type === "add" || type === "deduct") {
+    await logAudit({
+      dealer_id: dealerId,
+      action: "stock_adjustment",
+      table_name: "stock",
+      record_id: stock.id,
+      old_data: { box_qty: stock.box_qty, sft_qty: stock.sft_qty, piece_qty: stock.piece_qty },
+      new_data: { ...updates, adjustment_type: type, quantity },
+    });
+  }
 }
 
 async function updateAverageCost(

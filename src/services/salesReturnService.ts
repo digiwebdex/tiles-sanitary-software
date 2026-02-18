@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
+import { logAudit } from "@/services/auditService";
 
 export interface CreateSalesReturnInput {
   dealer_id: string;
@@ -77,11 +78,11 @@ export const salesReturnService = {
     });
     if (lErr) throw new Error(lErr.message);
 
-    // Log in audit_logs
-    const { error: aErr } = await supabase.from("audit_logs").insert({
+    // Audit log for refund
+    await logAudit({
       dealer_id: input.dealer_id,
-      user_id: input.created_by || null,
-      action: "sales_return",
+      user_id: input.created_by,
+      action: "refund",
       table_name: "sales_returns",
       record_id: returnRecord!.id,
       new_data: {
@@ -92,7 +93,6 @@ export const salesReturnService = {
         refund_amount: input.refund_amount,
       },
     });
-    if (aErr) throw new Error(aErr.message);
 
     return returnRecord;
   },
