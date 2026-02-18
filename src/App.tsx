@@ -25,7 +25,25 @@ import LedgerPage from "./pages/ledger/LedgerPage";
 import ReportsPage from "./pages/reports/ReportsPage";
 import AdminPage from "./pages/admin/AdminPage";
 
-const queryClient = new QueryClient();
+const IS_PRODUCTION = import.meta.env.PROD;
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: IS_PRODUCTION ? 2 : 0,
+      staleTime: 30_000,
+    },
+    mutations: {
+      onError: (error) => {
+        if (IS_PRODUCTION) {
+          console.error("[MutationError]", error.message);
+        } else {
+          console.error("[MutationError]", error);
+        }
+      },
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
