@@ -12,6 +12,8 @@ interface State {
   error: Error | null;
 }
 
+const IS_PRODUCTION = import.meta.env.PROD;
+
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -23,6 +25,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // Always log internally; never expose to UI
     console.error("[ErrorBoundary]", error, info.componentStack);
   }
 
@@ -41,7 +44,9 @@ class ErrorBoundary extends Component<Props, State> {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                {this.state.error?.message || "An unexpected error occurred."}
+                {IS_PRODUCTION
+                  ? "An unexpected error occurred. Please try again or contact support."
+                  : this.state.error?.message || "An unexpected error occurred."}
               </p>
               <div className="flex gap-2 justify-center">
                 <Button onClick={this.handleReset}>Try Again</Button>
