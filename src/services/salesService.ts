@@ -4,6 +4,7 @@ import { customerLedgerService, cashLedgerService } from "@/services/ledgerServi
 import { logAudit } from "@/services/auditService";
 import { validateInput, createSaleServiceSchema } from "@/lib/validators";
 import { assertDealerId } from "@/lib/tenancy";
+import { rateLimits } from "@/lib/rateLimit";
 
 export interface SaleItemInput {
   product_id: string;
@@ -62,6 +63,7 @@ export const salesService = {
   },
 
   async create(input: CreateSaleInput) {
+    rateLimits.api("sale_create");
     // Tenant isolation guard — reject forged dealer_id
     await assertDealerId(input.dealer_id);
     // Service-level validation

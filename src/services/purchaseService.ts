@@ -4,6 +4,7 @@ import { supplierLedgerService, cashLedgerService } from "@/services/ledgerServi
 import { logAudit } from "@/services/auditService";
 import { validateInput, createPurchaseServiceSchema } from "@/lib/validators";
 import { assertDealerId } from "@/lib/tenancy";
+import { rateLimits } from "@/lib/rateLimit";
 
 export interface PurchaseItemInput {
   product_id: string;
@@ -63,6 +64,7 @@ export const purchaseService = {
   },
 
   async create(input: CreatePurchaseInput) {
+    rateLimits.api("purchase_create");
     // Tenant isolation guard
     await assertDealerId(input.dealer_id);
     // Service-level validation

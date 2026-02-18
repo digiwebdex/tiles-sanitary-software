@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from "lucide-react";
+import { rateLimits, RateLimitError } from "@/lib/rateLimit";
 
 const LoginPage = () => {
   const [email, setEmail] = useState("");
@@ -16,6 +17,16 @@ const LoginPage = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    try {
+      rateLimits.login();
+    } catch (err) {
+      if (err instanceof RateLimitError) {
+        toast({ variant: "destructive", title: "Too many attempts", description: err.message });
+        setLoading(false);
+        return;
+      }
+    }
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
