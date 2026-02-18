@@ -14,6 +14,88 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          dealer_id: string | null
+          id: string
+          new_data: Json | null
+          old_data: Json | null
+          record_id: string | null
+          table_name: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          dealer_id?: string | null
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          record_id?: string | null
+          table_name: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          dealer_id?: string | null
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          record_id?: string | null
+          table_name?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          address: string | null
+          created_at: string
+          dealer_id: string
+          id: string
+          name: string
+          phone: string | null
+          type: Database["public"]["Enums"]["customer_type"]
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          dealer_id: string
+          id?: string
+          name: string
+          phone?: string | null
+          type?: Database["public"]["Enums"]["customer_type"]
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          name?: string
+          phone?: string | null
+          type?: Database["public"]["Enums"]["customer_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealers: {
         Row: {
           address: string | null
@@ -37,6 +119,47 @@ export type Database = {
           phone?: string | null
         }
         Relationships: []
+      }
+      expenses: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          description: string
+          expense_date: string
+          id: string
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          description: string
+          expense_date?: string
+          id?: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          description?: string
+          expense_date?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       plans: {
         Row: {
@@ -64,6 +187,65 @@ export type Database = {
           price_yearly?: number
         }
         Relationships: []
+      }
+      products: {
+        Row: {
+          active: boolean
+          brand: string | null
+          category: Database["public"]["Enums"]["product_category"]
+          color: string | null
+          created_at: string
+          dealer_id: string
+          default_sale_rate: number
+          id: string
+          name: string
+          per_box_sft: number | null
+          reorder_level: number
+          size: string | null
+          sku: string
+          unit_type: Database["public"]["Enums"]["unit_type"]
+        }
+        Insert: {
+          active?: boolean
+          brand?: string | null
+          category: Database["public"]["Enums"]["product_category"]
+          color?: string | null
+          created_at?: string
+          dealer_id: string
+          default_sale_rate?: number
+          id?: string
+          name: string
+          per_box_sft?: number | null
+          reorder_level?: number
+          size?: string | null
+          sku: string
+          unit_type?: Database["public"]["Enums"]["unit_type"]
+        }
+        Update: {
+          active?: boolean
+          brand?: string | null
+          category?: Database["public"]["Enums"]["product_category"]
+          color?: string | null
+          created_at?: string
+          dealer_id?: string
+          default_sale_rate?: number
+          id?: string
+          name?: string
+          per_box_sft?: number | null
+          reorder_level?: number
+          size?: string | null
+          sku?: string
+          unit_type?: Database["public"]["Enums"]["unit_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -99,6 +281,321 @@ export type Database = {
             columns: ["dealer_id"]
             isOneToOne: false
             referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_items: {
+        Row: {
+          dealer_id: string
+          id: string
+          product_id: string
+          purchase_id: string
+          qty: number
+          total: number
+          unit_price: number
+        }
+        Insert: {
+          dealer_id: string
+          id?: string
+          product_id: string
+          purchase_id: string
+          qty: number
+          total?: number
+          unit_price: number
+        }
+        Update: {
+          dealer_id?: string
+          id?: string
+          product_id?: string
+          purchase_id?: string
+          qty?: number
+          total?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_items_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_items_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchases: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          id: string
+          invoice_number: string | null
+          notes: string | null
+          purchase_date: string
+          supplier_id: string
+          total_amount: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          id?: string
+          invoice_number?: string | null
+          notes?: string | null
+          purchase_date?: string
+          supplier_id: string
+          total_amount?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          id?: string
+          invoice_number?: string | null
+          notes?: string | null
+          purchase_date?: string
+          supplier_id?: string
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchases_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sale_items: {
+        Row: {
+          dealer_id: string
+          id: string
+          product_id: string
+          qty: number
+          sale_id: string
+          total: number
+          unit_price: number
+        }
+        Insert: {
+          dealer_id: string
+          id?: string
+          product_id: string
+          qty: number
+          sale_id: string
+          total?: number
+          unit_price: number
+        }
+        Update: {
+          dealer_id?: string
+          id?: string
+          product_id?: string
+          qty?: number
+          sale_id?: string
+          total?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_items_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          dealer_id: string
+          discount: number
+          id: string
+          invoice_number: string | null
+          notes: string | null
+          sale_date: string
+          total_amount: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          dealer_id: string
+          discount?: number
+          id?: string
+          invoice_number?: string | null
+          notes?: string | null
+          sale_date?: string
+          total_amount?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          dealer_id?: string
+          discount?: number
+          id?: string
+          invoice_number?: string | null
+          notes?: string | null
+          sale_date?: string
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_returns: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          id: string
+          product_id: string
+          qty: number
+          reason: string | null
+          return_date: string
+          sale_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          id?: string
+          product_id: string
+          qty: number
+          reason?: string | null
+          return_date?: string
+          sale_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          id?: string
+          product_id?: string
+          qty?: number
+          reason?: string | null
+          return_date?: string
+          sale_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_returns_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_returns_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_returns_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock: {
+        Row: {
+          average_cost_per_unit: number
+          box_qty: number
+          dealer_id: string
+          id: string
+          piece_qty: number
+          product_id: string
+          sft_qty: number
+          updated_at: string
+        }
+        Insert: {
+          average_cost_per_unit?: number
+          box_qty?: number
+          dealer_id: string
+          id?: string
+          piece_qty?: number
+          product_id: string
+          sft_qty?: number
+          updated_at?: string
+        }
+        Update: {
+          average_cost_per_unit?: number
+          box_qty?: number
+          dealer_id?: string
+          id?: string
+          piece_qty?: number
+          product_id?: string
+          sft_qty?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -148,6 +645,44 @@ export type Database = {
           },
         ]
       }
+      suppliers: {
+        Row: {
+          address: string | null
+          created_at: string
+          dealer_id: string
+          gstin: string | null
+          id: string
+          name: string
+          phone: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          dealer_id: string
+          gstin?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          dealer_id?: string
+          gstin?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suppliers_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -183,7 +718,10 @@ export type Database = {
     }
     Enums: {
       app_role: "super_admin" | "dealer_admin" | "salesman"
+      customer_type: "retailer" | "customer" | "project"
+      product_category: "tiles" | "sanitary"
       subscription_status: "active" | "expired" | "suspended"
+      unit_type: "box_sft" | "piece"
       user_status: "active" | "inactive" | "suspended"
     }
     CompositeTypes: {
@@ -313,7 +851,10 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["super_admin", "dealer_admin", "salesman"],
+      customer_type: ["retailer", "customer", "project"],
+      product_category: ["tiles", "sanitary"],
       subscription_status: ["active", "expired", "suspended"],
+      unit_type: ["box_sft", "piece"],
       user_status: ["active", "inactive", "suspended"],
     },
   },
