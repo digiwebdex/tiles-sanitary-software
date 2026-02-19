@@ -23,6 +23,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Trash2 } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface PurchaseFormProps {
   dealerId: string;
@@ -288,7 +289,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                       </span>
                     )}
                     <span className="text-muted-foreground">
-                      Landed Cost: <strong className="text-foreground">₹{landedCost.toFixed(2)}</strong>
+                      Landed Cost: <strong className="text-foreground">{formatCurrency(landedCost)}</strong>
                     </span>
                   </div>
                 </CardContent>
@@ -311,7 +312,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
 
         <div className="flex items-center justify-between rounded-md border bg-muted/50 p-4">
           <span className="font-semibold text-foreground">
-            Grand Total: ₹{watchItems.reduce((s, _, i) => s + calcLandedCost(i), 0).toFixed(2)}
+            Grand Total: {formatCurrency(watchItems.reduce((s, _, i) => s + calcLandedCost(i), 0))}
           </span>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? "Saving…" : "Save Purchase"}

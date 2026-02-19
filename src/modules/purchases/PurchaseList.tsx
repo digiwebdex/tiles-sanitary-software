@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Plus, Eye } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface PurchaseListProps {
   dealerId: string;
@@ -61,7 +62,7 @@ const PurchaseList = ({ dealerId }: PurchaseListProps) => {
                     <TableCell>{p.purchase_date}</TableCell>
                     <TableCell>{p.invoice_number || "—"}</TableCell>
                     <TableCell>{p.suppliers?.name ?? "—"}</TableCell>
-                    <TableCell className="text-right">₹{Number(p.total_amount).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(p.total_amount)}</TableCell>
                     <TableCell>
                       <Button size="icon" variant="ghost" onClick={() => navigate(`/purchases/${p.id}`)}>
                         <Eye className="h-4 w-4" />

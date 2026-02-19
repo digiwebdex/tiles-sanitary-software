@@ -3,9 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Store, CalendarPlus, AlertTriangle, IndianRupee, TrendingUp,
-  Clock, Ban, Wallet,
+  Store, CalendarPlus, AlertTriangle, TrendingUp,
+  Clock, Ban, Wallet, Banknote,
 } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
@@ -176,12 +177,12 @@ const SADashboardPage = () => {
         <StatCard title="Active Subscriptions" value={data?.activeSubs ?? 0} icon={CalendarPlus} />
         <StatCard
           title="Monthly Revenue (MRR)"
-          value={`₹${(data?.monthlyRevenue ?? 0).toLocaleString("en-IN")}`}
-          icon={IndianRupee}
+          value={formatCurrency(data?.monthlyRevenue ?? 0)}
+          icon={Banknote}
         />
         <StatCard
           title="This Month Collected"
-          value={`₹${(data?.thisMonthCollected ?? 0).toLocaleString("en-IN")}`}
+          value={formatCurrency(data?.thisMonthCollected ?? 0)}
           icon={Wallet}
           description="Payments received this month"
         />
@@ -191,7 +192,7 @@ const SADashboardPage = () => {
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Outstanding Revenue"
-          value={`₹${(data?.totalOutstanding ?? 0).toLocaleString("en-IN")}`}
+          value={formatCurrency(data?.totalOutstanding ?? 0)}
           icon={TrendingUp}
           description="Pending + partial payments"
         />
@@ -243,10 +244,10 @@ const SADashboardPage = () => {
                 <BarChart data={data?.monthlyChart ?? []} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="month" tick={{ fill: "hsl(215.4, 16.3%, 46.9%)", fontSize: 12 }} />
-                  <YAxis tick={{ fill: "hsl(215.4, 16.3%, 46.9%)", fontSize: 12 }} tickFormatter={(v) => `₹${v.toLocaleString("en-IN")}`} />
+                  <YAxis tick={{ fill: "hsl(215.4, 16.3%, 46.9%)", fontSize: 12 }} tickFormatter={(v) => formatCurrency(v)} />
                   <Tooltip
                     formatter={(value: number, name: string) => [
-                      `₹${value.toLocaleString("en-IN")}`,
+                      formatCurrency(value),
                       name === "expected" ? "Expected" : "Collected",
                     ]}
                     contentStyle={{ borderRadius: 8, border: "1px solid hsl(214.3, 31.8%, 91.4%)", fontSize: 13 }}

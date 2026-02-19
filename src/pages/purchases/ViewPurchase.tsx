@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 // TODO: Replace with actual role from auth context
 const TEMP_SHOW_OFFER = true;
@@ -60,7 +61,7 @@ const ViewPurchasePage = () => {
           </div>
           <div>
             <span className="text-muted-foreground">Total</span>
-            <p className="font-medium">₹{Number(purchase.total_amount).toFixed(2)}</p>
+            <p className="font-medium">{formatCurrency(purchase.total_amount)}</p>
           </div>
         </CardContent>
       </Card>
@@ -95,13 +96,13 @@ const ViewPurchasePage = () => {
                     {item.products?.unit_type === "box_sft" ? "box" : "pc"}
                   </Badge>
                 </TableCell>
-                <TableCell>₹{Number(item.purchase_rate).toFixed(2)}</TableCell>
-                {TEMP_SHOW_OFFER && <TableCell>₹{Number(item.offer_price).toFixed(2)}</TableCell>}
-                <TableCell>₹{Number(item.transport_cost).toFixed(2)}</TableCell>
-                <TableCell>₹{Number(item.labor_cost).toFixed(2)}</TableCell>
-                <TableCell>₹{Number(item.other_cost).toFixed(2)}</TableCell>
+                <TableCell>{formatCurrency(item.purchase_rate)}</TableCell>
+                {TEMP_SHOW_OFFER && <TableCell>{formatCurrency(item.offer_price)}</TableCell>}
+                <TableCell>{formatCurrency(item.transport_cost)}</TableCell>
+                <TableCell>{formatCurrency(item.labor_cost)}</TableCell>
+                <TableCell>{formatCurrency(item.other_cost)}</TableCell>
                 <TableCell>{item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}</TableCell>
-                <TableCell className="text-right font-semibold">₹{Number(item.landed_cost).toFixed(2)}</TableCell>
+                <TableCell className="text-right font-semibold">{formatCurrency(item.landed_cost)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
