@@ -28,9 +28,16 @@ export interface CreatePurchaseInput {
 
 const PAGE_SIZE = 25;
 
-function calcLandedCost(item: PurchaseItemInput): number {
-  const itemTotal = item.quantity * item.purchase_rate;
-  return itemTotal + item.transport_cost + item.labor_cost + item.other_cost;
+function calcBaseCost(item: PurchaseItemInput, unitType: string, perBoxSft: number | null): number {
+  if (unitType === "box_sft" && perBoxSft) {
+    const totalSft = item.quantity * perBoxSft;
+    return totalSft * item.purchase_rate;
+  }
+  return item.quantity * item.purchase_rate;
+}
+
+function calcLandedCost(baseCost: number, item: PurchaseItemInput): number {
+  return baseCost + item.transport_cost + item.labor_cost + item.other_cost;
 }
 
 function calcTotalSft(quantity: number, unitType: string, perBoxSft: number | null): number | null {
@@ -81,8 +88,11 @@ export const purchaseService = {
 
     const itemsWithCalc = input.items.map((item) => {
       const product = productMap.get(item.product_id);
-      const landed = calcLandedCost(item);
-      const totalSft = product ? calcTotalSft(item.quantity, product.unit_type, product.per_box_sft) : null;
+      const unitType = product?.unit_type ?? "piece";
+      const perBoxSft = product?.per_box_sft ?? null;
+      const baseCost = calcBaseCost(item, unitType, perBoxSft);
+      const landed = calcLandedCost(baseCost, item);
+      const totalSft = product ? calcTotalSft(item.quantity, unitType, perBoxSft) : null;
       return { ...item, landed_cost: landed, total_sft: totalSft };
     });
 
