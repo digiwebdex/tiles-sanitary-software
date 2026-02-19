@@ -1,0 +1,1 @@
+ALTER TABLE public.sales_returns ADD COLUMN refund_mode text DEFAULT null;

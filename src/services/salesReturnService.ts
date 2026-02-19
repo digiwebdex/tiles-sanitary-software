@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
+import { cashLedgerService, customerLedgerService } from "@/services/ledgerService";
 import { logAudit } from "@/services/auditService";
 import { validateInput, createSalesReturnServiceSchema } from "@/lib/validators";
 import { assertDealerId } from "@/lib/tenancy";
@@ -12,6 +13,7 @@ export interface CreateSalesReturnInput {
   reason: string;
   is_broken: boolean;
   refund_amount: number;
+  refund_mode?: string;
   return_date: string;
   created_by?: string;
 }
@@ -42,13 +44,42 @@ export const salesReturnService = {
     // Service-level validation
     validateInput(createSalesReturnServiceSchema, input);
 
+    // Fetch sale details including total_amount
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
-      .select("customer_id")
+      .select("customer_id, total_amount, invoice_number")
       .eq("id", input.sale_id)
       .single();
     if (saleErr || !sale) throw new Error("Sale not found");
 
+    // Validate refund does not exceed original sale amount
+    if (input.refund_amount > Number(sale.total_amount)) {
+      throw new Error("Refund amount cannot exceed original sale amount");
+    }
+
+    // Validate return qty does not exceed sold qty for this product
+    const { data: saleItem, error: siErr } = await supabase
+      .from("sale_items")
+      .select("quantity")
+      .eq("sale_id", input.sale_id)
+      .eq("product_id", input.product_id)
+      .single();
+    if (siErr || !saleItem) throw new Error("Product not found in this sale");
+
+    // Check already-returned qty for this product on this sale
+    const { data: existingReturns, error: erErr } = await supabase
+      .from("sales_returns")
+      .select("qty")
+      .eq("sale_id", input.sale_id)
+      .eq("product_id", input.product_id);
+    if (erErr) throw new Error(erErr.message);
+
+    const alreadyReturned = (existingReturns ?? []).reduce((s, r) => s + Number(r.qty), 0);
+    if (alreadyReturned + input.qty > Number(saleItem.quantity)) {
+      throw new Error("Return quantity exceeds sold quantity");
+    }
+
+    // Insert return record
     const { data: returnRecord, error: rErr } = await supabase
       .from("sales_returns")
       .insert({
@@ -59,6 +90,7 @@ export const salesReturnService = {
         reason: input.reason || null,
         is_broken: input.is_broken,
         refund_amount: input.refund_amount,
+        refund_mode: input.refund_mode || null,
         return_date: input.return_date,
         created_by: input.created_by || null,
       })
@@ -66,21 +98,37 @@ export const salesReturnService = {
       .single();
     if (rErr) throw new Error(rErr.message);
 
+    // Stock handling
     if (!input.is_broken) {
       await stockService.restoreStock(input.product_id, input.qty, input.dealer_id);
     }
 
-    const { error: lErr } = await supabase.from("customer_ledger").insert({
+    // Customer ledger — reduce customer's balance (refund)
+    await customerLedgerService.addEntry({
       dealer_id: input.dealer_id,
       customer_id: sale.customer_id,
       sale_id: input.sale_id,
       sales_return_id: returnRecord!.id,
       type: "refund",
       amount: -input.refund_amount,
-      description: `Return${input.is_broken ? " (broken)" : ""}: ${input.reason || "No reason"}`,
+      description: `Return${input.is_broken ? " (broken)" : ""}: ${input.reason || "No reason"} [${sale.invoice_number}]`,
+      entry_date: input.return_date,
     });
-    if (lErr) throw new Error(lErr.message);
 
+    // Cash ledger — record cash outflow if refund was paid
+    if (input.refund_amount > 0) {
+      await cashLedgerService.addEntry({
+        dealer_id: input.dealer_id,
+        type: "refund",
+        amount: -input.refund_amount,
+        description: `Refund for return: ${sale.invoice_number}`,
+        reference_type: "sales_returns",
+        reference_id: returnRecord!.id,
+        entry_date: input.return_date,
+      });
+    }
+
+    // Audit log
     await logAudit({
       dealer_id: input.dealer_id,
       user_id: input.created_by,
@@ -93,6 +141,7 @@ export const salesReturnService = {
         qty: input.qty,
         is_broken: input.is_broken,
         refund_amount: input.refund_amount,
+        refund_mode: input.refund_mode,
       },
     });
 

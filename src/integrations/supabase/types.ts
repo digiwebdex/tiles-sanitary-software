@@ -725,6 +725,7 @@ export type Database = {
           qty: number
           reason: string | null
           refund_amount: number
+          refund_mode: string | null
           return_date: string
           sale_id: string
         }
@@ -738,6 +739,7 @@ export type Database = {
           qty: number
           reason?: string | null
           refund_amount?: number
+          refund_mode?: string | null
           return_date?: string
           sale_id: string
         }
@@ -751,6 +753,7 @@ export type Database = {
           qty?: number
           reason?: string | null
           refund_amount?: number
+          refund_mode?: string | null
           return_date?: string
           sale_id?: string
         }
