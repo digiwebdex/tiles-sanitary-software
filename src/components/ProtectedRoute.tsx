@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps) => {
-  const { user, loading, accessLevel, profile } = useAuth();
+  const { user, loading, accessLevel, profile, isSuperAdmin } = useAuth();
   const location = useLocation();
 
   // Log expired-subscription access attempts
@@ -18,6 +18,7 @@ const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps
     if (
       !loading &&
       user &&
+      !isSuperAdmin &&
       (accessLevel === "readonly" || accessLevel === "blocked") &&
       !allowReadonly
     ) {
@@ -39,7 +40,7 @@ const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps
         ])
         .then(() => {});
     }
-  }, [loading, user, accessLevel, allowReadonly, location.pathname]);
+  }, [loading, user, accessLevel, allowReadonly, location.pathname, isSuperAdmin]);
 
   if (loading) {
     return (
@@ -51,6 +52,11 @@ const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Super admins always have full access — never redirect them
+  if (isSuperAdmin) {
+    return <>{children}</>;
   }
 
   // Blocked = no subscription at all
