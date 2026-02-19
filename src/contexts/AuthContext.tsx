@@ -103,6 +103,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    let initialLoad = true;
+
+    // First, get the current session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        await loadUserData(session.user.id);
+      }
+      setLoading(false);
+      initialLoad = false;
+    });
+
+    // Then listen for auth changes (login/logout after initial load)
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
@@ -112,25 +126,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Use setTimeout to avoid Supabase deadlock with auth state
           setTimeout(async () => {
             await loadUserData(session.user.id);
-            setLoading(false);
+            if (initialLoad) {
+              setLoading(false);
+              initialLoad = false;
+            }
           }, 0);
         } else {
           setProfile(null);
           setRoles([]);
           setSubscription(null);
-          setLoading(false);
+          if (initialLoad) {
+            setLoading(false);
+            initialLoad = false;
+          }
         }
       }
     );
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await loadUserData(session.user.id);
-      }
-      setLoading(false);
-    });
 
     return () => authSub.unsubscribe();
   }, []);
