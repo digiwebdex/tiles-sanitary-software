@@ -992,30 +992,42 @@ export type Database = {
       suppliers: {
         Row: {
           address: string | null
+          contact_person: string | null
           created_at: string
           dealer_id: string
+          email: string | null
           gstin: string | null
           id: string
           name: string
+          opening_balance: number
           phone: string | null
+          status: string
         }
         Insert: {
           address?: string | null
+          contact_person?: string | null
           created_at?: string
           dealer_id: string
+          email?: string | null
           gstin?: string | null
           id?: string
           name: string
+          opening_balance?: number
           phone?: string | null
+          status?: string
         }
         Update: {
           address?: string | null
+          contact_person?: string | null
           created_at?: string
           dealer_id?: string
+          email?: string | null
           gstin?: string | null
           id?: string
           name?: string
+          opening_balance?: number
           phone?: string | null
+          status?: string
         }
         Relationships: [
           {

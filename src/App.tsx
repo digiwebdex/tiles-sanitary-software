@@ -23,6 +23,9 @@ import SalesReturnsPage from "./pages/sales-returns/SalesReturnsPage";
 import CreateSalesReturn from "./pages/sales-returns/CreateSalesReturn";
 import LedgerPage from "./pages/ledger/LedgerPage";
 import ReportsPage from "./pages/reports/ReportsPage";
+import SuppliersPage from "./pages/suppliers/SuppliersPage";
+import CreateSupplier from "./pages/suppliers/CreateSupplier";
+import EditSupplier from "./pages/suppliers/EditSupplier";
 
 // Super Admin
 import SuperAdminLayout from "./pages/super-admin/SuperAdminLayout";
@@ -85,6 +88,9 @@ const App = () => (
             <Route path="/products" element={<ProtectedRoute><AppLayout><ProductsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/products/new" element={<ProtectedRoute><AppLayout><CreateProductRoute /></AppLayout></ProtectedRoute>} />
             <Route path="/products/:id/edit" element={<ProtectedRoute><AppLayout><EditProduct /></AppLayout></ProtectedRoute>} />
+            <Route path="/suppliers" element={<ProtectedRoute><AppLayout><SuppliersPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/suppliers/new" element={<ProtectedRoute><AppLayout><CreateSupplier /></AppLayout></ProtectedRoute>} />
+            <Route path="/suppliers/:id/edit" element={<ProtectedRoute><AppLayout><EditSupplier /></AppLayout></ProtectedRoute>} />
             <Route path="/purchases" element={<ProtectedRoute><AppLayout><PurchasesPage /></AppLayout></ProtectedRoute>} />
             <Route path="/purchases/new" element={<ProtectedRoute><AppLayout><CreatePurchase /></AppLayout></ProtectedRoute>} />
             <Route path="/purchases/:id" element={<ProtectedRoute><AppLayout><ViewPurchase /></AppLayout></ProtectedRoute>} />
