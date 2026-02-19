@@ -7,14 +7,21 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Ban, CheckCircle, UserPlus } from "lucide-react";
+import { Plus, Pencil, Ban, CheckCircle, UserPlus, Eye } from "lucide-react";
 
 interface DealerForm {
   name: string;
@@ -28,41 +35,88 @@ interface AdminUserForm {
   password: string;
 }
 
+interface SubscriptionForm {
+  plan_id: string;
+  start_date: string;
+  end_date: string;
+}
+
 const emptyDealerForm: DealerForm = { name: "", phone: "", address: "" };
 const emptyAdminForm: AdminUserForm = { name: "", email: "", password: "" };
+const todayStr = new Date().toISOString().split("T")[0];
+const emptySubForm: SubscriptionForm = { plan_id: "", start_date: todayStr, end_date: "" };
 
 const DealerManagement = () => {
   const { toast } = useToast();
   const qc = useQueryClient();
+
+  // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<DealerForm>(emptyDealerForm);
   const [createAdmin, setCreateAdmin] = useState(true);
   const [adminForm, setAdminForm] = useState<AdminUserForm>(emptyAdminForm);
+  const [assignPlan, setAssignPlan] = useState(true);
+  const [subForm, setSubForm] = useState<SubscriptionForm>(emptySubForm);
 
-  // Separate dialog for adding user to existing dealer
+  // Add user dialog
   const [addUserOpen, setAddUserOpen] = useState(false);
-  const [addUserDealerId, setAddUserDealerId] = useState<string>("");
+  const [addUserDealerId, setAddUserDealerId] = useState("");
   const [addUserForm, setAddUserForm] = useState<AdminUserForm>(emptyAdminForm);
 
+  // Detail sheet
+  const [detailDealer, setDetailDealer] = useState<any>(null);
+
+  // ─── Queries ───
   const { data: dealers = [], isLoading } = useQuery({
-    queryKey: ["admin-dealers"],
+    queryKey: ["admin-dealers-full"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("dealers")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const [dealersRes, subsRes, profilesRes] = await Promise.all([
+        supabase.from("dealers").select("*").order("created_at", { ascending: false }),
+        supabase.from("subscriptions").select("*, plans(name)").order("start_date", { ascending: false }),
+        supabase.from("profiles").select("id, name, email, dealer_id, status"),
+      ]);
+      if (dealersRes.error) throw new Error(dealersRes.error.message);
+      if (subsRes.error) throw new Error(subsRes.error.message);
+
+      const subs = subsRes.data ?? [];
+      const profiles = profilesRes.data ?? [];
+
+      return (dealersRes.data ?? []).map((d: any) => {
+        const latestSub = subs.find((s: any) => s.dealer_id === d.id);
+        const dealerUsers = profiles.filter((p: any) => p.dealer_id === d.id);
+        return {
+          ...d,
+          subscription: latestSub ?? null,
+          userCount: dealerUsers.length,
+          users: dealerUsers,
+        };
+      });
+    },
+  });
+
+  const { data: plans = [] } = useQuery({
+    queryKey: ["admin-plans-select"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("plans").select("id, name, price_monthly, price_yearly").order("name");
       if (error) throw new Error(error.message);
       return data;
     },
   });
+
+  // ─── Mutations ───
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["admin-dealers-full"] });
+    qc.invalidateQueries({ queryKey: ["admin-dealer-users"] });
+    qc.invalidateQueries({ queryKey: ["sa-dashboard-full"] });
+    qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
+  };
 
   const createDealerMutation = useMutation({
     mutationFn: async () => {
       if (!form.name.trim()) throw new Error("Dealer name is required");
 
       if (editId) {
-        // Edit mode — just update dealer
         const { error } = await supabase
           .from("dealers")
           .update({ name: form.name, phone: form.phone || null, address: form.address || null })
@@ -71,7 +125,7 @@ const DealerManagement = () => {
         return;
       }
 
-      // Create dealer
+      // 1. Create dealer
       const { data: newDealer, error: dealerErr } = await supabase
         .from("dealers")
         .insert({ name: form.name, phone: form.phone || null, address: form.address || null })
@@ -79,14 +133,11 @@ const DealerManagement = () => {
         .single();
       if (dealerErr) throw new Error(dealerErr.message);
 
-      // Create dealer_admin user if checked
+      // 2. Create dealer_admin user
       if (createAdmin) {
         if (!adminForm.name.trim()) throw new Error("Admin name is required");
         if (!adminForm.email.trim()) throw new Error("Admin email is required");
         if (adminForm.password.length < 6) throw new Error("Password must be at least 6 characters");
-
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
 
         const res = await supabase.functions.invoke("create-dealer-user", {
           body: {
@@ -97,15 +148,33 @@ const DealerManagement = () => {
             role: "dealer_admin",
           },
         });
-
         if (res.error) throw new Error(res.error.message || "Failed to create admin user");
         if (res.data?.error) throw new Error(res.data.error);
       }
+
+      // 3. Assign plan / create subscription
+      if (assignPlan && subForm.plan_id) {
+        const { error: subErr } = await supabase.from("subscriptions").insert({
+          dealer_id: newDealer.id,
+          plan_id: subForm.plan_id,
+          start_date: subForm.start_date || todayStr,
+          end_date: subForm.end_date || null,
+          status: "active" as any,
+        });
+        if (subErr) throw new Error("Dealer created but subscription failed: " + subErr.message);
+      }
     },
     onSuccess: () => {
-      toast({ title: editId ? "Dealer updated" : createAdmin ? "Dealer & admin user created" : "Dealer created" });
-      qc.invalidateQueries({ queryKey: ["admin-dealers"] });
-      qc.invalidateQueries({ queryKey: ["admin-dealer-users"] });
+      const parts = [];
+      if (!editId) {
+        parts.push("Dealer created");
+        if (createAdmin) parts.push("admin user added");
+        if (assignPlan && subForm.plan_id) parts.push("subscription assigned");
+      } else {
+        parts.push("Dealer updated");
+      }
+      toast({ title: parts.join(", ") });
+      invalidateAll();
       closeDialog();
     },
     onError: (e: Error) => {
@@ -128,13 +197,12 @@ const DealerManagement = () => {
           role: "dealer_admin",
         },
       });
-
       if (res.error) throw new Error(res.error.message || "Failed to create user");
       if (res.data?.error) throw new Error(res.data.error);
     },
     onSuccess: () => {
       toast({ title: "Dealer admin user created" });
-      qc.invalidateQueries({ queryKey: ["admin-dealer-users"] });
+      invalidateAll();
       setAddUserOpen(false);
       setAddUserForm(emptyAdminForm);
     },
@@ -153,19 +221,22 @@ const DealerManagement = () => {
     },
     onSuccess: () => {
       toast({ title: "Dealer status updated" });
-      qc.invalidateQueries({ queryKey: ["admin-dealers"] });
+      invalidateAll();
     },
     onError: (e: Error) => {
       toast({ variant: "destructive", title: "Error", description: e.message });
     },
   });
 
+  // ─── Helpers ───
   const closeDialog = () => {
     setDialogOpen(false);
     setEditId(null);
     setForm(emptyDealerForm);
     setCreateAdmin(true);
     setAdminForm(emptyAdminForm);
+    setAssignPlan(true);
+    setSubForm(emptySubForm);
   };
 
   const openCreate = () => {
@@ -173,6 +244,8 @@ const DealerManagement = () => {
     setForm(emptyDealerForm);
     setCreateAdmin(true);
     setAdminForm(emptyAdminForm);
+    setAssignPlan(true);
+    setSubForm(emptySubForm);
     setDialogOpen(true);
   };
 
@@ -180,180 +253,220 @@ const DealerManagement = () => {
     setEditId(dealer.id);
     setForm({ name: dealer.name, phone: dealer.phone ?? "", address: dealer.address ?? "" });
     setCreateAdmin(false);
+    setAssignPlan(false);
     setDialogOpen(true);
   };
 
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Dealer Management</CardTitle>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="mr-1 h-4 w-4" /> Add Dealer
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <p className="text-muted-foreground">Loading…</p>
-        ) : (
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-44">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dealers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
-                      No dealers
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  dealers.map((d: any) => (
-                    <TableRow key={d.id}>
-                      <TableCell className="font-medium">{d.name}</TableCell>
-                      <TableCell>{d.phone ?? "—"}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{d.address ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={d.status === "active" ? "default" : "destructive"}
-                          className="capitalize text-xs"
-                        >
-                          {d.status ?? "active"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEdit(d)} title="Edit">
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            onClick={() => {
-                              setAddUserDealerId(d.id);
-                              setAddUserForm(emptyAdminForm);
-                              setAddUserOpen(true);
-                            }}
-                            title="Add user"
-                          >
-                            <UserPlus className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={d.status === "active" ? "destructive" : "default"}
-                            className="h-7 text-xs"
-                            onClick={() =>
-                              toggleStatusMutation.mutate({
-                                id: d.id,
-                                newStatus: d.status === "active" ? "suspended" : "active",
-                              })
-                            }
-                            title={d.status === "active" ? "Suspend" : "Activate"}
-                          >
-                            {d.status === "active" ? (
-                              <Ban className="h-3 w-3" />
-                            ) : (
-                              <CheckCircle className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
+  const subStatusBadge = (sub: any) => {
+    if (!sub) return <Badge variant="outline" className="text-xs">No Plan</Badge>;
+    const variant = sub.status === "active" ? "default" : sub.status === "expired" ? "destructive" : "secondary";
+    return <Badge variant={variant} className="capitalize text-xs">{sub.status}</Badge>;
+  };
 
-      {/* Create / Edit Dealer Dialog */}
+  return (
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">All Dealers</CardTitle>
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="mr-1 h-4 w-4" /> Add Dealer
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-muted-foreground">Loading…</p>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Dealer Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Subscription</TableHead>
+                    <TableHead>Expiry</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-48">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dealers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground">No dealers</TableCell>
+                    </TableRow>
+                  ) : (
+                    dealers.map((d: any) => (
+                      <TableRow key={d.id}>
+                        <TableCell className="font-medium">{d.name}</TableCell>
+                        <TableCell>{d.phone ?? "—"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            {subStatusBadge(d.subscription)}
+                            {d.subscription?.plans?.name && (
+                              <span className="text-xs text-muted-foreground">{d.subscription.plans.name}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">{d.subscription?.end_date ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={(d.status ?? "active") === "active" ? "default" : "destructive"}
+                            className="capitalize text-xs"
+                          >
+                            {d.status ?? "active"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDetailDealer(d)} title="View Details">
+                              <Eye className="h-3 w-3" />
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEdit(d)} title="Edit">
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                setAddUserDealerId(d.id);
+                                setAddUserForm(emptyAdminForm);
+                                setAddUserOpen(true);
+                              }}
+                              title="Add User"
+                            >
+                              <UserPlus className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={(d.status ?? "active") === "active" ? "destructive" : "default"}
+                              className="h-7 text-xs"
+                              onClick={() =>
+                                toggleStatusMutation.mutate({
+                                  id: d.id,
+                                  newStatus: (d.status ?? "active") === "active" ? "suspended" : "active",
+                                })
+                              }
+                              title={(d.status ?? "active") === "active" ? "Suspend" : "Activate"}
+                            >
+                              {(d.status ?? "active") === "active" ? <Ban className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── Create / Edit Dealer Dialog ─── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editId ? "Edit Dealer" : "Create Dealer"}</DialogTitle>
-            {!editId && <DialogDescription>Create a new dealer and optionally set up an admin user.</DialogDescription>}
+            {!editId && (
+              <DialogDescription>
+                Create a new dealer with admin user and subscription.
+              </DialogDescription>
+            )}
           </DialogHeader>
+
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Dealer Name *</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Enter dealer name" />
-            </div>
-            <div className="space-y-2">
-              <Label>Phone</Label>
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone number" />
-            </div>
-            <div className="space-y-2">
-              <Label>Address</Label>
-              <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Address" />
+            {/* Dealer Info */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-foreground">Dealer Information</p>
+              <div className="space-y-2">
+                <Label>Dealer Name *</Label>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Enter dealer name" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Address</Label>
+                  <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Address" />
+                </div>
+              </div>
             </div>
 
-            {/* Admin user section — only on create */}
+            {/* Admin User — create only */}
             {!editId && (
               <>
-                <div className="flex items-center gap-2 pt-2 border-t">
-                  <Checkbox
-                    id="create-admin"
-                    checked={createAdmin}
-                    onCheckedChange={(v) => setCreateAdmin(v === true)}
-                  />
-                  <Label htmlFor="create-admin" className="cursor-pointer font-medium">
-                    Create Dealer Admin User
-                  </Label>
+                <Separator />
+                <div className="flex items-center gap-2">
+                  <Checkbox id="create-admin" checked={createAdmin} onCheckedChange={(v) => setCreateAdmin(v === true)} />
+                  <Label htmlFor="create-admin" className="cursor-pointer font-semibold text-sm">Create Dealer Admin User</Label>
                 </div>
                 {createAdmin && (
-                  <div className="space-y-3 pl-1 border-l-2 border-primary/20 ml-2 pt-1">
+                  <div className="space-y-3 pl-3 border-l-2 border-primary/20">
                     <div className="space-y-2">
                       <Label>Admin Name *</Label>
-                      <Input
-                        value={adminForm.name}
-                        onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })}
-                        placeholder="Full name"
-                      />
+                      <Input value={adminForm.name} onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })} placeholder="Full name" />
                     </div>
                     <div className="space-y-2">
                       <Label>Email *</Label>
-                      <Input
-                        type="email"
-                        value={adminForm.email}
-                        onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
-                        placeholder="admin@example.com"
-                      />
+                      <Input type="email" value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} placeholder="admin@example.com" />
                     </div>
                     <div className="space-y-2">
                       <Label>Password *</Label>
-                      <Input
-                        type="password"
-                        value={adminForm.password}
-                        onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
-                        placeholder="Min 6 characters"
-                      />
+                      <Input type="password" value={adminForm.password} onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })} placeholder="Min 6 characters" />
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Role: <Badge variant="secondary" className="text-xs ml-1">dealer_admin</Badge>
+                    <p className="text-xs text-muted-foreground">Role: <Badge variant="secondary" className="text-xs ml-1">dealer_admin</Badge></p>
+                  </div>
+                )}
+
+                {/* Subscription */}
+                <Separator />
+                <div className="flex items-center gap-2">
+                  <Checkbox id="assign-plan" checked={assignPlan} onCheckedChange={(v) => setAssignPlan(v === true)} />
+                  <Label htmlFor="assign-plan" className="cursor-pointer font-semibold text-sm">Assign Subscription Plan</Label>
+                </div>
+                {assignPlan && (
+                  <div className="space-y-3 pl-3 border-l-2 border-primary/20">
+                    <div className="space-y-2">
+                      <Label>Plan *</Label>
+                      <Select value={subForm.plan_id} onValueChange={(v) => setSubForm({ ...subForm, plan_id: v })}>
+                        <SelectTrigger><SelectValue placeholder="Select plan" /></SelectTrigger>
+                        <SelectContent>
+                          {plans.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name} — ₹{Number(p.price_monthly).toLocaleString("en-IN")}/mo
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Start Date</Label>
+                        <Input type="date" value={subForm.start_date} onChange={(e) => setSubForm({ ...subForm, start_date: e.target.value })} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>End Date</Label>
+                        <Input type="date" value={subForm.end_date} onChange={(e) => setSubForm({ ...subForm, end_date: e.target.value })} />
+                      </div>
                     </div>
                   </div>
                 )}
               </>
             )}
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>Cancel</Button>
             <Button onClick={() => createDealerMutation.mutate()} disabled={createDealerMutation.isPending}>
-              {createDealerMutation.isPending ? "Saving…" : editId ? "Update" : "Create"}
+              {createDealerMutation.isPending ? "Saving…" : editId ? "Update" : "Create Dealer"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Add User to Existing Dealer Dialog */}
+      {/* ─── Add User Dialog ─── */}
       <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -363,33 +476,17 @@ const DealerManagement = () => {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Name *</Label>
-              <Input
-                value={addUserForm.name}
-                onChange={(e) => setAddUserForm({ ...addUserForm, name: e.target.value })}
-                placeholder="Full name"
-              />
+              <Input value={addUserForm.name} onChange={(e) => setAddUserForm({ ...addUserForm, name: e.target.value })} placeholder="Full name" />
             </div>
             <div className="space-y-2">
               <Label>Email *</Label>
-              <Input
-                type="email"
-                value={addUserForm.email}
-                onChange={(e) => setAddUserForm({ ...addUserForm, email: e.target.value })}
-                placeholder="admin@example.com"
-              />
+              <Input type="email" value={addUserForm.email} onChange={(e) => setAddUserForm({ ...addUserForm, email: e.target.value })} placeholder="admin@example.com" />
             </div>
             <div className="space-y-2">
               <Label>Password *</Label>
-              <Input
-                type="password"
-                value={addUserForm.password}
-                onChange={(e) => setAddUserForm({ ...addUserForm, password: e.target.value })}
-                placeholder="Min 6 characters"
-              />
+              <Input type="password" value={addUserForm.password} onChange={(e) => setAddUserForm({ ...addUserForm, password: e.target.value })} placeholder="Min 6 characters" />
             </div>
-            <div className="text-xs text-muted-foreground">
-              Role: <Badge variant="secondary" className="text-xs ml-1">dealer_admin</Badge>
-            </div>
+            <p className="text-xs text-muted-foreground">Role: <Badge variant="secondary" className="text-xs ml-1">dealer_admin</Badge></p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddUserOpen(false)}>Cancel</Button>
@@ -399,7 +496,93 @@ const DealerManagement = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+
+      {/* ─── Dealer Detail Sheet ─── */}
+      <Sheet open={!!detailDealer} onOpenChange={(open) => !open && setDetailDealer(null)}>
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{detailDealer?.name}</SheetTitle>
+            <SheetDescription>Dealer details and associated information.</SheetDescription>
+          </SheetHeader>
+          {detailDealer && (
+            <div className="space-y-6 mt-6">
+              {/* Info */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-foreground">General</p>
+                <div className="grid grid-cols-2 gap-y-2 text-sm">
+                  <span className="text-muted-foreground">Phone</span>
+                  <span className="text-foreground">{detailDealer.phone ?? "—"}</span>
+                  <span className="text-muted-foreground">Address</span>
+                  <span className="text-foreground">{detailDealer.address ?? "—"}</span>
+                  <span className="text-muted-foreground">Status</span>
+                  <span>
+                    <Badge variant={(detailDealer.status ?? "active") === "active" ? "default" : "destructive"} className="capitalize text-xs">
+                      {detailDealer.status ?? "active"}
+                    </Badge>
+                  </span>
+                  <span className="text-muted-foreground">Created</span>
+                  <span className="text-foreground">{new Date(detailDealer.created_at).toLocaleDateString("en-IN")}</span>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Subscription */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-foreground">Subscription</p>
+                {detailDealer.subscription ? (
+                  <div className="grid grid-cols-2 gap-y-2 text-sm">
+                    <span className="text-muted-foreground">Plan</span>
+                    <span className="text-foreground">{detailDealer.subscription.plans?.name ?? "—"}</span>
+                    <span className="text-muted-foreground">Status</span>
+                    <span>{subStatusBadge(detailDealer.subscription)}</span>
+                    <span className="text-muted-foreground">Start</span>
+                    <span className="text-foreground">{detailDealer.subscription.start_date}</span>
+                    <span className="text-muted-foreground">End</span>
+                    <span className="text-foreground">{detailDealer.subscription.end_date ?? "—"}</span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No subscription assigned.</p>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Users */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-foreground">Users ({detailDealer.userCount})</p>
+                {detailDealer.users?.length > 0 ? (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Name</TableHead>
+                          <TableHead className="text-xs">Email</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {detailDealer.users.map((u: any) => (
+                          <TableRow key={u.id}>
+                            <TableCell className="text-sm">{u.name}</TableCell>
+                            <TableCell className="text-sm">{u.email}</TableCell>
+                            <TableCell>
+                              <Badge variant={u.status === "active" ? "default" : "destructive"} className="text-xs capitalize">{u.status}</Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No users assigned.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 };
 
