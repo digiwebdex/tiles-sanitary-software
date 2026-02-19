@@ -15,8 +15,11 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, CalendarPlus, Play, Pause, RefreshCw } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { recordSubscriptionPayment } from "@/services/subscriptionPaymentService";
+import { Plus, CalendarPlus, Play, Pause, RefreshCw, Banknote } from "lucide-react";
 import { differenceInDays, parseISO, format } from "date-fns";
 
 interface SubRow {
@@ -67,6 +70,7 @@ function StatusBadge({ status }: { status: string }) {
 
 const SubscriptionManagement = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const qc = useQueryClient();
 
   const { data: subscriptions = [], isLoading } = useQuery({
@@ -128,6 +132,56 @@ const SubscriptionManagement = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [editSub, setEditSub] = useState<SubRow | null>(null);
   const [editForm, setEditForm] = useState({ end_date: "", status: "", plan_id: "" });
+
+  // Payment dialog
+  const [payOpen, setPayOpen] = useState(false);
+  const [paySub, setPaySub] = useState<SubRow | null>(null);
+  const [payForm, setPayForm] = useState({
+    amount: "",
+    payment_date: format(new Date(), "yyyy-MM-dd"),
+    payment_method: "cash" as "cash" | "bank" | "mobile_banking",
+    payment_status: "paid" as "paid" | "partial" | "pending",
+    extend_months: "1",
+    note: "",
+  });
+
+  const openPayment = (sub: SubRow) => {
+    setPaySub(sub);
+    setPayForm({
+      amount: "",
+      payment_date: format(new Date(), "yyyy-MM-dd"),
+      payment_method: "cash",
+      payment_status: "paid",
+      extend_months: "1",
+      note: "",
+    });
+    setPayOpen(true);
+  };
+
+  const paymentMutation = useMutation({
+    mutationFn: async () => {
+      if (!paySub || !user) throw new Error("Missing context");
+      if (!payForm.amount || Number(payForm.amount) <= 0) throw new Error("Amount must be > 0");
+      await recordSubscriptionPayment({
+        subscription_id: paySub.id,
+        dealer_id: paySub.dealer_id,
+        amount: Number(payForm.amount),
+        payment_date: payForm.payment_date,
+        payment_method: payForm.payment_method,
+        payment_status: payForm.payment_status,
+        collected_by: user.id,
+        note: payForm.note || undefined,
+        extend_months: payForm.payment_status === "paid" ? Number(payForm.extend_months) || 1 : undefined,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Payment recorded successfully" });
+      qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
+      setPayOpen(false);
+      setPaySub(null);
+    },
+    onError: (e: Error) => toast({ variant: "destructive", title: "Payment Error", description: e.message }),
+  });
 
   const openEdit = (sub: SubRow) => {
     setEditSub(sub);
@@ -229,6 +283,9 @@ const SubscriptionManagement = () => {
                           <TableCell className="text-xs font-mono">{getDaysRemaining(sub)}</TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap">
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openPayment(sub)}>
+                                <Banknote className="mr-1 h-3 w-3" /> Payment
+                              </Button>
                               <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEdit(sub)}>
                                 <CalendarPlus className="mr-1 h-3 w-3" /> Edit
                               </Button>
@@ -337,6 +394,101 @@ const SubscriptionManagement = () => {
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
               <RefreshCw className="mr-1 h-4 w-4" /> Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record Payment Dialog */}
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record Payment — {paySub?.dealers?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Amount (₹) *</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={payForm.amount}
+                  onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Payment Date *</Label>
+                <Input
+                  type="date"
+                  value={payForm.payment_date}
+                  onChange={(e) => setPayForm({ ...payForm, payment_date: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Payment Method *</Label>
+                <Select
+                  value={payForm.payment_method}
+                  onValueChange={(v: "cash" | "bank" | "mobile_banking") =>
+                    setPayForm({ ...payForm, payment_method: v })
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="bank">Bank</SelectItem>
+                    <SelectItem value="mobile_banking">Mobile Banking</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Payment Status *</Label>
+                <Select
+                  value={payForm.payment_status}
+                  onValueChange={(v: "paid" | "partial" | "pending") =>
+                    setPayForm({ ...payForm, payment_status: v })
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="paid">Paid (Full)</SelectItem>
+                    <SelectItem value="partial">Partial</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {payForm.payment_status === "paid" && (
+              <div className="space-y-2">
+                <Label>Extend subscription by (months)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="12"
+                  value={payForm.extend_months}
+                  onChange={(e) => setPayForm({ ...payForm, extend_months: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Full payment will activate the subscription and extend end date.
+                </p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Note</Label>
+              <Textarea
+                value={payForm.note}
+                onChange={(e) => setPayForm({ ...payForm, note: e.target.value })}
+                placeholder="Optional payment note…"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)}>Cancel</Button>
+            <Button onClick={() => paymentMutation.mutate()} disabled={paymentMutation.isPending}>
+              <Banknote className="mr-1 h-4 w-4" /> Record Payment
             </Button>
           </DialogFooter>
         </DialogContent>
