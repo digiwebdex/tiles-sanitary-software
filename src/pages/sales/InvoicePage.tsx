@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Printer } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 const InvoicePage = () => {
   const { id } = useParams<{ id: string }>();
@@ -112,8 +113,8 @@ const InvoicePage = () => {
                   </Badge>
                 </TableCell>
                 <TableCell>{item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}</TableCell>
-                <TableCell>₹{Number(item.sale_rate).toFixed(2)}</TableCell>
-                <TableCell className="text-right">₹{Number(item.total).toFixed(2)}</TableCell>
+                <TableCell>{formatCurrency(item.sale_rate)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -137,23 +138,23 @@ const InvoicePage = () => {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-muted-foreground">Discount</p>
-            <p className="text-lg font-bold">₹{Number(sale.discount).toFixed(2)}</p>
+            <p className="text-lg font-bold">{formatCurrency(sale.discount)}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-muted-foreground">Paid</p>
-            <p className="text-lg font-bold text-primary">₹{Number(sale.paid_amount).toFixed(2)}</p>
+            <p className="text-lg font-bold text-primary">{formatCurrency(sale.paid_amount)}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-muted-foreground">Due</p>
             <p className={`text-lg font-bold ${Number(sale.due_amount) > 0 ? "text-destructive" : ""}`}>
-              ₹{Number(sale.due_amount).toFixed(2)}
+              {formatCurrency(sale.due_amount)}
             </p>
           </div>
         </CardContent>
         <Separator />
         <CardContent className="flex items-center justify-between pt-4">
           <span className="text-lg font-semibold text-foreground">Grand Total</span>
-          <span className="text-2xl font-bold text-primary">₹{Number(sale.total_amount).toFixed(2)}</span>
+          <span className="text-2xl font-bold text-primary">{formatCurrency(sale.total_amount)}</span>
         </CardContent>
       </Card>
     </div>

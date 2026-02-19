@@ -16,6 +16,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { formatCurrency } from "@/lib/utils";
 
 interface LedgerPageContentProps {
   dealerId: string;
@@ -107,7 +108,7 @@ const LedgerPageContent = ({ dealerId }: LedgerPageContentProps) => {
                 </TableCell>
                 <TableCell className="max-w-[200px] truncate">{e.description || "—"}</TableCell>
                 <TableCell className={`text-right font-medium ${Number(e.amount) < 0 ? "text-destructive" : "text-primary"}`}>
-                  {Number(e.amount) >= 0 ? "+" : ""}₹{Number(e.amount).toFixed(2)}
+                  {Number(e.amount) >= 0 ? "+" : ""}{formatCurrency(Math.abs(Number(e.amount)))}
                 </TableCell>
               </TableRow>
             ))
@@ -145,10 +146,10 @@ const LedgerPageContent = ({ dealerId }: LedgerPageContentProps) => {
               {(summary ?? []).map((row) => (
                 <TableRow key={row.month}>
                   <TableCell className="font-medium">{row.month}</TableCell>
-                  <TableCell className="text-right text-primary">₹{row.credit.toFixed(2)}</TableCell>
-                  <TableCell className="text-right text-destructive">₹{row.debit.toFixed(2)}</TableCell>
+                  <TableCell className="text-right text-primary">{formatCurrency(row.credit)}</TableCell>
+                  <TableCell className="text-right text-destructive">{formatCurrency(row.debit)}</TableCell>
                   <TableCell className={`text-right font-semibold ${row.balance < 0 ? "text-destructive" : ""}`}>
-                    ₹{row.balance.toFixed(2)}
+                    {formatCurrency(row.balance)}
                   </TableCell>
                 </TableRow>
               ))}

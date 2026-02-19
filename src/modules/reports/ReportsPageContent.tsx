@@ -21,6 +21,7 @@ import {
   REPORT_PAGE_SIZE,
 } from "@/services/reportService";
 import { supabase } from "@/integrations/supabase/client";
+import { formatCurrency } from "@/lib/utils";
 
 interface ReportsPageContentProps {
   dealerId: string;
@@ -113,8 +114,8 @@ function StockReport({ dealerId }: { dealerId: string }) {
                       <TableCell className="text-right">{r.boxQty}</TableCell>
                       <TableCell className="text-right">{r.sftQty.toFixed(2)}</TableCell>
                       <TableCell className="text-right">{r.pieceQty}</TableCell>
-                      <TableCell className="text-right">₹{r.avgCost.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">₹{r.stockValue.toLocaleString("en-IN")}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.avgCost)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(r.stockValue)}</TableCell>
                       <TableCell>
                         {r.isLow ? (
                           <Badge variant="destructive" className="text-xs">Low</Badge>
@@ -169,7 +170,7 @@ function BrandStockReport({ dealerId }: { dealerId: string }) {
                     <TableCell className="text-right">{r.totalBox}</TableCell>
                     <TableCell className="text-right">{r.totalSft.toFixed(2)}</TableCell>
                     <TableCell className="text-right">{r.totalPiece}</TableCell>
-                    <TableCell className="text-right font-medium">₹{r.totalValue.toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(r.totalValue)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -240,12 +241,12 @@ function SalesReport({ dealerId }: { dealerId: string }) {
                   <TableRow key={r.date}>
                     <TableCell className="font-medium">{r.date}</TableCell>
                     <TableCell className="text-right">{r.count}</TableCell>
-                    <TableCell className="text-right">₹{r.totalAmount.toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.totalAmount)}</TableCell>
                     <TableCell className={`text-right ${r.totalProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                      ₹{r.totalProfit.toLocaleString("en-IN")}
+                      {formatCurrency(r.totalProfit)}
                     </TableCell>
                     <TableCell className={`text-right ${r.totalDue > 0 ? "text-destructive font-semibold" : ""}`}>
-                      ₹{r.totalDue.toLocaleString("en-IN")}
+                      {formatCurrency(r.totalDue)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -254,9 +255,9 @@ function SalesReport({ dealerId }: { dealerId: string }) {
                   <TableRow className="bg-muted/50 font-semibold">
                     <TableCell>Total</TableCell>
                     <TableCell className="text-right">{(data ?? []).reduce((s, r) => s + r.count, 0)}</TableCell>
-                    <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalAmount, 0).toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalProfit, 0).toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalDue, 0).toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalAmount, 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalProfit, 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalDue, 0))}</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -310,10 +311,10 @@ function RetailerSalesReport({ dealerId }: { dealerId: string }) {
                     <TableCell className="font-medium">{r.customerName}</TableCell>
                     <TableCell><Badge variant="outline" className="capitalize text-xs">{r.customerType}</Badge></TableCell>
                     <TableCell className="text-right">{r.saleCount}</TableCell>
-                    <TableCell className="text-right font-semibold">{r.totalSft.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">₹{r.totalAmount.toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-right">{r.totalSft.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.totalAmount)}</TableCell>
                     <TableCell className={`text-right ${r.totalDue > 0 ? "text-destructive font-semibold" : ""}`}>
-                      ₹{r.totalDue.toLocaleString("en-IN")}
+                      {formatCurrency(r.totalDue)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -402,8 +403,8 @@ function ProductHistoryReport({ dealerId }: { dealerId: string }) {
                       </TableCell>
                       <TableCell className="font-mono text-sm">{r.reference}</TableCell>
                       <TableCell className="text-right">{r.quantity}</TableCell>
-                      <TableCell className="text-right">₹{r.rate.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">₹{r.total.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.rate)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(r.total)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -457,29 +458,29 @@ function AccountingSummaryReport({ dealerId }: { dealerId: string }) {
                 {(data ?? []).map((r) => (
                   <TableRow key={r.month}>
                     <TableCell className="font-medium">{r.month}</TableCell>
-                    <TableCell className="text-right">₹{r.totalSales.toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-right">₹{r.totalPurchases.toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-right">₹{r.totalExpenses.toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.totalSales)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.totalPurchases)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.totalExpenses)}</TableCell>
                     <TableCell className={`text-right font-semibold ${r.netProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                      ₹{r.netProfit.toLocaleString("en-IN")}
+                      {formatCurrency(r.netProfit)}
                     </TableCell>
                     <TableCell className={`text-right ${r.totalDue > 0 ? "text-destructive" : ""}`}>
-                      ₹{r.totalDue.toLocaleString("en-IN")}
+                      {formatCurrency(r.totalDue)}
                     </TableCell>
-                    <TableCell className="text-right text-primary">₹{r.cashIn.toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-right text-destructive">₹{r.cashOut.toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-right text-primary">{formatCurrency(r.cashIn)}</TableCell>
+                    <TableCell className="text-right text-destructive">{formatCurrency(r.cashOut)}</TableCell>
                   </TableRow>
                 ))}
                 {/* Grand totals */}
                 <TableRow className="bg-muted/50 font-semibold">
                   <TableCell>Total</TableCell>
-                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalSales, 0).toLocaleString("en-IN")}</TableCell>
-                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalPurchases, 0).toLocaleString("en-IN")}</TableCell>
-                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalExpenses, 0).toLocaleString("en-IN")}</TableCell>
-                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.netProfit, 0).toLocaleString("en-IN")}</TableCell>
-                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalDue, 0).toLocaleString("en-IN")}</TableCell>
-                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.cashIn, 0).toLocaleString("en-IN")}</TableCell>
-                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.cashOut, 0).toLocaleString("en-IN")}</TableCell>
+                  <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalSales, 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalPurchases, 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalExpenses, 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.netProfit, 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalDue, 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.cashIn, 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.cashOut, 0))}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
