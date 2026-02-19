@@ -1,3 +1,4 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5,9 +6,34 @@ import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { IndianRupee } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { IndianRupee, TrendingUp, TrendingDown, CalendarClock } from "lucide-react";
+import {
+  format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval,
+} from "date-fns";
+
+interface SubRow {
+  id: string;
+  dealer_id: string;
+  plan_id: string;
+  status: string;
+  start_date: string;
+  end_date: string | null;
+  created_at: string;
+  dealers: { name: string } | null;
+  plans: { name: string; price_monthly: number; price_yearly: number } | null;
+}
+
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => {
+  const d = subMonths(new Date(), i);
+  return { value: format(d, "yyyy-MM"), label: format(d, "MMMM yyyy") };
+});
 
 const SARevenuePage = () => {
+  const [selectedMonth, setSelectedMonth] = useState(MONTH_OPTIONS[0].value);
+
   const { data: subscriptions = [], isLoading } = useQuery({
     queryKey: ["sa-revenue"],
     queryFn: async () => {
@@ -16,50 +42,139 @@ const SARevenuePage = () => {
         .select("*, dealers(name), plans(name, price_monthly, price_yearly)")
         .order("start_date", { ascending: false });
       if (error) throw new Error(error.message);
-      return data;
+      return data as SubRow[];
     },
   });
 
-  const totalMonthly = subscriptions
-    .filter((s: any) => s.status === "active")
-    .reduce((sum: number, s: any) => sum + (Number(s.plans?.price_monthly) || 0), 0);
+  const monthStart = startOfMonth(parseISO(`${selectedMonth}-01`));
+  const monthEnd = endOfMonth(monthStart);
+  const lastMonthStart = startOfMonth(subMonths(monthStart, 1));
+  const lastMonthEnd = endOfMonth(lastMonthStart);
 
-  const totalYearly = subscriptions
-    .filter((s: any) => s.status === "active")
-    .reduce((sum: number, s: any) => sum + (Number(s.plans?.price_yearly) || 0), 0);
+  const isActiveInRange = (sub: SubRow, start: Date, end: Date) => {
+    const subStart = parseISO(sub.start_date);
+    const subEnd = sub.end_date ? parseISO(sub.end_date) : new Date(2099, 0, 1);
+    return subStart <= end && subEnd >= start;
+  };
+
+  const thisMonthSubs = useMemo(
+    () => subscriptions.filter((s) => isActiveInRange(s, monthStart, monthEnd)),
+    [subscriptions, selectedMonth]
+  );
+
+  const lastMonthSubs = useMemo(
+    () => subscriptions.filter((s) => isActiveInRange(s, lastMonthStart, lastMonthEnd)),
+    [subscriptions, selectedMonth]
+  );
+
+  const revenueForSubs = (subs: SubRow[]) =>
+    subs.reduce((sum, s) => sum + (Number(s.plans?.price_monthly) || 0), 0);
+
+  const thisMonthRevenue = revenueForSubs(thisMonthSubs);
+  const lastMonthRevenue = revenueForSubs(lastMonthSubs);
+
+  // Expected renewal: active subs whose end_date falls in next 30 days
+  const expectedRenewal = useMemo(() => {
+    const now = new Date();
+    const in30 = new Date();
+    in30.setDate(in30.getDate() + 30);
+    return subscriptions
+      .filter(
+        (s) =>
+          s.status === "active" &&
+          s.end_date &&
+          isWithinInterval(parseISO(s.end_date), { start: now, end: in30 })
+      )
+      .reduce((sum, s) => sum + (Number(s.plans?.price_monthly) || 0), 0);
+  }, [subscriptions]);
+
+  const revDiff = thisMonthRevenue - lastMonthRevenue;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Revenue</h1>
-        <p className="text-sm text-muted-foreground">Revenue overview based on active subscriptions.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Revenue Tracking</h1>
+          <p className="text-sm text-muted-foreground">
+            Subscription-based revenue overview across all dealers.
+          </p>
+        </div>
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MONTH_OPTIONS.map((m) => (
+              <SelectItem key={m.value} value={m.value}>
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* KPI Cards */}
+      <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Revenue (MRR)</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              This Month Revenue
+            </CardTitle>
             <IndianRupee className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">₹{totalMonthly.toLocaleString("en-IN")}</div>
-            <p className="text-xs text-muted-foreground mt-1">From {subscriptions.filter((s: any) => s.status === "active").length} active subscriptions</p>
+            <div className="text-2xl font-bold text-foreground">
+              ₹{thisMonthRevenue.toLocaleString("en-IN")}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {thisMonthSubs.length} subscriptions
+            </p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Annual Revenue (ARR)</CardTitle>
-            <IndianRupee className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Last Month Revenue
+            </CardTitle>
+            {revDiff >= 0 ? (
+              <TrendingUp className="h-4 w-4 text-green-600" />
+            ) : (
+              <TrendingDown className="h-4 w-4 text-destructive" />
+            )}
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">₹{totalYearly.toLocaleString("en-IN")}</div>
+            <div className="text-2xl font-bold text-foreground">
+              ₹{lastMonthRevenue.toLocaleString("en-IN")}
+            </div>
+            <p className={`text-xs mt-1 ${revDiff >= 0 ? "text-green-600" : "text-destructive"}`}>
+              {revDiff >= 0 ? "+" : ""}₹{revDiff.toLocaleString("en-IN")} vs this month
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Expected Renewal
+            </CardTitle>
+            <CalendarClock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">
+              ₹{expectedRenewal.toLocaleString("en-IN")}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Next 30 days</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Revenue Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Subscription Revenue Breakdown</CardTitle>
+          <CardTitle className="text-base">
+            Revenue Breakdown — {MONTH_OPTIONS.find((m) => m.value === selectedMonth)?.label}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -71,26 +186,40 @@ const SARevenuePage = () => {
                   <TableRow>
                     <TableHead>Dealer</TableHead>
                     <TableHead>Plan</TableHead>
-                    <TableHead>Monthly</TableHead>
-                    <TableHead>Yearly</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Start Date</TableHead>
+                    <TableHead>End Date</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {subscriptions.length === 0 ? (
+                  {thisMonthSubs.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">No subscriptions</TableCell>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                        No revenue records for this month
+                      </TableCell>
                     </TableRow>
                   ) : (
-                    subscriptions.map((sub: any) => (
+                    thisMonthSubs.map((sub) => (
                       <TableRow key={sub.id}>
-                        <TableCell className="font-medium">{sub.dealers?.name ?? "—"}</TableCell>
+                        <TableCell className="font-medium">
+                          {sub.dealers?.name ?? "—"}
+                        </TableCell>
                         <TableCell>{sub.plans?.name ?? "—"}</TableCell>
-                        <TableCell>₹{Number(sub.plans?.price_monthly ?? 0).toLocaleString("en-IN")}</TableCell>
-                        <TableCell>₹{Number(sub.plans?.price_yearly ?? 0).toLocaleString("en-IN")}</TableCell>
+                        <TableCell className="font-mono">
+                          ₹{Number(sub.plans?.price_monthly ?? 0).toLocaleString("en-IN")}
+                        </TableCell>
+                        <TableCell className="text-xs">{sub.start_date}</TableCell>
+                        <TableCell className="text-xs">{sub.end_date ?? "—"}</TableCell>
                         <TableCell>
                           <Badge
-                            variant={sub.status === "active" ? "default" : sub.status === "expired" ? "destructive" : "secondary"}
+                            variant={
+                              sub.status === "active"
+                                ? "default"
+                                : sub.status === "expired"
+                                ? "destructive"
+                                : "secondary"
+                            }
                             className="capitalize text-xs"
                           >
                             {sub.status}
