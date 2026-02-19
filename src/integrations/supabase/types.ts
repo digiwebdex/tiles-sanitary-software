@@ -832,6 +832,60 @@ export type Database = {
           },
         ]
       }
+      subscription_payments: {
+        Row: {
+          amount: number
+          collected_by: string | null
+          created_at: string
+          dealer_id: string
+          id: string
+          note: string | null
+          payment_date: string
+          payment_method: Database["public"]["Enums"]["payment_method_type"]
+          payment_status: Database["public"]["Enums"]["payment_status_type"]
+          subscription_id: string
+        }
+        Insert: {
+          amount?: number
+          collected_by?: string | null
+          created_at?: string
+          dealer_id: string
+          id?: string
+          note?: string | null
+          payment_date?: string
+          payment_method: Database["public"]["Enums"]["payment_method_type"]
+          payment_status?: Database["public"]["Enums"]["payment_status_type"]
+          subscription_id: string
+        }
+        Update: {
+          amount?: number
+          collected_by?: string | null
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          note?: string | null
+          payment_date?: string
+          payment_method?: Database["public"]["Enums"]["payment_method_type"]
+          payment_status?: Database["public"]["Enums"]["payment_status_type"]
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_payments_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_payments_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           created_at: string
@@ -1019,6 +1073,8 @@ export type Database = {
         | "receipt"
         | "adjustment"
       ledger_type: "customer" | "supplier" | "cash" | "expense"
+      payment_method_type: "cash" | "bank" | "mobile_banking"
+      payment_status_type: "paid" | "partial" | "pending"
       product_category: "tiles" | "sanitary"
       subscription_status: "active" | "expired" | "suspended"
       unit_type: "box_sft" | "piece"
@@ -1162,6 +1218,8 @@ export const Constants = {
         "adjustment",
       ],
       ledger_type: ["customer", "supplier", "cash", "expense"],
+      payment_method_type: ["cash", "bank", "mobile_banking"],
+      payment_status_type: ["paid", "partial", "pending"],
       product_category: ["tiles", "sanitary"],
       subscription_status: ["active", "expired", "suspended"],
       unit_type: ["box_sft", "piece"],
