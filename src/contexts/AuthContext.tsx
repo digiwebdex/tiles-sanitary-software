@@ -78,14 +78,19 @@ function computeAccessLevel(
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const endDate = sub.end_date ? new Date(sub.end_date) : null;
-    if (endDate) endDate.setHours(0, 0, 0, 0);
-
-    // Active + within end_date → full access
-    if (sub.status === "active" && endDate && today <= endDate) return "full";
+    // Parse end_date as LOCAL date (avoid UTC midnight shift in non-UTC timezones)
+    let endDate: Date | null = null;
+    if (sub.end_date) {
+      const [year, month, day] = sub.end_date.split("-").map(Number);
+      endDate = new Date(year, month - 1, day); // local date, no UTC shift
+    }
 
     // Suspended → blocked immediately
     if (sub.status === "suspended") return "blocked";
+
+    // Date is the source of truth: if today <= end_date → full access
+    // (regardless of DB status field, which may lag behind)
+    if (endDate && today <= endDate) return "full";
 
     // Grace window: end_date < today <= end_date + 3 days
     if (endDate) {
@@ -131,8 +136,12 @@ async function validateAndSyncSubscription(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const endDate = sub.end_date ? new Date(sub.end_date) : null;
-  if (endDate) endDate.setHours(0, 0, 0, 0);
+  // Parse end_date as LOCAL date to avoid UTC midnight timezone shifts
+  let endDate: Date | null = null;
+  if (sub.end_date) {
+    const [year, month, day] = sub.end_date.split("-").map(Number);
+    endDate = new Date(year, month - 1, day);
+  }
 
   // --- Debug logging ---
   console.log("[SubscriptionDebug] dealer_id     :", dealerId);
@@ -140,6 +149,7 @@ async function validateAndSyncSubscription(
   console.log("[SubscriptionDebug] status        :", sub.status);
   console.log("[SubscriptionDebug] end_date      :", sub.end_date ?? "null");
   console.log("[SubscriptionDebug] current_date  :", today.toISOString().split("T")[0]);
+  console.log("[SubscriptionDebug] parsed endDate:", endDate?.toLocaleDateString() ?? "null");
 
   // Validate dealer_id match (sanity check)
   if (sub.dealer_id !== dealerId) {
@@ -155,14 +165,14 @@ async function validateAndSyncSubscription(
   const graceEnd = new Date(endDate);
   graceEnd.setDate(graceEnd.getDate() + 3);
 
-  // Case 1: Active and within end_date → ensure status is "active"
+  // Case 1: Within end_date → ensure status is "active"
   if (today <= endDate) {
     if (sub.status !== "active") {
       await supabase.from("subscriptions").update({ status: "active" }).eq("id", sub.id);
       console.log("[SubscriptionDebug] Status corrected → active");
       return { ...(sub as Subscription), status: "active" };
     }
-    console.log("[SubscriptionDebug] Access: FULL (active)");
+    console.log("[SubscriptionDebug] Access: FULL (active, end_date:", sub.end_date, ")");
     return sub as Subscription;
   }
 
