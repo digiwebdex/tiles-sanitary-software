@@ -2,6 +2,10 @@ import { supabase } from "@/integrations/supabase/client";
 
 const PAGE_SIZE = 25;
 
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
 // ─── Stock Report (SKU-wise) ──────────────────────────────
 export interface StockRow {
   productId: string;
@@ -24,7 +28,6 @@ export async function fetchStockReport(
   page: number,
   search?: string
 ): Promise<{ rows: StockRow[]; total: number }> {
-  // products with stock join
   let pQuery = supabase
     .from("products")
     .select("id, sku, name, brand, category, unit_type, reorder_level", { count: "exact" })
@@ -70,7 +73,7 @@ export async function fetchStockReport(
       sftQty,
       pieceQty,
       avgCost,
-      stockValue: Math.round(totalQty * avgCost * 100) / 100,
+      stockValue: round2(totalQty * avgCost),
       reorderLevel: p.reorder_level,
       isLow: totalQty <= p.reorder_level,
     };
@@ -126,7 +129,7 @@ export async function fetchBrandStockReport(dealerId: string): Promise<BrandStoc
   }
 
   return Object.values(brandMap)
-    .map((b) => ({ ...b, totalValue: Math.round(b.totalValue * 100) / 100, totalSft: Math.round(b.totalSft * 100) / 100 }))
+    .map((b) => ({ ...b, totalValue: round2(b.totalValue), totalSft: round2(b.totalSft) }))
     .sort((a, b) => b.totalValue - a.totalValue);
 }
 
@@ -135,19 +138,21 @@ export interface SalesReportRow {
   date: string;
   count: number;
   totalAmount: number;
+  totalCollection: number;
   totalProfit: number;
   totalDue: number;
+  totalSft: number;
 }
 
 export async function fetchSalesReport(
   dealerId: string,
   mode: "daily" | "monthly",
   year: number,
-  month?: number // 1-12, for daily mode
+  month?: number
 ): Promise<SalesReportRow[]> {
   let query = supabase
     .from("sales")
-    .select("sale_date, total_amount, profit, due_amount")
+    .select("sale_date, total_amount, paid_amount, profit, due_amount, total_sft")
     .eq("dealer_id", dealerId)
     .order("sale_date");
 
@@ -165,26 +170,27 @@ export async function fetchSalesReport(
 
   const buckets: Record<string, SalesReportRow> = {};
   for (const row of data ?? []) {
-    const key = mode === "daily"
-      ? row.sale_date
-      : row.sale_date.substring(0, 7); // YYYY-MM
-
+    const key = mode === "daily" ? row.sale_date : row.sale_date.substring(0, 7);
     if (!buckets[key]) {
-      buckets[key] = { date: key, count: 0, totalAmount: 0, totalProfit: 0, totalDue: 0 };
+      buckets[key] = { date: key, count: 0, totalAmount: 0, totalCollection: 0, totalProfit: 0, totalDue: 0, totalSft: 0 };
     }
     buckets[key].count += 1;
     buckets[key].totalAmount += Number(row.total_amount);
+    buckets[key].totalCollection += Number(row.paid_amount);
     buckets[key].totalProfit += Number(row.profit);
     buckets[key].totalDue += Number(row.due_amount);
+    buckets[key].totalSft += Number(row.total_sft);
   }
 
   return Object.values(buckets)
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((b) => ({
       ...b,
-      totalAmount: Math.round(b.totalAmount * 100) / 100,
-      totalProfit: Math.round(b.totalProfit * 100) / 100,
-      totalDue: Math.round(b.totalDue * 100) / 100,
+      totalAmount: round2(b.totalAmount),
+      totalCollection: round2(b.totalCollection),
+      totalProfit: round2(b.totalProfit),
+      totalDue: round2(b.totalDue),
+      totalSft: round2(b.totalSft),
     }));
 }
 
@@ -201,24 +207,33 @@ export interface RetailerSalesRow {
 
 export async function fetchRetailerSalesReport(
   dealerId: string,
-  year: number
+  year: number,
+  customerType?: "retailer" | "customer" | "project"
 ): Promise<RetailerSalesRow[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("sales")
     .select("customer_id, total_sft, total_amount, due_amount, customers(name, type)")
     .eq("dealer_id", dealerId)
     .gte("sale_date", `${year}-01-01`)
     .lte("sale_date", `${year}-12-31`);
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   const map: Record<string, RetailerSalesRow> = {};
   for (const row of data ?? []) {
+    const cust = (row as any).customers;
+    const type = cust?.type ?? "customer";
+
+    // Filter by customer type if specified
+    if (customerType && type !== customerType) continue;
+
     const cid = row.customer_id;
     if (!map[cid]) {
       map[cid] = {
         customerId: cid,
-        customerName: (row as any).customers?.name ?? "—",
-        customerType: (row as any).customers?.type ?? "—",
+        customerName: cust?.name ?? "—",
+        customerType: type,
         totalSft: 0,
         totalAmount: 0,
         totalDue: 0,
@@ -232,20 +247,15 @@ export async function fetchRetailerSalesReport(
   }
 
   return Object.values(map)
-    .map((r) => ({
-      ...r,
-      totalSft: Math.round(r.totalSft * 100) / 100,
-      totalAmount: Math.round(r.totalAmount * 100) / 100,
-      totalDue: Math.round(r.totalDue * 100) / 100,
-    }))
+    .map((r) => ({ ...r, totalSft: round2(r.totalSft), totalAmount: round2(r.totalAmount), totalDue: round2(r.totalDue) }))
     .sort((a, b) => b.totalSft - a.totalSft);
 }
 
-// ─── Product History ──────────────────────────────────────
+// ─── Product History (Purchase + Sale + Return) ───────────
 export interface ProductHistoryRow {
   id: string;
   date: string;
-  type: "purchase" | "sale";
+  type: "purchase" | "sale" | "return";
   quantity: number;
   rate: number;
   total: number;
@@ -257,7 +267,7 @@ export async function fetchProductHistory(
   productId: string,
   page: number
 ): Promise<{ rows: ProductHistoryRow[]; total: number }> {
-  const [purchaseRes, saleRes] = await Promise.all([
+  const [purchaseRes, saleRes, returnRes] = await Promise.all([
     supabase
       .from("purchase_items")
       .select("id, quantity, purchase_rate, total, purchases(purchase_date, invoice_number)")
@@ -266,6 +276,11 @@ export async function fetchProductHistory(
     supabase
       .from("sale_items")
       .select("id, quantity, sale_rate, total, sales(sale_date, invoice_number)")
+      .eq("dealer_id", dealerId)
+      .eq("product_id", productId),
+    supabase
+      .from("sales_returns")
+      .select("id, qty, refund_amount, return_date, is_broken, sales(invoice_number)")
       .eq("dealer_id", dealerId)
       .eq("product_id", productId),
   ]);
@@ -298,9 +313,137 @@ export async function fetchProductHistory(
     });
   }
 
+  for (const sr of returnRes.data ?? []) {
+    const s = (sr as any).sales;
+    rows.push({
+      id: sr.id,
+      date: sr.return_date,
+      type: "return",
+      quantity: Number(sr.qty),
+      rate: 0,
+      total: Number(sr.refund_amount),
+      reference: `${s?.invoice_number ?? "—"}${sr.is_broken ? " (broken)" : ""}`,
+    });
+  }
+
   rows.sort((a, b) => b.date.localeCompare(a.date));
   const total = rows.length;
   const paged = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  return { rows: paged, total };
+}
+
+// ─── Due Report: Customer Due List ────────────────────────
+export interface CustomerDueRow {
+  customerId: string;
+  customerName: string;
+  customerType: string;
+  totalDebit: number;
+  totalCredit: number;
+  balance: number;
+}
+
+export async function fetchCustomerDueReport(
+  dealerId: string,
+  page: number
+): Promise<{ rows: CustomerDueRow[]; total: number }> {
+  // Fetch all customer ledger entries
+  const { data: ledgerData, error: lErr } = await supabase
+    .from("customer_ledger")
+    .select("customer_id, amount")
+    .eq("dealer_id", dealerId);
+  if (lErr) throw new Error(lErr.message);
+
+  // Fetch customers for names
+  const { data: customers, error: cErr } = await supabase
+    .from("customers")
+    .select("id, name, type")
+    .eq("dealer_id", dealerId);
+  if (cErr) throw new Error(cErr.message);
+
+  const custMap = new Map((customers ?? []).map((c) => [c.id, c]));
+
+  // Aggregate by customer
+  const balances: Record<string, { debit: number; credit: number }> = {};
+  for (const entry of ledgerData ?? []) {
+    const cid = entry.customer_id;
+    if (!balances[cid]) balances[cid] = { debit: 0, credit: 0 };
+    const amt = Number(entry.amount);
+    if (amt >= 0) balances[cid].debit += amt;
+    else balances[cid].credit += Math.abs(amt);
+  }
+
+  const allRows: CustomerDueRow[] = Object.entries(balances)
+    .map(([cid, b]) => {
+      const cust = custMap.get(cid);
+      return {
+        customerId: cid,
+        customerName: cust?.name ?? "—",
+        customerType: cust?.type ?? "customer",
+        totalDebit: round2(b.debit),
+        totalCredit: round2(b.credit),
+        balance: round2(b.debit - b.credit),
+      };
+    })
+    .filter((r) => r.balance > 0)
+    .sort((a, b) => b.balance - a.balance);
+
+  const total = allRows.length;
+  const paged = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  return { rows: paged, total };
+}
+
+// ─── Due Report: Supplier Payable List ────────────────────
+export interface SupplierPayableRow {
+  supplierId: string;
+  supplierName: string;
+  totalDebit: number;
+  totalCredit: number;
+  balance: number;
+}
+
+export async function fetchSupplierPayableReport(
+  dealerId: string,
+  page: number
+): Promise<{ rows: SupplierPayableRow[]; total: number }> {
+  const { data: ledgerData, error: lErr } = await supabase
+    .from("supplier_ledger")
+    .select("supplier_id, amount")
+    .eq("dealer_id", dealerId);
+  if (lErr) throw new Error(lErr.message);
+
+  const { data: suppliers, error: sErr } = await supabase
+    .from("suppliers")
+    .select("id, name")
+    .eq("dealer_id", dealerId);
+  if (sErr) throw new Error(sErr.message);
+
+  const suppMap = new Map((suppliers ?? []).map((s) => [s.id, s]));
+
+  const balances: Record<string, { debit: number; credit: number }> = {};
+  for (const entry of ledgerData ?? []) {
+    const sid = entry.supplier_id;
+    if (!balances[sid]) balances[sid] = { debit: 0, credit: 0 };
+    const amt = Number(entry.amount);
+    if (amt >= 0) balances[sid].debit += amt;
+    else balances[sid].credit += Math.abs(amt);
+  }
+
+  const allRows: SupplierPayableRow[] = Object.entries(balances)
+    .map(([sid, b]) => {
+      const supp = suppMap.get(sid);
+      return {
+        supplierId: sid,
+        supplierName: supp?.name ?? "—",
+        totalDebit: round2(b.debit),
+        totalCredit: round2(b.credit),
+        balance: round2(b.credit - b.debit), // we owe them
+      };
+    })
+    .filter((r) => r.balance > 0)
+    .sort((a, b) => b.balance - a.balance);
+
+  const total = allRows.length;
+  const paged = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   return { rows: paged, total };
 }
 
@@ -308,10 +451,12 @@ export async function fetchProductHistory(
 export interface AccountingSummaryRow {
   month: string;
   totalSales: number;
+  totalCollection: number;
+  totalDue: number;
+  totalSftSold: number;
   totalPurchases: number;
   totalExpenses: number;
-  totalProfit: number;
-  totalDue: number;
+  netProfit: number;
   cashIn: number;
   cashOut: number;
 }
@@ -326,7 +471,7 @@ export async function fetchAccountingSummary(
   const [salesRes, purchasesRes, expensesRes, cashRes] = await Promise.all([
     supabase
       .from("sales")
-      .select("sale_date, total_amount, profit, due_amount")
+      .select("sale_date, total_amount, paid_amount, profit, due_amount, total_sft")
       .eq("dealer_id", dealerId)
       .gte("sale_date", yearStart).lte("sale_date", yearEnd),
     supabase
@@ -350,10 +495,12 @@ export async function fetchAccountingSummary(
   const buckets = MONTHS.map((m) => ({
     month: m,
     totalSales: 0,
+    totalCollection: 0,
+    totalDue: 0,
+    totalSftSold: 0,
     totalPurchases: 0,
     totalExpenses: 0,
-    totalProfit: 0,
-    totalDue: 0,
+    netProfit: 0,
     cashIn: 0,
     cashOut: 0,
   }));
@@ -361,8 +508,10 @@ export async function fetchAccountingSummary(
   for (const r of salesRes.data ?? []) {
     const m = new Date(r.sale_date).getMonth();
     buckets[m].totalSales += Number(r.total_amount);
-    buckets[m].totalProfit += Number(r.profit);
+    buckets[m].totalCollection += Number(r.paid_amount);
     buckets[m].totalDue += Number(r.due_amount);
+    buckets[m].totalSftSold += Number(r.total_sft);
+    buckets[m].netProfit += Number(r.profit);
   }
   for (const r of purchasesRes.data ?? []) {
     const m = new Date(r.purchase_date).getMonth();
@@ -381,13 +530,15 @@ export async function fetchAccountingSummary(
 
   return buckets.map((b) => ({
     ...b,
-    totalSales: Math.round(b.totalSales * 100) / 100,
-    totalPurchases: Math.round(b.totalPurchases * 100) / 100,
-    totalExpenses: Math.round(b.totalExpenses * 100) / 100,
-    totalProfit: Math.round(b.totalProfit * 100) / 100,
-    totalDue: Math.round(b.totalDue * 100) / 100,
-    cashIn: Math.round(b.cashIn * 100) / 100,
-    cashOut: Math.round(b.cashOut * 100) / 100,
+    totalSales: round2(b.totalSales),
+    totalCollection: round2(b.totalCollection),
+    totalDue: round2(b.totalDue),
+    totalSftSold: round2(b.totalSftSold),
+    totalPurchases: round2(b.totalPurchases),
+    totalExpenses: round2(b.totalExpenses),
+    netProfit: round2(b.netProfit),
+    cashIn: round2(b.cashIn),
+    cashOut: round2(b.cashOut),
   }));
 }
 

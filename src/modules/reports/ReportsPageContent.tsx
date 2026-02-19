@@ -460,8 +460,8 @@ function AccountingSummaryReport({ dealerId }: { dealerId: string }) {
                     <TableCell className="text-right">₹{r.totalSales.toLocaleString("en-IN")}</TableCell>
                     <TableCell className="text-right">₹{r.totalPurchases.toLocaleString("en-IN")}</TableCell>
                     <TableCell className="text-right">₹{r.totalExpenses.toLocaleString("en-IN")}</TableCell>
-                    <TableCell className={`text-right font-semibold ${r.totalProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                      ₹{r.totalProfit.toLocaleString("en-IN")}
+                    <TableCell className={`text-right font-semibold ${r.netProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+                      ₹{r.netProfit.toLocaleString("en-IN")}
                     </TableCell>
                     <TableCell className={`text-right ${r.totalDue > 0 ? "text-destructive" : ""}`}>
                       ₹{r.totalDue.toLocaleString("en-IN")}
@@ -476,7 +476,7 @@ function AccountingSummaryReport({ dealerId }: { dealerId: string }) {
                   <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalSales, 0).toLocaleString("en-IN")}</TableCell>
                   <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalPurchases, 0).toLocaleString("en-IN")}</TableCell>
                   <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalExpenses, 0).toLocaleString("en-IN")}</TableCell>
-                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalProfit, 0).toLocaleString("en-IN")}</TableCell>
+                  <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.netProfit, 0).toLocaleString("en-IN")}</TableCell>
                   <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.totalDue, 0).toLocaleString("en-IN")}</TableCell>
                   <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.cashIn, 0).toLocaleString("en-IN")}</TableCell>
                   <TableCell className="text-right">₹{(data ?? []).reduce((s, r) => s + r.cashOut, 0).toLocaleString("en-IN")}</TableCell>
