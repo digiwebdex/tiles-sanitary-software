@@ -103,47 +103,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    let initialLoad = true;
+    let isMounted = true;
+    let initialized = false;
 
-    // First, get the current session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await loadUserData(session.user.id);
-      }
-      setLoading(false);
-      initialLoad = false;
-    });
+    const initialize = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!isMounted) return;
 
-    // Then listen for auth changes (login/logout after initial load)
-    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          // Use setTimeout to avoid Supabase deadlock with auth state
+          await loadUserData(session.user.id);
+        }
+      } catch (err) {
+        console.error("Auth init error:", err);
+      } finally {
+        if (isMounted) {
+          initialized = true;
+          setLoading(false);
+        }
+      }
+    };
+
+    initialize();
+
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!isMounted) return;
+
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          // Defer to avoid Supabase auth deadlock
           setTimeout(async () => {
+            if (!isMounted) return;
             await loadUserData(session.user.id);
-            if (initialLoad) {
-              setLoading(false);
-              initialLoad = false;
-            }
           }, 0);
         } else {
           setProfile(null);
           setRoles([]);
           setSubscription(null);
-          if (initialLoad) {
-            setLoading(false);
-            initialLoad = false;
-          }
         }
       }
     );
 
-    return () => authSub.unsubscribe();
+    return () => {
+      isMounted = false;
+      authSub.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
