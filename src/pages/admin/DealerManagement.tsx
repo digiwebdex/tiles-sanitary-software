@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Ban, CheckCircle, UserPlus, Eye } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface DealerForm {
   name: string;
@@ -435,7 +436,7 @@ const DealerManagement = () => {
                         <SelectContent>
                           {plans.map((p: any) => (
                             <SelectItem key={p.id} value={p.id}>
-                              {p.name} — ₹{Number(p.price_monthly).toLocaleString("en-IN")}/mo
+                              {p.name} — {formatCurrency(p.price_monthly)}/mo
                             </SelectItem>
                           ))}
                         </SelectContent>

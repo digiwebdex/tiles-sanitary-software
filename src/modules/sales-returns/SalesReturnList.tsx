@@ -7,6 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Plus } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface SalesReturnListProps {
   dealerId: string;
@@ -68,7 +69,7 @@ const SalesReturnList = ({ dealerId }: SalesReturnListProps) => {
                       <Badge variant="secondary">Restocked</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">₹{Number(r.refund_amount).toFixed(2)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(r.refund_amount)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface PlanForm {
   name: string;
@@ -109,8 +110,8 @@ const PlanManagement = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Monthly (₹)</TableHead>
-                  <TableHead>Yearly (₹)</TableHead>
+                  <TableHead>Monthly (৳)</TableHead>
+                  <TableHead>Yearly (৳)</TableHead>
                   <TableHead>Max Users</TableHead>
                   <TableHead className="w-20">Actions</TableHead>
                 </TableRow>
@@ -126,8 +127,8 @@ const PlanManagement = () => {
                   plans.map((p: any) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.name}</TableCell>
-                      <TableCell>₹{Number(p.price_monthly).toLocaleString("en-IN")}</TableCell>
-                      <TableCell>₹{Number(p.price_yearly).toLocaleString("en-IN")}</TableCell>
+                      <TableCell>{formatCurrency(p.price_monthly)}</TableCell>
+                      <TableCell>{formatCurrency(p.price_yearly)}</TableCell>
                       <TableCell>{p.max_users}</TableCell>
                       <TableCell>
                         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEdit(p)}>
@@ -155,11 +156,11 @@ const PlanManagement = () => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Monthly Price (₹)</Label>
+                <Label>Monthly Price (৳)</Label>
                 <Input type="number" value={form.price_monthly} onChange={(e) => setForm({ ...form, price_monthly: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>Yearly Price (₹)</Label>
+                <Label>Yearly Price (৳)</Label>
                 <Input type="number" value={form.price_yearly} onChange={(e) => setForm({ ...form, price_yearly: e.target.value })} />
               </div>
             </div>

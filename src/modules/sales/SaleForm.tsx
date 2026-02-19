@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Search } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface SaleFormProps {
   dealerId: string;
@@ -191,7 +192,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
             name="discount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Discount (₹)</FormLabel>
+                <FormLabel>Discount (৳)</FormLabel>
                 <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
@@ -305,7 +306,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
                       </span>
                     )}
                     <span className="text-muted-foreground">
-                      Total: <strong className="text-foreground">₹{itemTotal.toFixed(2)}</strong>
+                      Total: <strong className="text-foreground">{formatCurrency(itemTotal)}</strong>
                     </span>
                   </div>
                 </CardContent>
@@ -321,7 +322,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
             name="paid_amount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Paid Amount (₹)</FormLabel>
+                <FormLabel>Paid Amount (৳)</FormLabel>
                 <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
@@ -356,17 +357,17 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
           </div>
           <div>
             <span className="text-muted-foreground">Subtotal</span>
-            <p className="font-semibold">₹{subtotal.toFixed(2)}</p>
+            <p className="font-semibold">{formatCurrency(subtotal)}</p>
           </div>
           <div>
             <span className="text-muted-foreground">After Discount</span>
-            <p className="font-semibold">₹{totalAmount.toFixed(2)}</p>
+            <p className="font-semibold">{formatCurrency(totalAmount)}</p>
           </div>
           <div>
             <span className={dueAmount > 0 ? "text-destructive" : "text-muted-foreground"}>
               Due
             </span>
-            <p className="font-semibold">₹{dueAmount.toFixed(2)}</p>
+            <p className="font-semibold">{formatCurrency(dueAmount)}</p>
           </div>
         </div>
 

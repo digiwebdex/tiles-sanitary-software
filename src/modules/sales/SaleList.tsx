@@ -9,6 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Plus, FileText } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface SaleListProps {
   dealerId: string;
@@ -69,10 +70,10 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                         <Badge variant="outline" className="text-xs capitalize">{s.customers?.type}</Badge>
                       </span>
                     </TableCell>
-                    <TableCell className="text-right">₹{Number(s.total_amount).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">₹{Number(s.paid_amount).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(s.total_amount)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(s.paid_amount)}</TableCell>
                     <TableCell className={`text-right ${Number(s.due_amount) > 0 ? "text-destructive font-semibold" : ""}`}>
-                      ₹{Number(s.due_amount).toFixed(2)}
+                      {formatCurrency(s.due_amount)}
                     </TableCell>
                     <TableCell>
                       <Button size="icon" variant="ghost" onClick={() => navigate(`/sales/${s.id}/invoice`)}>

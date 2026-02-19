@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatCurrency } from "@/lib/utils";
 
 interface SalesReturnFormProps {
   dealerId: string;
@@ -179,7 +180,7 @@ const SalesReturnForm = ({ dealerId, onSubmit, isLoading }: SalesReturnFormProps
             name="refund_amount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Refund Amount (₹)</FormLabel>
+                <FormLabel>Refund Amount (৳)</FormLabel>
                 <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
@@ -219,7 +220,7 @@ const SalesReturnForm = ({ dealerId, onSubmit, isLoading }: SalesReturnFormProps
                 Return: <strong className="text-foreground">{watchQty} {selectedItem.products?.unit_type === "box_sft" ? "boxes" : "pcs"}</strong>
               </span>
               <span className="text-muted-foreground">
-                Refund: <strong className="text-foreground">₹{(form.watch("refund_amount") || 0).toFixed(2)}</strong>
+                Refund: <strong className="text-foreground">{formatCurrency(form.watch("refund_amount") || 0)}</strong>
               </span>
               {form.watch("is_broken") && (
                 <Badge variant="destructive">No restock</Badge>
