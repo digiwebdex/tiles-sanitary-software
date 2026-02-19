@@ -22,6 +22,10 @@ export const productSchema = z
         path: ["per_box_sft"],
       });
     }
-  });
+  })
+  .transform((data) => ({
+    ...data,
+    per_box_sft: data.unit_type === "piece" ? null : data.per_box_sft,
+  }));
 
 export type ProductFormValues = z.infer<typeof productSchema>;

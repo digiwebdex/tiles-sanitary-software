@@ -15,6 +15,10 @@ const EditProductPage = () => {
   const queryClient = useQueryClient();
   const { profile, user } = useAuth();
 
+  if (!id) {
+    return <p className="p-6 text-destructive">Invalid product ID</p>;
+  }
+
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", id],
     queryFn: () => productService.getById(id!),
