@@ -65,7 +65,7 @@ function computeAccessLevel(
     (r) => r.role === "dealer_admin" || r.role === "salesman"
   );
 
-  // Rule 1: super_admin always gets full access
+  // Rule 1: super_admin always gets full access — never check subscription
   if (isSuperAdmin) return "full";
 
   // Rule 2: dealer roles without a dealer_id are blocked
@@ -74,21 +74,116 @@ function computeAccessLevel(
   // Rule 3: apply subscription logic for dealer roles
   if (isDealerRole) {
     if (!sub) return "blocked";
-    if (sub.status === "active") return "full";
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const endDate = sub.end_date ? new Date(sub.end_date) : null;
+    if (endDate) endDate.setHours(0, 0, 0, 0);
+
+    // Active + within end_date → full access
+    if (sub.status === "active" && endDate && today <= endDate) return "full";
+
+    // Suspended → blocked immediately
     if (sub.status === "suspended") return "blocked";
 
-    // expired — check 3-day grace period
-    if (sub.end_date) {
-      const graceEnd = new Date(sub.end_date);
+    // Grace window: end_date < today <= end_date + 3 days
+    if (endDate) {
+      const graceEnd = new Date(endDate);
       graceEnd.setDate(graceEnd.getDate() + 3);
-      if (new Date() <= graceEnd) return "grace";
+      if (today > endDate && today <= graceEnd) return "grace";
     }
 
+    // Beyond grace → readonly
     return "readonly";
   }
 
   // Rule 4: any other authenticated role gets full access
   return "full";
+}
+
+/**
+ * Validates and reconciles dealer subscription status against current date.
+ * Mutates DB status to "expired" or "active" as needed.
+ * Returns the latest subscription record.
+ */
+async function validateAndSyncSubscription(
+  dealerId: string
+): Promise<Subscription | null> {
+  const { data: sub, error } = await supabase
+    .from("subscriptions")
+    .select("*")
+    .eq("dealer_id", dealerId)
+    .order("start_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[SubscriptionDebug] Fetch error:", error.message);
+    return null;
+  }
+
+  if (!sub) {
+    console.warn("[SubscriptionDebug] No subscription found for dealer_id:", dealerId);
+    return null;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const endDate = sub.end_date ? new Date(sub.end_date) : null;
+  if (endDate) endDate.setHours(0, 0, 0, 0);
+
+  // --- Debug logging ---
+  console.log("[SubscriptionDebug] dealer_id     :", dealerId);
+  console.log("[SubscriptionDebug] sub.dealer_id :", sub.dealer_id);
+  console.log("[SubscriptionDebug] status        :", sub.status);
+  console.log("[SubscriptionDebug] end_date      :", sub.end_date ?? "null");
+  console.log("[SubscriptionDebug] current_date  :", today.toISOString().split("T")[0]);
+
+  // Validate dealer_id match (sanity check)
+  if (sub.dealer_id !== dealerId) {
+    console.error("[SubscriptionDebug] dealer_id MISMATCH — blocking access.");
+    return null;
+  }
+
+  if (!endDate) {
+    console.warn("[SubscriptionDebug] No end_date on subscription — treating as blocked.");
+    return sub as Subscription;
+  }
+
+  const graceEnd = new Date(endDate);
+  graceEnd.setDate(graceEnd.getDate() + 3);
+
+  // Case 1: Active and within end_date → ensure status is "active"
+  if (today <= endDate) {
+    if (sub.status !== "active") {
+      await supabase.from("subscriptions").update({ status: "active" }).eq("id", sub.id);
+      console.log("[SubscriptionDebug] Status corrected → active");
+      return { ...(sub as Subscription), status: "active" };
+    }
+    console.log("[SubscriptionDebug] Access: FULL (active)");
+    return sub as Subscription;
+  }
+
+  // Case 2: Within grace period (end_date < today <= end_date + 3)
+  if (today > endDate && today <= graceEnd) {
+    if (sub.status !== "expired") {
+      await supabase.from("subscriptions").update({ status: "expired" }).eq("id", sub.id);
+      console.log("[SubscriptionDebug] Status updated → expired (grace window)");
+      return { ...(sub as Subscription), status: "expired" };
+    }
+    console.log("[SubscriptionDebug] Access: GRACE period");
+    return sub as Subscription;
+  }
+
+  // Case 3: Beyond grace → expired, block access
+  if (sub.status !== "expired") {
+    await supabase.from("subscriptions").update({ status: "expired" }).eq("id", sub.id);
+    console.log("[SubscriptionDebug] Status updated → expired (past grace)");
+  }
+  console.log("[SubscriptionDebug] Access: BLOCKED (expired past grace)");
+  return { ...(sub as Subscription), status: "expired" };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -130,39 +225,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(prof);
     setRoles(fetchedRoles);
 
-    // Only fetch subscription for dealer roles that have a dealer_id.
-    // Super admins never need a subscription check.
+    // Only validate subscription for dealer roles with a dealer_id.
+    // super_admin path is untouched.
     if (userIsDealerRole && !userIsSuperAdmin && prof?.dealer_id) {
-      const { data: sub } = await supabase
-        .from("subscriptions")
-        .select("*")
-        .eq("dealer_id", prof.dealer_id)
-        .order("start_date", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      setSubscription(sub as Subscription | null);
-
-      // Fire-and-forget background status refresh — never blocks login
-      if (sub) {
-        supabase.functions
-          .invoke("check-subscription-status", { body: { dealer_id: prof.dealer_id } })
-          .then(() =>
-            supabase
-              .from("subscriptions")
-              .select("*")
-              .eq("dealer_id", prof.dealer_id)
-              .order("start_date", { ascending: false })
-              .limit(1)
-              .maybeSingle()
-              .then(({ data: refreshed }) => {
-                if (refreshed) setSubscription(refreshed as Subscription);
-              })
-          )
-          .catch(() => { /* never block login on background errors */ });
-      }
+      const validatedSub = await validateAndSyncSubscription(prof.dealer_id);
+      setSubscription(validatedSub);
     } else {
-      // super_admin or user with no dealer role — no subscription needed
+      // super_admin or no dealer role — no subscription needed
       setSubscription(null);
     }
   }
