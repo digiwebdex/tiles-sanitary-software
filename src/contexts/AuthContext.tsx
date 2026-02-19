@@ -72,9 +72,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
+  // Store raw loaded roles to compute access level synchronously before render
+  const loadedRolesRef = useRef<UserRole[]>([]);
 
   const isSuperAdmin = roles.some((r) => r.role === "super_admin");
   const isDealerAdmin = roles.some((r) => r.role === "dealer_admin");
+  // Super admins always get full access regardless of subscription state
   const accessLevel = computeAccessLevel(subscription, isSuperAdmin);
 
   async function loadUserData(userId: string) {
@@ -84,11 +87,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ]);
 
     const prof = profileRes.data as Profile | null;
+    const fetchedRoles = (rolesRes.data as UserRole[]) ?? [];
+    
+    // Store in ref so we can check synchronously
+    loadedRolesRef.current = fetchedRoles;
+    
     setProfile(prof);
-    setRoles((rolesRes.data as UserRole[]) ?? []);
+    setRoles(fetchedRoles);
 
-    // Load subscription for dealer
-    if (prof?.dealer_id) {
+    const userIsSuperAdmin = fetchedRoles.some((r) => r.role === "super_admin");
+
+    // Load subscription only for dealers (super admins have no dealer_id)
+    if (prof?.dealer_id && !userIsSuperAdmin) {
       const { data: sub } = await supabase
         .from("subscriptions")
         .select("*")
@@ -97,7 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .limit(1)
         .maybeSingle();
 
-      // Set subscription FIRST so login is never blocked
       setSubscription(sub as Subscription | null);
 
       // Fire-and-forget status check — never awaited so it can't stall or block login
@@ -121,7 +130,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       setSubscription(null);
     }
-
   }
 
   useEffect(() => {
