@@ -53,8 +53,20 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
       accent: "text-primary",
     },
     {
+      title: "Today Collection",
+      value: `₹${data.todayCollection.toLocaleString("en-IN")}`,
+      icon: IndianRupee,
+      accent: "text-primary",
+    },
+    {
       title: "Monthly Sales",
       value: `₹${data.monthlySales.toLocaleString("en-IN")}`,
+      icon: TrendingUp,
+      accent: "text-primary",
+    },
+    {
+      title: "Monthly Collection",
+      value: `₹${data.monthlyCollection.toLocaleString("en-IN")}`,
       icon: TrendingUp,
       accent: "text-primary",
     },
@@ -71,10 +83,16 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
       accent: "text-primary",
     },
     {
-      title: "Total Due",
-      value: `₹${data.totalDue.toLocaleString("en-IN")}`,
+      title: "Customer Due",
+      value: `₹${data.totalCustomerDue.toLocaleString("en-IN")}`,
       icon: Receipt,
-      accent: data.totalDue > 0 ? "text-destructive" : "text-primary",
+      accent: data.totalCustomerDue > 0 ? "text-destructive" : "text-primary",
+    },
+    {
+      title: "Supplier Payable",
+      value: `₹${data.totalSupplierPayable.toLocaleString("en-IN")}`,
+      icon: Receipt,
+      accent: data.totalSupplierPayable > 0 ? "text-destructive" : "text-primary",
     },
     {
       title: "Low Stock Items",
