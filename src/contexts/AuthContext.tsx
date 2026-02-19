@@ -96,32 +96,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .order("start_date", { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      // Set subscription FIRST so login is never blocked
       setSubscription(sub as Subscription | null);
 
-      // Login-time subscription status check via edge function
-      if (sub && prof.dealer_id) {
-        try {
-          await supabase.functions.invoke("check-subscription-status", {
-            body: { dealer_id: prof.dealer_id },
-          });
-          // Re-fetch subscription after status check
-          const { data: refreshedSub } = await supabase
-            .from("subscriptions")
-            .select("*")
-            .eq("dealer_id", prof.dealer_id)
-            .order("start_date", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (refreshedSub) {
-            setSubscription(refreshedSub as Subscription | null);
-          }
-        } catch {
-          // Don't block login if status check fails
-        }
+      // Fire-and-forget status check — never awaited so it can't stall or block login
+      if (sub) {
+        supabase.functions
+          .invoke("check-subscription-status", { body: { dealer_id: prof.dealer_id } })
+          .then(() =>
+            supabase
+              .from("subscriptions")
+              .select("*")
+              .eq("dealer_id", prof.dealer_id)
+              .order("start_date", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+              .then(({ data: refreshed }) => {
+                if (refreshed) setSubscription(refreshed as Subscription);
+              })
+          )
+          .catch(() => { /* never block login on error */ });
       }
     } else {
       setSubscription(null);
     }
+
   }
 
   useEffect(() => {
