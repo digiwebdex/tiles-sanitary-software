@@ -1,19 +1,40 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Store, CalendarPlus, AlertTriangle, IndianRupee, TrendingUp } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { Badge } from "@/components/ui/badge";
+import {
+  Store, CalendarPlus, AlertTriangle, IndianRupee, TrendingUp,
+  Clock, Ban, Wallet,
+} from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+} from "recharts";
+import { differenceInDays, parseISO, startOfMonth, endOfMonth, format } from "date-fns";
 
-const PIE_COLORS = ["hsl(222.2, 47.4%, 11.2%)", "hsl(0, 84.2%, 60.2%)", "hsl(210, 40%, 70%)"];
+const PIE_COLORS = ["hsl(222.2, 47.4%, 11.2%)", "hsl(0, 84.2%, 60.2%)", "hsl(210, 40%, 70%)", "hsl(48, 96%, 53%)"];
+const GRACE_DAYS = 3;
 
-const StatCard = ({ title, value, icon: Icon, description }: { title: string; value: string | number; icon: any; description?: string }) => (
+const StatCard = ({
+  title, value, icon: Icon, description, badge,
+}: {
+  title: string; value: string | number; icon: any; description?: string;
+  badge?: { label: string; variant: "default" | "destructive" | "secondary" | "outline"; className?: string };
+}) => (
   <Card>
     <CardHeader className="flex flex-row items-center justify-between pb-2">
       <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
       <Icon className="h-4 w-4 text-muted-foreground" />
     </CardHeader>
     <CardContent>
-      <div className="text-2xl font-bold text-foreground">{value}</div>
+      <div className="flex items-center gap-2">
+        <span className="text-2xl font-bold text-foreground">{value}</span>
+        {badge && (
+          <Badge variant={badge.variant} className={`text-xs ${badge.className ?? ""}`}>
+            {badge.label}
+          </Badge>
+        )}
+      </div>
       {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
     </CardContent>
   </Card>
@@ -23,10 +44,10 @@ const SADashboardPage = () => {
   const { data, isLoading } = useQuery({
     queryKey: ["sa-dashboard-full"],
     queryFn: async () => {
-      const [dealersRes, subsRes, plansRes] = await Promise.all([
+      const [dealersRes, subsRes, paymentsRes] = await Promise.all([
         supabase.from("dealers").select("id, status"),
         supabase.from("subscriptions").select("id, status, start_date, end_date, plan_id, dealer_id, plans(price_monthly, price_yearly)"),
-        supabase.from("plans").select("id, price_monthly, price_yearly"),
+        supabase.from("subscription_payments").select("id, amount, payment_date, payment_status"),
       ]);
 
       if (dealersRes.error) throw new Error(dealersRes.error.message);
@@ -34,64 +55,106 @@ const SADashboardPage = () => {
 
       const dealers = dealersRes.data ?? [];
       const subs = subsRes.data ?? [];
+      const payments = paymentsRes.data ?? [];
 
       const totalDealers = dealers.length;
       const activeSubs = subs.filter((s: any) => s.status === "active").length;
       const expiredSubs = subs.filter((s: any) => s.status === "expired").length;
       const suspendedSubs = subs.filter((s: any) => s.status === "suspended").length;
 
-      // Monthly revenue = sum of price_monthly for active subs
+      // Grace period dealers: expired but within 3 days
+      const now = new Date();
+      const graceDealers = subs.filter((s: any) => {
+        if (s.status !== "expired" || !s.end_date) return false;
+        const daysSince = differenceInDays(now, parseISO(s.end_date));
+        return daysSince >= 0 && daysSince <= GRACE_DAYS;
+      }).length;
+
+      // Expiring soon: active subs with end_date within 7 days
+      const expiringSoon = subs.filter((s: any) => {
+        if (s.status !== "active" || !s.end_date) return false;
+        const daysLeft = differenceInDays(parseISO(s.end_date), now);
+        return daysLeft >= 0 && daysLeft <= 7;
+      }).length;
+
+      // True expired (past grace)
+      const trueExpired = subs.filter((s: any) => {
+        if (s.status !== "expired") return false;
+        if (!s.end_date) return true;
+        const daysSince = differenceInDays(now, parseISO(s.end_date));
+        return daysSince > GRACE_DAYS;
+      }).length;
+
+      // MRR
       const monthlyRevenue = subs
         .filter((s: any) => s.status === "active")
         .reduce((sum: number, s: any) => sum + (Number(s.plans?.price_monthly) || 0), 0);
 
-      // Total revenue = sum of price_monthly × months active for all subs
-      let totalRevenue = 0;
-      subs.forEach((s: any) => {
-        const monthly = Number(s.plans?.price_monthly) || 0;
-        if (monthly > 0 && s.start_date) {
-          const start = new Date(s.start_date);
-          const end = s.end_date ? new Date(s.end_date) : new Date();
-          const months = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30)));
-          totalRevenue += monthly * months;
-        }
-      });
+      // This month collected revenue from subscription_payments
+      const thisMonthStart = startOfMonth(now);
+      const thisMonthEnd = endOfMonth(now);
+      const thisMonthCollected = payments
+        .filter((p: any) =>
+          (p.payment_status === "paid" || p.payment_status === "partial") &&
+          p.payment_date &&
+          parseISO(p.payment_date) >= thisMonthStart &&
+          parseISO(p.payment_date) <= thisMonthEnd
+        )
+        .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
 
-      // Monthly revenue chart (last 6 months)
-      const now = new Date();
-      const monthlyChart: { month: string; revenue: number }[] = [];
+      // Outstanding = pending payments total
+      const totalOutstanding = payments
+        .filter((p: any) => p.payment_status === "pending" || p.payment_status === "partial")
+        .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+
+      // Monthly revenue trend chart (last 6 months)
+      const monthlyChart: { month: string; expected: number; collected: number }[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthLabel = d.toLocaleString("en-IN", { month: "short", year: "2-digit" });
-        const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
-        const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        const monthLabel = format(d, "MMM yy");
+        const mStart = startOfMonth(d);
+        const mEnd = endOfMonth(d);
 
-        let rev = 0;
+        let expected = 0;
         subs.forEach((s: any) => {
           const sStart = new Date(s.start_date);
           const sEnd = s.end_date ? new Date(s.end_date) : new Date("2099-12-31");
           const monthly = Number(s.plans?.price_monthly) || 0;
-          // Sub was active during this month?
-          if (sStart <= monthEnd && sEnd >= monthStart && monthly > 0) {
-            rev += monthly;
+          if (sStart <= mEnd && sEnd >= mStart && monthly > 0) {
+            expected += monthly;
           }
         });
-        monthlyChart.push({ month: monthLabel, revenue: rev });
+
+        const collected = payments
+          .filter((p: any) =>
+            (p.payment_status === "paid" || p.payment_status === "partial") &&
+            p.payment_date &&
+            parseISO(p.payment_date) >= mStart &&
+            parseISO(p.payment_date) <= mEnd
+          )
+          .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+
+        monthlyChart.push({ month: monthLabel, expected, collected });
       }
 
       // Pie chart data
       const pieData = [
         { name: "Active", value: activeSubs },
-        { name: "Expired", value: expiredSubs },
+        { name: "Expiring Soon", value: expiringSoon },
+        { name: "Expired", value: trueExpired },
+        { name: "Grace", value: graceDealers },
         ...(suspendedSubs > 0 ? [{ name: "Suspended", value: suspendedSubs }] : []),
       ].filter((d) => d.value > 0);
 
       return {
         totalDealers,
         activeSubs,
-        expiredSubs,
+        expiredSubs: trueExpired,
+        graceDealers,
+        expiringSoon,
         monthlyRevenue,
-        totalRevenue,
+        thisMonthCollected,
+        totalOutstanding,
         monthlyChart,
         pieData,
       };
@@ -107,44 +170,90 @@ const SADashboardPage = () => {
         <p className="text-sm text-muted-foreground">System-wide overview of your SaaS ERP platform.</p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
+      {/* KPI Cards - Row 1 */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Dealers" value={data?.totalDealers ?? 0} icon={Store} />
         <StatCard title="Active Subscriptions" value={data?.activeSubs ?? 0} icon={CalendarPlus} />
-        <StatCard title="Expired Subscriptions" value={data?.expiredSubs ?? 0} icon={AlertTriangle} />
         <StatCard
-          title="Monthly Revenue"
+          title="Monthly Revenue (MRR)"
           value={`₹${(data?.monthlyRevenue ?? 0).toLocaleString("en-IN")}`}
           icon={IndianRupee}
-          description="Current MRR"
         />
         <StatCard
-          title="Total Revenue"
-          value={`₹${(data?.totalRevenue ?? 0).toLocaleString("en-IN")}`}
+          title="This Month Collected"
+          value={`₹${(data?.thisMonthCollected ?? 0).toLocaleString("en-IN")}`}
+          icon={Wallet}
+          description="Payments received this month"
+        />
+      </div>
+
+      {/* KPI Cards - Row 2 */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Outstanding Revenue"
+          value={`₹${(data?.totalOutstanding ?? 0).toLocaleString("en-IN")}`}
           icon={TrendingUp}
-          description="Estimated lifetime"
+          description="Pending + partial payments"
+        />
+        <StatCard
+          title="Expiring Soon"
+          value={data?.expiringSoon ?? 0}
+          icon={Clock}
+          description="Within 7 days"
+          badge={
+            (data?.expiringSoon ?? 0) > 0
+              ? { label: "Action needed", variant: "outline", className: "border-yellow-500 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" }
+              : undefined
+          }
+        />
+        <StatCard
+          title="Grace Period"
+          value={data?.graceDealers ?? 0}
+          icon={AlertTriangle}
+          description="Expired within 3 days"
+          badge={
+            (data?.graceDealers ?? 0) > 0
+              ? { label: "Grace", variant: "outline", className: "border-yellow-500 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" }
+              : undefined
+          }
+        />
+        <StatCard
+          title="Expired Dealers"
+          value={data?.expiredSubs ?? 0}
+          icon={Ban}
+          description="Read-only mode"
+          badge={
+            (data?.expiredSubs ?? 0) > 0
+              ? { label: "Expired", variant: "destructive" }
+              : undefined
+          }
         />
       </div>
 
       {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Bar Chart */}
+        {/* Revenue Trend Bar Chart */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Monthly Revenue (Last 6 Months)</CardTitle>
+            <CardTitle className="text-base">Monthly Revenue Trend (Last 6 Months)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data?.monthlyChart ?? []} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="month" className="text-xs" tick={{ fill: "hsl(215.4, 16.3%, 46.9%)", fontSize: 12 }} />
-                  <YAxis className="text-xs" tick={{ fill: "hsl(215.4, 16.3%, 46.9%)", fontSize: 12 }} tickFormatter={(v) => `₹${v.toLocaleString("en-IN")}`} />
+                  <XAxis dataKey="month" tick={{ fill: "hsl(215.4, 16.3%, 46.9%)", fontSize: 12 }} />
+                  <YAxis tick={{ fill: "hsl(215.4, 16.3%, 46.9%)", fontSize: 12 }} tickFormatter={(v) => `₹${v.toLocaleString("en-IN")}`} />
                   <Tooltip
-                    formatter={(value: number) => [`₹${value.toLocaleString("en-IN")}`, "Revenue"]}
+                    formatter={(value: number, name: string) => [
+                      `₹${value.toLocaleString("en-IN")}`,
+                      name === "expected" ? "Expected" : "Collected",
+                    ]}
                     contentStyle={{ borderRadius: 8, border: "1px solid hsl(214.3, 31.8%, 91.4%)", fontSize: 13 }}
                   />
-                  <Bar dataKey="revenue" fill="hsl(222.2, 47.4%, 11.2%)" radius={[4, 4, 0, 0]} />
+                  <Legend formatter={(v) => (v === "expected" ? "Expected" : "Collected")} />
+                  <Bar dataKey="expected" fill="hsl(215.4, 16.3%, 76.9%)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="collected" fill="hsl(222.2, 47.4%, 11.2%)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
