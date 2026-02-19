@@ -12,9 +12,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   PieChart, Pie, Cell, ResponsiveContainer,
 } from "recharts";
-import {
-  IndianRupee, TrendingUp, Package, AlertTriangle, Receipt,
-} from "lucide-react";
+import { TrendingUp, Package, AlertTriangle, Receipt, Banknote } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface OwnerDashboardProps {
   dealerId: string;
@@ -30,7 +29,7 @@ const PIE_COLORS = [
 ];
 
 const barChartConfig = {
-  amount: { label: "Sales (₹)", color: "hsl(var(--primary))" },
+  amount: { label: "Sales (৳)", color: "hsl(var(--primary))" },
 };
 
 const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
@@ -48,49 +47,49 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
   const summaryCards = [
     {
       title: "Today Sales",
-      value: `₹${data.todaySales.toLocaleString("en-IN")}`,
-      icon: IndianRupee,
+      value: formatCurrency(data.todaySales),
+      icon: Banknote,
       accent: "text-primary",
     },
     {
       title: "Today Collection",
-      value: `₹${data.todayCollection.toLocaleString("en-IN")}`,
-      icon: IndianRupee,
+      value: formatCurrency(data.todayCollection),
+      icon: Banknote,
       accent: "text-primary",
     },
     {
       title: "Monthly Sales",
-      value: `₹${data.monthlySales.toLocaleString("en-IN")}`,
+      value: formatCurrency(data.monthlySales),
       icon: TrendingUp,
       accent: "text-primary",
     },
     {
       title: "Monthly Collection",
-      value: `₹${data.monthlyCollection.toLocaleString("en-IN")}`,
+      value: formatCurrency(data.monthlyCollection),
       icon: TrendingUp,
       accent: "text-primary",
     },
     {
       title: "Monthly Profit",
-      value: `₹${data.monthlyProfit.toLocaleString("en-IN")}`,
+      value: formatCurrency(data.monthlyProfit),
       icon: TrendingUp,
       accent: data.monthlyProfit >= 0 ? "text-primary" : "text-destructive",
     },
     {
       title: "Stock Value",
-      value: `₹${data.totalStockValue.toLocaleString("en-IN")}`,
+      value: formatCurrency(data.totalStockValue),
       icon: Package,
       accent: "text-primary",
     },
     {
       title: "Customer Due",
-      value: `₹${data.totalCustomerDue.toLocaleString("en-IN")}`,
+      value: formatCurrency(data.totalCustomerDue),
       icon: Receipt,
       accent: data.totalCustomerDue > 0 ? "text-destructive" : "text-primary",
     },
     {
       title: "Supplier Payable",
-      value: `₹${data.totalSupplierPayable.toLocaleString("en-IN")}`,
+      value: formatCurrency(data.totalSupplierPayable),
       icon: Receipt,
       accent: data.totalSupplierPayable > 0 ? "text-destructive" : "text-primary",
     },
@@ -184,7 +183,7 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
                         style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
                       />
                       <span className="text-muted-foreground">{c.category}</span>
-                      <span className="font-medium">₹{c.amount.toLocaleString("en-IN")}</span>
+                      <span className="font-medium">{formatCurrency(c.amount)}</span>
                     </div>
                   ))}
                 </div>

@@ -9,10 +9,11 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { IndianRupee, TrendingUp, TrendingDown, CalendarClock } from "lucide-react";
+import { TrendingUp, TrendingDown, CalendarClock, Banknote } from "lucide-react";
 import {
   format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval,
 } from "date-fns";
+import { formatCurrency } from "@/lib/utils";
 
 interface SubRow {
   id: string;
@@ -120,11 +121,11 @@ const SARevenuePage = () => {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               This Month Revenue
             </CardTitle>
-            <IndianRupee className="h-4 w-4 text-muted-foreground" />
+            <Banknote className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              ₹{thisMonthRevenue.toLocaleString("en-IN")}
+              {formatCurrency(thisMonthRevenue)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {thisMonthSubs.length} subscriptions
@@ -145,10 +146,10 @@ const SARevenuePage = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              ₹{lastMonthRevenue.toLocaleString("en-IN")}
+              {formatCurrency(lastMonthRevenue)}
             </div>
             <p className={`text-xs mt-1 ${revDiff >= 0 ? "text-green-600" : "text-destructive"}`}>
-              {revDiff >= 0 ? "+" : ""}₹{revDiff.toLocaleString("en-IN")} vs this month
+              {revDiff >= 0 ? "+" : ""}{formatCurrency(revDiff)} vs this month
             </p>
           </CardContent>
         </Card>
@@ -162,7 +163,7 @@ const SARevenuePage = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              ₹{expectedRenewal.toLocaleString("en-IN")}
+              {formatCurrency(expectedRenewal)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Next 30 days</p>
           </CardContent>
@@ -207,7 +208,7 @@ const SARevenuePage = () => {
                         </TableCell>
                         <TableCell>{sub.plans?.name ?? "—"}</TableCell>
                         <TableCell className="font-mono">
-                          ₹{Number(sub.plans?.price_monthly ?? 0).toLocaleString("en-IN")}
+                          {formatCurrency(sub.plans?.price_monthly ?? 0)}
                         </TableCell>
                         <TableCell className="text-xs">{sub.start_date}</TableCell>
                         <TableCell className="text-xs">{sub.end_date ?? "—"}</TableCell>
