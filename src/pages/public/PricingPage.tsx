@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
-  CheckCircle2, ArrowRight, Zap, Layers, Phone, Mail, MapPin,
-  Users, Package, BarChart2, Bell, Store, Cpu, Star, MessageCircle,
-  ShieldCheck, FileText, TrendingUp,
+  CheckCircle2, XCircle, ArrowRight, Zap, Layers, Phone, Mail, MapPin,
+  Users, Package, BarChart2, Bell, MessageCircle, ShieldCheck,
+  TrendingUp, Sparkles,
 } from "lucide-react";
 
 /* ─── NAV ─── */
@@ -22,7 +25,7 @@ const Navbar = () => (
         <Link to="/#features"  className="hover:text-foreground transition-colors">Features</Link>
         <Link to="/pricing"    className="text-primary font-medium">Pricing</Link>
         <Link to="/#security"  className="hover:text-foreground transition-colors">Security</Link>
-        <Link to="/#contact"   className="hover:text-foreground transition-colors">Contact</Link>
+        <Link to="/contact"    className="hover:text-foreground transition-colors">Contact</Link>
       </div>
       <div className="flex items-center gap-2">
         <Link to="/login">
@@ -58,7 +61,6 @@ const Footer = () => (
             {[
               { label: "Features", href: "/#features" },
               { label: "Pricing",  href: "/pricing" },
-              { label: "Security", href: "/#security" },
               { label: "Privacy",  href: "/privacy" },
               { label: "Terms",    href: "/terms" },
             ].map(l => (
@@ -70,8 +72,8 @@ const Footer = () => (
           <p className="font-semibold text-sm text-foreground mb-3">Contact</p>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-primary" /><span>+880 1234-567890</span></li>
-            <li className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 text-primary" /><span>support@tilesERP.com</span></li>
-            <li className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 text-primary" /><span>Dhaka, Bangladesh</span></li>
+            <li className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 text-primary" /><span>support@yourdomain.com</span></li>
+            <li className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 text-primary" /><span>Bangladesh</span></li>
           </ul>
         </div>
       </div>
@@ -82,114 +84,108 @@ const Footer = () => (
   </footer>
 );
 
-/* ─── PLAN DATA ─── */
-const PLANS = [
-  {
-    name: "Basic",
+/* ─── PLAN FEATURES ─── */
+const PLAN_META: Record<string, {
+  tagline: string;
+  highlighted: boolean;
+  badge: string | null;
+  cta: string;
+  ctaLink: string;
+  features: { icon: any; text: string }[];
+}> = {
+  Basic: {
     tagline: "Perfect for small shops",
-    monthlyPrice: 999,
-    yearlyPrice: 899,
     highlighted: false,
     badge: null,
-    color: "border-border bg-card",
-    features: [
-      { icon: Users,       text: "1 Dealer Account" },
-      { icon: Users,       text: "Up to 3 Users" },
-      { icon: Package,     text: "All Core Modules" },
-      { icon: BarChart2,   text: "Basic Reports" },
-      { icon: ShieldCheck, text: "Role-Based Access" },
-      { icon: Bell,        text: "SMS Add-on (Optional)" },
-    ],
-    addonNote: "SMS notifications available as an optional add-on.",
-    cta: "Start Free Trial",
+    cta: "Get Started",
     ctaLink: "/get-started",
-    ctaVariant: "default" as const,
+    features: [
+      { icon: Users,       text: "Up to 2 Users" },
+      { icon: Package,     text: "All Core Modules (Sales, Purchase, Stock)" },
+      { icon: BarChart2,   text: "Basic Reports" },
+      { icon: ShieldCheck, text: "Role-Based Access Control" },
+      { icon: Bell,        text: "SMS Notifications: Not included" },
+      { icon: Mail,        text: "Email Notifications: Not included" },
+      { icon: TrendingUp,  text: "Daily Summary: Not included" },
+    ],
   },
-  {
-    name: "Standard",
+  Pro: {
     tagline: "For growing businesses",
-    monthlyPrice: 1999,
-    yearlyPrice: 1799,
     highlighted: true,
     badge: "Most Popular",
-    color: "border-primary bg-primary text-primary-foreground shadow-2xl scale-[1.02]",
-    features: [
-      { icon: Users,      text: "1 Dealer Account" },
-      { icon: Users,      text: "Up to 10 Users" },
-      { icon: Package,    text: "All Core Modules" },
-      { icon: BarChart2,  text: "Full Reports + Profit System" },
-      { icon: TrendingUp, text: "P&L, Cash Flow & Ledger Reports" },
-      { icon: Bell,       text: "Daily Closing SMS Included" },
-      { icon: FileText,   text: "Profit Per Invoice" },
-    ],
-    addonNote: null,
-    cta: "Start Free Trial",
+    cta: "Get Started",
     ctaLink: "/get-started",
-    ctaVariant: "secondary" as const,
-  },
-  {
-    name: "Premium",
-    tagline: "For enterprises & chains",
-    monthlyPrice: 3499,
-    yearlyPrice: 3149,
-    highlighted: false,
-    badge: null,
-    color: "border-border bg-card",
     features: [
-      { icon: Users,   text: "Unlimited Users" },
-      { icon: Package, text: "All Standard Features" },
-      { icon: Store,   text: "Online Store Module" },
-      { icon: Star,    text: "Priority Support" },
-      { icon: Cpu,     text: "AI Reorder Suggestions" },
-      { icon: Bell,    text: "Daily Closing SMS Included" },
-      { icon: MessageCircle, text: "Dedicated Account Manager" },
+      { icon: Users,       text: "Up to 5 Users" },
+      { icon: Package,     text: "All Core Modules + Advanced Reports" },
+      { icon: BarChart2,   text: "Full Reports + P&L, Profit Per Invoice" },
+      { icon: ShieldCheck, text: "Role-Based Access Control" },
+      { icon: Bell,        text: "SMS Notifications: Included" },
+      { icon: Mail,        text: "Email Notifications: Included" },
+      { icon: TrendingUp,  text: "Daily Closing Summary: Included" },
     ],
-    addonNote: null,
-    cta: "Contact Sales",
-    ctaLink: "#contact-sales",
-    ctaVariant: "default" as const,
   },
-];
+};
 
-/* ─── FEATURE COMPARISON TABLE ─── */
+/* ─── FEATURE COMPARISON ─── */
 const COMPARISON = [
-  { feature: "Dealer Account",         basic: "1",        standard: "1",        premium: "Unlimited" },
-  { feature: "Users",                  basic: "3",        standard: "10",       premium: "Unlimited" },
-  { feature: "Inventory Management",   basic: true,       standard: true,       premium: true },
-  { feature: "Sales & Invoicing",      basic: true,       standard: true,       premium: true },
-  { feature: "Purchase Management",    basic: true,       standard: true,       premium: true },
-  { feature: "Customer Ledger",        basic: true,       standard: true,       premium: true },
-  { feature: "Basic Reports",          basic: true,       standard: true,       premium: true },
-  { feature: "Full Reports + P&L",     basic: false,      standard: true,       premium: true },
-  { feature: "Profit Per Invoice",     basic: false,      standard: true,       premium: true },
-  { feature: "Daily Closing SMS",      basic: "Add-on",   standard: true,       premium: true },
-  { feature: "Online Store",           basic: false,      standard: false,      premium: true },
-  { feature: "AI Reorder Suggestion",  basic: false,      standard: false,      premium: true },
-  { feature: "Priority Support",       basic: false,      standard: false,      premium: true },
-  { feature: "Dedicated Manager",      basic: false,      standard: false,      premium: true },
+  { feature: "Max Users",              basic: "2",   pro: "5" },
+  { feature: "Core Modules",           basic: true,  pro: true },
+  { feature: "Sales & Invoicing",      basic: true,  pro: true },
+  { feature: "Purchase Management",    basic: true,  pro: true },
+  { feature: "Customer Ledger",        basic: true,  pro: true },
+  { feature: "Basic Reports",          basic: true,  pro: true },
+  { feature: "Full Reports + P&L",     basic: false, pro: true },
+  { feature: "Profit Per Invoice",     basic: false, pro: true },
+  { feature: "SMS Notifications",      basic: false, pro: true },
+  { feature: "Email Notifications",    basic: false, pro: true },
+  { feature: "Daily Closing Summary",  basic: false, pro: true },
 ];
 
 const CellValue = ({ val, highlighted }: { val: boolean | string; highlighted?: boolean }) => {
   if (val === true)  return <CheckCircle2 className={`h-5 w-5 mx-auto ${highlighted ? "text-primary-foreground" : "text-primary"}`} />;
-  if (val === false) return <span className="text-muted-foreground text-lg mx-auto block text-center">—</span>;
+  if (val === false) return <XCircle className="h-5 w-5 mx-auto text-muted-foreground/40" />;
   return <span className={`text-xs font-medium ${highlighted ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{val}</span>;
 };
+
+const YEARLY_DISCOUNT = 0.30;
 
 /* ─── MAIN PAGE ─── */
 const PricingPage = () => {
   const [yearly, setYearly] = useState(false);
 
-  const scrollToContact = (e: React.MouseEvent) => {
-    e.preventDefault();
-    document.getElementById("contact-sales")?.scrollIntoView({ behavior: "smooth" });
+  const { data: plans = [], isLoading } = useQuery({
+    queryKey: ["subscription-plans-public"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subscription_plans")
+        .select("*")
+        .eq("is_active", true)
+        .order("monthly_price", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const getPrice = (plan: any) => {
+    if (yearly) {
+      // yearly_price is total for 12 months, show per-month equivalent
+      return Math.round(plan.yearly_price / 12);
+    }
+    return plan.monthly_price;
   };
+
+  const getOriginalMonthlyPrice = (plan: any) => plan.monthly_price;
+
+  const getYearlySaving = (plan: any) =>
+    Math.round(plan.monthly_price * 12 - plan.yearly_price);
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       {/* Hero */}
-      <section className="py-20 text-center bg-gradient-to-br from-background via-muted/30 to-background">
+      <section className="py-20 text-center bg-gradient-to-br from-background via-muted/30 to-background border-b border-border">
         <div className="max-w-3xl mx-auto px-4">
           <Badge variant="outline" className="mb-4 px-3 py-1 text-xs">Pricing</Badge>
           <h1 className="text-4xl sm:text-5xl font-bold text-foreground mb-4 tracking-tight">
@@ -200,139 +196,188 @@ const PricingPage = () => {
           </p>
 
           {/* Monthly / Yearly toggle */}
-          <div className="inline-flex items-center gap-3 bg-muted rounded-full p-1">
-            <button
-              onClick={() => setYearly(false)}
-              className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
-                !yearly ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setYearly(true)}
-              className={`px-5 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${
-                yearly ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
-              }`}
-            >
-              Yearly
-              <Badge className="text-[10px] px-1.5 py-0 h-4 bg-primary text-primary-foreground">Save 10%</Badge>
-            </button>
+          <div className="inline-flex flex-col items-center gap-3">
+            <div className="inline-flex items-center gap-4 bg-muted rounded-full px-6 py-3">
+              <span className={`text-sm font-medium transition-colors ${!yearly ? "text-foreground" : "text-muted-foreground"}`}>
+                Monthly
+              </span>
+              <Switch
+                checked={yearly}
+                onCheckedChange={setYearly}
+                className="data-[state=checked]:bg-primary"
+              />
+              <span className={`text-sm font-medium transition-colors ${yearly ? "text-foreground" : "text-muted-foreground"}`}>
+                Yearly
+              </span>
+            </div>
+            {/* Savings callout */}
+            <div className={`flex items-center gap-2 transition-all duration-300 ${yearly ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"}`}>
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">
+                Save 30% on Yearly Billing
+              </span>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Pricing Cards */}
-      <section className="pb-20 px-4">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-            {PLANS.map((plan, i) => {
-              const price = yearly ? plan.yearlyPrice : plan.monthlyPrice;
-              return (
-                <div
-                  key={i}
-                  className={`relative rounded-2xl border p-7 flex flex-col gap-5 transition-all ${plan.color}`}
-                >
-                  {plan.badge && (
-                    <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary-foreground text-primary text-xs px-3 gap-1">
-                      <Zap className="h-3 w-3" /> {plan.badge}
-                    </Badge>
-                  )}
+      <section className="py-16 px-4">
+        <div className="max-w-4xl mx-auto">
+          {isLoading ? (
+            <div className="flex justify-center py-20">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+              {plans.map((plan: any) => {
+                const meta = PLAN_META[plan.name] || PLAN_META["Basic"];
+                const price = getPrice(plan);
+                const originalMonthly = getOriginalMonthlyPrice(plan);
+                const saving = getYearlySaving(plan);
+                const isHighlighted = meta.highlighted;
 
-                  {/* Plan name */}
-                  <div>
-                    <p className={`text-xs font-semibold uppercase tracking-widest mb-1 ${plan.highlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                      {plan.name}
-                    </p>
-                    <p className={`text-sm mb-3 ${plan.highlighted ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                      {plan.tagline}
-                    </p>
-                    <div className="flex items-end gap-1">
-                      <span className={`text-sm font-semibold ${plan.highlighted ? "text-primary-foreground/80" : "text-foreground"}`}>৳</span>
-                      <span className="text-4xl font-bold leading-none">{price.toLocaleString()}</span>
-                      <span className={`text-sm mb-0.5 ${plan.highlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                        /month
-                      </span>
-                    </div>
-                    {yearly && (
-                      <p className={`text-xs mt-1 ${plan.highlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                        Billed yearly · Save ৳{((plan.monthlyPrice - plan.yearlyPrice) * 12).toLocaleString()}/yr
-                      </p>
+                return (
+                  <div
+                    key={plan.id}
+                    className={`relative rounded-2xl border p-8 flex flex-col gap-6 transition-all ${
+                      isHighlighted
+                        ? "border-primary bg-primary text-primary-foreground shadow-2xl scale-[1.02]"
+                        : "border-border bg-card"
+                    }`}
+                  >
+                    {meta.badge && (
+                      <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary-foreground text-primary text-xs px-3 gap-1 shadow-md">
+                        <Zap className="h-3 w-3" /> {meta.badge}
+                      </Badge>
                     )}
-                  </div>
 
-                  {/* Features */}
-                  <ul className="space-y-2.5 flex-1">
-                    {plan.features.map((f, fi) => (
-                      <li key={fi} className="flex items-start gap-2 text-sm">
-                        <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${plan.highlighted ? "text-primary-foreground/70" : "text-primary"}`} />
-                        <span className={plan.highlighted ? "text-primary-foreground/90" : "text-foreground"}>{f.text}</span>
-                      </li>
-                    ))}
-                  </ul>
+                    {/* Plan name + tagline */}
+                    <div>
+                      <p className={`text-xs font-semibold uppercase tracking-widest mb-1 ${isHighlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                        {plan.name}
+                      </p>
+                      <p className={`text-sm mb-4 ${isHighlighted ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                        {meta.tagline}
+                      </p>
 
-                  {plan.addonNote && (
-                    <p className={`text-xs italic ${plan.highlighted ? "text-primary-foreground/50" : "text-muted-foreground"}`}>
-                      * {plan.addonNote}
+                      {/* Price block */}
+                      <div className="flex items-end gap-1 mb-1">
+                        <span className={`text-sm font-semibold ${isHighlighted ? "text-primary-foreground/80" : "text-foreground"}`}>৳</span>
+                        <span className="text-5xl font-bold leading-none">{price.toLocaleString()}</span>
+                        <span className={`text-sm mb-0.5 ${isHighlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                          /month
+                        </span>
+                      </div>
+
+                      {/* Yearly discount callout */}
+                      {yearly ? (
+                        <div className="flex flex-col gap-0.5 mt-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm line-through ${isHighlighted ? "text-primary-foreground/40" : "text-muted-foreground/60"}`}>
+                              ৳{originalMonthly.toLocaleString()}/month
+                            </span>
+                            <Badge className={`text-[10px] px-1.5 py-0 h-4 ${isHighlighted ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground"}`}>
+                              -30%
+                            </Badge>
+                          </div>
+                          <p className={`text-xs ${isHighlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                            Billed ৳{plan.yearly_price.toLocaleString()}/year · Save ৳{saving.toLocaleString()}/yr
+                          </p>
+                          <p className={`text-xs font-semibold mt-0.5 ${isHighlighted ? "text-primary-foreground/80" : "text-primary"}`}>
+                            🎉 Save 30% on First Year
+                          </p>
+                        </div>
+                      ) : (
+                        <p className={`text-xs mt-1 ${isHighlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                          Billed monthly · Switch to yearly to save 30%
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Feature flags summary badges */}
+                    <div className="flex flex-wrap gap-2">
+                      {plan.sms_enabled && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${isHighlighted ? "border-primary-foreground/30 text-primary-foreground/80" : "border-primary/30 text-primary"}`}>
+                          📱 SMS
+                        </span>
+                      )}
+                      {plan.email_enabled && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${isHighlighted ? "border-primary-foreground/30 text-primary-foreground/80" : "border-primary/30 text-primary"}`}>
+                          ✉️ Email
+                        </span>
+                      )}
+                      {plan.daily_summary_enabled && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${isHighlighted ? "border-primary-foreground/30 text-primary-foreground/80" : "border-primary/30 text-primary"}`}>
+                          📊 Daily Summary
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Features list */}
+                    <ul className="space-y-2.5 flex-1">
+                      {meta.features.map((f, fi) => (
+                        <li key={fi} className="flex items-start gap-2 text-sm">
+                          <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${isHighlighted ? "text-primary-foreground/70" : "text-primary"}`} />
+                          <span className={isHighlighted ? "text-primary-foreground/90" : "text-foreground"}>{f.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {/* Max users */}
+                    <p className={`text-xs flex items-center gap-1.5 ${isHighlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                      <Users className="h-3.5 w-3.5" /> Up to {plan.max_users} user{plan.max_users > 1 ? "s" : ""}
                     </p>
-                  )}
 
-                  {/* CTA */}
-                  {plan.ctaLink === "#contact-sales" ? (
-                    <Button
-                      className="w-full"
-                      variant={plan.ctaVariant}
-                      onClick={scrollToContact}
-                    >
-                      {plan.cta}
-                    </Button>
-                  ) : (
-                    <Link to={plan.ctaLink}>
-                      <Button className="w-full" variant={plan.ctaVariant}>
-                        {plan.cta}
+                    {/* CTA */}
+                    <Link to={meta.ctaLink}>
+                      <Button
+                        className="w-full h-11"
+                        variant={isHighlighted ? "secondary" : "default"}
+                      >
+                        {meta.cta}
                       </Button>
                     </Link>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Yearly note */}
+          {yearly && (
+            <p className="text-center text-xs text-muted-foreground mt-6">
+              * Yearly prices billed as a single annual payment. 30% discount applied automatically.
+            </p>
+          )}
         </div>
       </section>
 
       {/* Comparison Table */}
       <section className="py-16 bg-muted/20 px-4">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <div className="text-center mb-10">
             <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Compare Plans</h2>
             <p className="text-muted-foreground">See exactly what's included in each plan.</p>
           </div>
 
           <div className="rounded-2xl border border-border overflow-hidden bg-card">
-            {/* Table header */}
-            <div className="grid grid-cols-4 bg-muted/50 border-b border-border">
+            <div className="grid grid-cols-3 bg-muted/50 border-b border-border">
               <div className="p-4 text-sm font-semibold text-foreground">Feature</div>
-              {["Basic", "Standard", "Premium"].map((p, i) => (
-                <div key={p} className={`p-4 text-center text-sm font-semibold ${i === 1 ? "bg-primary text-primary-foreground" : "text-foreground"}`}>
-                  {p}
-                </div>
-              ))}
+              <div className="p-4 text-center text-sm font-semibold text-foreground">Basic</div>
+              <div className="p-4 text-center text-sm font-semibold bg-primary text-primary-foreground">Pro</div>
             </div>
-            {/* Rows */}
             {COMPARISON.map((row, i) => (
               <div
                 key={i}
-                className={`grid grid-cols-4 border-b border-border last:border-0 ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}
+                className={`grid grid-cols-3 border-b border-border last:border-0 ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}
               >
                 <div className="p-4 text-sm text-foreground">{row.feature}</div>
                 <div className="p-4 flex items-center justify-center">
                   <CellValue val={row.basic} />
                 </div>
                 <div className="p-4 flex items-center justify-center bg-primary/5">
-                  <CellValue val={row.standard} highlighted />
-                </div>
-                <div className="p-4 flex items-center justify-center">
-                  <CellValue val={row.premium} />
+                  <CellValue val={row.pro} highlighted />
                 </div>
               </div>
             ))}
@@ -348,11 +393,12 @@ const PricingPage = () => {
           </div>
           <div className="space-y-4">
             {[
+              { q: "How does the 30% yearly discount work?", a: "When you choose yearly billing, the total is calculated at 30% off the monthly rate and billed as a single annual payment. The discount is applied automatically — no coupon needed." },
               { q: "Can I change plans later?", a: "Yes, you can upgrade or downgrade your plan at any time. Changes take effect at the start of the next billing period." },
-              { q: "Is there a free trial?", a: "Yes! All plans come with a free trial period so you can explore the system before committing." },
+              { q: "Is there a free trial?", a: "Yes! All plans come with a trial period so you can explore the system before committing." },
               { q: "What payment methods are accepted?", a: "We accept cash, bank transfer, and mobile banking (bKash, Nagad). Contact us for other options." },
-              { q: "Is my data safe?", a: "Absolutely. All data is encrypted with AES-256, hosted on AWS, and backed up daily with 30-day retention." },
-              { q: "What is the SMS Add-on?", a: "The SMS Add-on on the Basic plan allows you to receive daily business summary notifications via SMS at an additional monthly fee." },
+              { q: "What's included in SMS/Email notifications?", a: "Pro plan includes real-time SMS and email alerts for sales events, plus a daily closing summary so you're always up-to-date." },
+              { q: "Is my data safe?", a: "Absolutely. All data is encrypted, backed up daily, and isolated per dealer account with role-based access control." },
             ].map((faq, i) => (
               <div key={i} className="rounded-xl border border-border bg-card p-5">
                 <p className="font-semibold text-foreground mb-2">{faq.q}</p>
@@ -374,7 +420,7 @@ const PricingPage = () => {
             Running a large business or chain of outlets? Let's talk — we'll build a plan around your needs.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <a href="mailto:support@tilesERP.com">
+            <a href="mailto:support@yourdomain.com">
               <Button size="lg" variant="secondary" className="gap-2 px-8 h-12 text-base">
                 <Mail className="h-4 w-4" /> Email Sales
               </Button>
@@ -385,9 +431,6 @@ const PricingPage = () => {
               </Button>
             </a>
           </div>
-          <p className="text-primary-foreground/50 text-sm mt-6">
-            Typical response time: within 2 business hours.
-          </p>
         </div>
       </section>
 
