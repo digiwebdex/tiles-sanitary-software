@@ -19,6 +19,7 @@ const EDGE_FN_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/sen
 export interface SaleNotificationPayload {
   invoice_number: string;
   customer_name: string;
+  customer_phone?: string | null;
   total_amount: number;
   paid_amount: number;
   due_amount: number;
@@ -134,6 +135,13 @@ export const notificationService = {
         if (settings.enable_sale_email && settings.owner_email) {
           tasks.push(
             queueAndDispatch(dealerId, "email", "sale_created", payload as unknown as Record<string, unknown>, settings.owner_email),
+          );
+        }
+
+        // Also send SMS to the customer's own phone if available
+        if (settings.enable_sale_sms && payload.customer_phone) {
+          tasks.push(
+            queueAndDispatch(dealerId, "sms", "sale_created", payload as unknown as Record<string, unknown>, payload.customer_phone),
           );
         }
 

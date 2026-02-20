@@ -58,12 +58,19 @@ async function sendSMS(phone: string, message: string): Promise<{ success: boole
   }
 }
 
-function buildSaleMessage(payload: Record<string, unknown>): string {
+function buildSaleMessage(payload: Record<string, unknown>, recipient: string, ownerPhone: string | undefined): string {
   const inv = payload.invoice_number ?? "N/A";
   const customer = payload.customer_name ?? "Customer";
   const amount = payload.total_amount ?? 0;
   const paid = payload.paid_amount ?? 0;
   const due = payload.due_amount ?? 0;
+  const customerPhone = (payload.customer_phone as string | null) ?? null;
+
+  // If this SMS is going to the customer (not the owner), use a customer-friendly message
+  if (customerPhone && recipient === customerPhone) {
+    return `Dear ${customer},\nThank you for your purchase!\nInvoice: ${inv}\nAmount: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT`;
+  }
+  // Owner alert
   return `Sale Alert!\nInvoice: ${inv}\nCustomer: ${customer}\nAmount: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT`;
 }
 
@@ -105,7 +112,8 @@ Deno.serve(async (req) => {
       // Build message based on type
       let message = "";
       if (type === "sale_created") {
-        message = buildSaleMessage(payload);
+        const ownerPhone = (payload.owner_phone as string | undefined);
+        message = buildSaleMessage(payload, recipient, ownerPhone);
       } else if (type === "daily_summary") {
         message = buildDailySummaryMessage(payload);
       } else {

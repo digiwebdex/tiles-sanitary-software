@@ -217,16 +217,28 @@ export const salesService = {
       },
     });
 
-    // Fire-and-forget: notify owner via SMS/Email
+    // Fire-and-forget: notify owner via SMS/Email + customer SMS
     // Non-blocking — sale is already committed; notification failure must never surface to user
-    notificationService.notifySaleCreated(input.dealer_id, {
-      invoice_number: invoiceNumber,
-      customer_name: input.customer_id,
-      total_amount: totalAmount,
-      paid_amount: input.paid_amount,
-      due_amount: dueAmount,
-      sale_date: input.sale_date,
-    });
+    void (async () => {
+      try {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("name, phone")
+          .eq("id", input.customer_id)
+          .single();
+        notificationService.notifySaleCreated(input.dealer_id, {
+          invoice_number: invoiceNumber,
+          customer_name: customer?.name ?? "Customer",
+          customer_phone: customer?.phone ?? null,
+          total_amount: totalAmount,
+          paid_amount: input.paid_amount,
+          due_amount: dueAmount,
+          sale_date: input.sale_date,
+        });
+      } catch {
+        // Swallow — notification fetch failure must not surface
+      }
+    })();
 
     return sale;
   },
