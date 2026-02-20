@@ -116,7 +116,7 @@ const Navbar = ({ companyName }: { companyName: string }) => (
       </div>
       <div className="flex items-center gap-2">
         <Link to="/login">
-          <Button size="sm" variant="outline" className="gap-1.5">Sign In</Button>
+          <Button size="sm" variant="outline" className="gap-1.5 text-foreground border-border">Sign In</Button>
         </Link>
         <Link to="/get-started">
           <Button size="sm" className="gap-1.5">
