@@ -8,6 +8,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import LoginPage from "./pages/auth/LoginPage";
 import LandingPage from "./pages/LandingPage";
+import PricingPage from "./pages/public/PricingPage";
 import SubscriptionBlockedPage from "./pages/auth/SubscriptionBlockedPage";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -72,7 +73,9 @@ const App = () => (
         <AuthProvider>
           <Routes>
             {/* Public */}
+            <Route path="/" element={<LandingPage />} />
             <Route path="/landing" element={<LandingPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/subscription-blocked" element={<SubscriptionBlockedPage />} />
 
@@ -89,7 +92,7 @@ const App = () => (
             </Route>
 
             {/* Dashboard + Reports: allowed in readonly */}
-            <Route path="/" element={<ProtectedRoute allowReadonly><AppLayout><Index /></AppLayout></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute allowReadonly><AppLayout><Index /></AppLayout></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute allowReadonly><AppLayout><ReportsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/reports/credit" element={<ProtectedRoute allowReadonly><AppLayout><CreditReportPage /></AppLayout></ProtectedRoute>} />
 

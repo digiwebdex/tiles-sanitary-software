@@ -37,7 +37,7 @@ const SuperAdminLayout = () => {
   }
 
   if (!user) return <Navigate to="/login" replace />;
-  if (!isSuperAdmin) return <Navigate to="/" replace />;
+  if (!isSuperAdmin) return <Navigate to="/dashboard" replace />;
 
   const initials = (profile?.name ?? "SA")
     .split(" ")
@@ -157,7 +157,7 @@ const SuperAdminLayout = () => {
                   <p className="text-xs text-muted-foreground">{profile?.email}</p>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate("/")}>
+                <DropdownMenuItem onClick={() => navigate("/dashboard")}>
                   Go to ERP
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

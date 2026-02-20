@@ -88,7 +88,7 @@ const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps
   }
 
   if (authReady && accessLevel === "readonly" && !allowReadonly) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

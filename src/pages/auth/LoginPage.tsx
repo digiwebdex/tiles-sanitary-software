@@ -19,7 +19,7 @@ const LoginPage = () => {
 
   // If already logged in, redirect to dashboard
   if (!authLoading && user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -46,7 +46,7 @@ const LoginPage = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-4">
-        <Link to="/landing" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">
+        <Link to="/" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to website
         </Link>
         <Card>

@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { path: "/", label: "Dashboard", icon: LayoutDashboard, readonlyAllowed: true },
+  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, readonlyAllowed: true },
   { path: "/products", label: "Products", icon: Package },
   { path: "/suppliers", label: "Suppliers", icon: Truck },
   { path: "/purchases", label: "Purchases", icon: ShoppingCart },
