@@ -10,6 +10,7 @@ import LoginPage from "./pages/auth/LoginPage";
 import LandingPage from "./pages/LandingPage";
 import PricingPage from "./pages/public/PricingPage";
 import PrivacyPolicyPage from "./pages/public/PrivacyPolicyPage";
+import TermsPage from "./pages/public/TermsPage";
 import SubscriptionBlockedPage from "./pages/auth/SubscriptionBlockedPage";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -78,6 +79,7 @@ const App = () => (
             <Route path="/landing" element={<LandingPage />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/subscription-blocked" element={<SubscriptionBlockedPage />} />
 
