@@ -10,14 +10,23 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps) => {
-  const { user, loading, accessLevel, profile, isSuperAdmin } = useAuth();
+  const { user, loading, accessLevel, profile, isSuperAdmin, roles } = useAuth();
   const location = useLocation();
+
+  /**
+   * Derived guard: subscription decision is only trustworthy once:
+   *  - loading is complete (profile, roles, subscription all fetched), AND
+   *  - the user object is confirmed present
+   *
+   * This prevents premature redirects to /subscription-blocked that
+   * happen when accessLevel is evaluated before auth state is fully ready.
+   */
+  const authReady = !loading && user !== null;
 
   // Audit log for non-super-admin restricted access attempts
   useEffect(() => {
     if (
-      !loading &&
-      user &&
+      authReady &&
       !isSuperAdmin &&
       (accessLevel === "readonly" || accessLevel === "blocked") &&
       !allowReadonly
@@ -26,7 +35,7 @@ const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps
         .from("audit_logs")
         .insert([{
           dealer_id: profile?.dealer_id ?? null,
-          user_id: user.id,
+          user_id: user!.id,
           action: "EXPIRED_SUBSCRIPTION_ACCESS",
           table_name: "route_guard",
           record_id: location.pathname,
@@ -38,9 +47,10 @@ const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps
         }])
         .then(() => {});
     }
-  }, [loading, user, accessLevel, allowReadonly, location.pathname, isSuperAdmin]);
+  }, [authReady, accessLevel, allowReadonly, location.pathname, isSuperAdmin]);
 
-  // 1. Wait until profile, roles, and subscription are all loaded
+  // 1. Wait until profile, roles, and subscription are all loaded.
+  //    Never evaluate access level or redirect until this is done.
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -54,17 +64,30 @@ const ProtectedRoute = ({ children, allowReadonly = false }: ProtectedRouteProps
     return <Navigate to="/login" replace />;
   }
 
-  // 3. super_admin → always full access, never check subscription
+  // 3. Roles not yet populated — hold the gate.
+  //    This is a secondary safety net: if roles array is empty for an
+  //    authenticated user, we cannot make a correct access decision yet.
+  //    (Should not happen in normal flow, but guards against edge cases.)
+  if (roles.length === 0 && !isSuperAdmin) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted-foreground">Verifying access…</p>
+      </div>
+    );
+  }
+
+  // 4. super_admin → always full access, never check subscription
   if (isSuperAdmin) {
     return <>{children}</>;
   }
 
-  // 4. dealer_admin / salesman subscription enforcement
-  if (accessLevel === "blocked") {
+  // 5. dealer_admin / salesman subscription enforcement.
+  //    Only redirect after auth is fully ready to avoid false "blocked" state.
+  if (authReady && accessLevel === "blocked") {
     return <Navigate to="/subscription-blocked" replace />;
   }
 
-  if (accessLevel === "readonly" && !allowReadonly) {
+  if (authReady && accessLevel === "readonly" && !allowReadonly) {
     return <Navigate to="/" replace />;
   }
 

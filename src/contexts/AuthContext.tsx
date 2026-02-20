@@ -223,6 +223,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // inside loadUserData before React re-renders.
   const loadedRolesRef = useRef<UserRole[]>([]);
 
+  /**
+   * Guard: true while initialize() is still running.
+   * Prevents onAuthStateChange from double-loading user data when
+   * INITIAL_SESSION fires concurrently with the getSession() call.
+   */
+  const initializingRef = useRef(true);
+
   const isSuperAdmin = roles.some((r) => r.role === "super_admin");
   const isDealerAdmin = roles.some((r) => r.role === "dealer_admin");
   const accessLevel = computeAccessLevel(subscription, roles, profile?.dealer_id ?? null);
@@ -276,43 +283,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
+    /**
+     * Phase 1 — Initial session bootstrap.
+     *
+     * getSession() returns the persisted session from localStorage synchronously
+     * (via the Supabase JS client). We load ALL user data here first, then mark
+     * initialization complete so the auth state listener knows it can safely
+     * handle subsequent events (SIGNED_IN after login, SIGNED_OUT, etc.).
+     */
     const initialize = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
         if (!isMounted) return;
 
-        setSession(session);
-        setUser(session?.user ?? null);
+        setSession(initialSession);
+        setUser(initialSession?.user ?? null);
 
-        if (session?.user) {
-          await loadUserData(session.user.id);
+        if (initialSession?.user) {
+          await loadUserData(initialSession.user.id);
         }
       } catch (err) {
         subLog.error("Auth init error:", err);
       } finally {
-        // Only clear loading after ALL data (profile, roles, subscription) is set.
-        // This prevents ProtectedRoute from evaluating with stale/empty state.
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          // Mark initialization complete BEFORE clearing loading so the auth
+          // state listener can distinguish INITIAL_SESSION from later events.
+          initializingRef.current = false;
+          setLoading(false);
+        }
       }
     };
 
     initialize();
 
+    /**
+     * Phase 2 — Ongoing auth state changes (login, logout, token refresh).
+     *
+     * Skip if initializingRef is still true: that means initialize() hasn't
+     * finished yet and already handles this session — processing it twice
+     * would clear loading prematurely (double-load race condition).
+     *
+     * For post-init events (actual sign-in / sign-out), set loading = true
+     * BEFORE starting the async fetch so ProtectedRoute never evaluates
+     * with partial / stale auth state.
+     */
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, newSession) => {
         if (!isMounted) return;
 
-        setSession(session);
-        setUser(session?.user ?? null);
+        // Skip INITIAL_SESSION — initialize() is the single source of truth
+        // for the first load. Supabase fires this event almost immediately on
+        // mount; without this guard it races with initialize() and can clear
+        // loading before profile/roles/subscription have been fetched.
+        if (initializingRef.current) {
+          subLog.info("onAuthStateChange skipped during init (event:", event, ")");
+          return;
+        }
 
-        if (session?.user) {
-          // Defer to avoid Supabase auth deadlock
+        // For all post-init events, reset loading so ProtectedRoute waits.
+        setLoading(true);
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+
+        if (newSession?.user) {
+          // Defer to avoid Supabase internal auth deadlock
           setTimeout(async () => {
             if (!isMounted) return;
-            await loadUserData(session.user.id);
-            if (isMounted) setLoading(false);
+            try {
+              await loadUserData(newSession.user.id);
+            } catch (err) {
+              subLog.error("loadUserData error in onAuthStateChange:", err);
+            } finally {
+              if (isMounted) setLoading(false);
+            }
           }, 0);
         } else {
+          // Signed out — clear everything immediately
           setProfile(null);
           setRoles([]);
           setSubscription(null);
