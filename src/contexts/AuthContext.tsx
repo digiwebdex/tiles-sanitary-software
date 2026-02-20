@@ -235,47 +235,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const accessLevel = computeAccessLevel(subscription, roles, profile?.dealer_id ?? null);
 
   async function loadUserData(userId: string) {
-    // Fetch profile and roles in parallel.
-    // Use maybeSingle() for profile to avoid throwing on RLS/network errors.
-    const [profileRes, rolesRes] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
-      supabase.from("user_roles").select("role").eq("user_id", userId),
-    ]);
+    try {
+      // Fetch profile and roles in parallel.
+      // Use maybeSingle() for profile to avoid throwing on RLS/network errors.
+      const [profileRes, rolesRes] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId),
+      ]);
 
-    if (profileRes.error) {
-      subLog.error("Profile fetch error:", profileRes.error.message);
-    }
-    if (rolesRes.error) {
-      subLog.error("Roles fetch error:", rolesRes.error.message);
-    }
+      if (profileRes.error) {
+        subLog.error("Profile fetch error:", profileRes.error.message);
+      }
+      if (rolesRes.error) {
+        subLog.error("Roles fetch error:", rolesRes.error.message);
+      }
 
-    const prof = profileRes.data as Profile | null;
-    const fetchedRoles = (rolesRes.data as UserRole[]) ?? [];
+      // Safe null fallbacks — never crash if DB returns null/undefined
+      const prof = (profileRes.data as Profile | null) ?? null;
+      const fetchedRoles = Array.isArray(rolesRes.data)
+        ? (rolesRes.data as UserRole[])
+        : [];
 
-    // Persist in ref for synchronous checks below
-    loadedRolesRef.current = fetchedRoles;
+      // Persist in ref for synchronous checks below
+      loadedRolesRef.current = fetchedRoles;
 
-    const userIsSuperAdmin = fetchedRoles.some((r) => r.role === "super_admin");
-    const userIsDealerRole = fetchedRoles.some(
-      (r) => r.role === "dealer_admin" || r.role === "salesman"
-    );
+      const userIsSuperAdmin = fetchedRoles.some((r) => r.role === "super_admin");
+      const userIsDealerRole = fetchedRoles.some(
+        (r) => r.role === "dealer_admin" || r.role === "salesman"
+      );
 
-    // Set profile & roles together so the first render after loading
-    // already has the correct role context.
-    setProfile(prof);
-    setRoles(fetchedRoles);
+      // Set profile & roles together so the first render after loading
+      // already has the correct role context.
+      setProfile(prof);
+      setRoles(fetchedRoles);
 
-    // Only validate subscription for dealer roles with a dealer_id.
-    // super_admin path is untouched.
-    if (userIsDealerRole && !userIsSuperAdmin && prof?.dealer_id) {
-      const validatedSub = await validateAndSyncSubscription(prof.dealer_id);
-      setSubscription(validatedSub);
-    } else if (userIsDealerRole && !userIsSuperAdmin && !prof?.dealer_id) {
-      // Dealer role but no dealer_id — log and block
-      subLog.error("Dealer role user has no dealer_id! user_id:", userId);
-      setSubscription(null);
-    } else {
-      // super_admin or no dealer role — no subscription needed
+      // Only validate subscription for dealer roles with a dealer_id.
+      // super_admin path is untouched.
+      if (userIsDealerRole && !userIsSuperAdmin) {
+        const dealerId = prof?.dealer_id ?? null;
+        if (dealerId) {
+          const validatedSub = await validateAndSyncSubscription(dealerId);
+          setSubscription(validatedSub ?? null);
+        } else {
+          // Dealer role but no dealer_id — log and block
+          subLog.error("Dealer role user has no dealer_id! user_id:", userId);
+          setSubscription(null);
+        }
+      } else {
+        // super_admin or no dealer role — no subscription needed
+        setSubscription(null);
+      }
+    } catch (err) {
+      // Catch-all: never let loadUserData crash the auth flow.
+      // Log the error and clear state so the user sees login instead of a blank screen.
+      subLog.error("loadUserData unhandled exception:", err);
+      setProfile(null);
+      setRoles([]);
       setSubscription(null);
     }
   }
