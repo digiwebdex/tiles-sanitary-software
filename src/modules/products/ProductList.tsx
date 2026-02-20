@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatCurrency } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { productService } from "@/services/productService";
@@ -89,7 +90,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                     <TableCell>{p.name}</TableCell>
                     <TableCell className="capitalize">{p.category}</TableCell>
                     <TableCell>{p.unit_type === "box_sft" ? "Box/SFT" : "Piece"}</TableCell>
-                    <TableCell className="text-right">₹{p.default_sale_rate}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
                     <TableCell>
                       <Badge
                         variant={p.active ? "default" : "secondary"}
