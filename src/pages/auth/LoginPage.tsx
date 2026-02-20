@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogIn } from "lucide-react";
+import { LogIn, ArrowLeft } from "lucide-react";
 import { rateLimits, RateLimitError } from "@/lib/rateLimit";
 
 const LoginPage = () => {
@@ -45,11 +45,15 @@ const LoginPage = () => {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Sign In</CardTitle>
-          <CardDescription>Enter your credentials to access the ERP</CardDescription>
-        </CardHeader>
+      <div className="w-full max-w-sm space-y-4">
+        <Link to="/landing" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to website
+        </Link>
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl">Sign In</CardTitle>
+            <CardDescription>Enter your credentials to access the ERP</CardDescription>
+          </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
@@ -81,6 +85,7 @@ const LoginPage = () => {
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 };

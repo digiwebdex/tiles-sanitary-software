@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import LoginPage from "./pages/auth/LoginPage";
+import LandingPage from "./pages/LandingPage";
 import SubscriptionBlockedPage from "./pages/auth/SubscriptionBlockedPage";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -71,6 +72,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             {/* Public */}
+            <Route path="/landing" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/subscription-blocked" element={<SubscriptionBlockedPage />} />
 
