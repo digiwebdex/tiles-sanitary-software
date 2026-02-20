@@ -342,6 +342,97 @@ export type Database = {
           },
         ]
       }
+      notification_settings: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          enable_daily_summary_email: boolean
+          enable_daily_summary_sms: boolean
+          enable_sale_email: boolean
+          enable_sale_sms: boolean
+          owner_email: string | null
+          owner_phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          enable_daily_summary_email?: boolean
+          enable_daily_summary_sms?: boolean
+          enable_sale_email?: boolean
+          enable_sale_sms?: boolean
+          owner_email?: string | null
+          owner_phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          enable_daily_summary_email?: boolean
+          enable_daily_summary_sms?: boolean
+          enable_sale_email?: boolean
+          enable_sale_sms?: boolean
+          owner_email?: string | null
+          owner_phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_settings_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: true
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          channel: string
+          created_at: string
+          dealer_id: string
+          error_message: string | null
+          id: string
+          payload: Json
+          retry_count: number
+          sent_at: string | null
+          status: string
+          type: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          dealer_id: string
+          error_message?: string | null
+          id?: string
+          payload?: Json
+          retry_count?: number
+          sent_at?: string | null
+          status?: string
+          type: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          dealer_id?: string
+          error_message?: string | null
+          id?: string
+          payload?: Json
+          retry_count?: number
+          sent_at?: string | null
+          status?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plans: {
         Row: {
           created_at: string
