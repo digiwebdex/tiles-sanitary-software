@@ -85,24 +85,6 @@ const Footer = () => (
 /* ─── PLAN DATA ─── */
 const PLANS = [
   {
-    name: "Starter",
-    tagline: "Perfect for small shops getting started",
-    highlighted: false,
-    badge: null,
-    cta: "Get Started",
-    ctaLink: "/get-started",
-    monthlyPrice: 999,
-    yearlyPrice: 10000,
-    features: [
-      { icon: Users,         text: "Up to 2 users" },
-      { icon: Package,       text: "Inventory management" },
-      { icon: BarChart2,     text: "Basic reports" },
-      { icon: ShieldCheck,   text: "Customer ledger" },
-      { icon: MessageCircle, text: "SMS notifications" },
-      { icon: Mail,          text: "Email notifications" },
-    ],
-  },
-  {
     name: "Pro",
     tagline: "For growing businesses that need more",
     highlighted: true,
@@ -188,8 +170,8 @@ const PricingPage = () => {
 
       {/* Pricing Cards */}
       <section className="py-16 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+        <div className="max-w-md mx-auto">
+          <div className="grid grid-cols-1 gap-6 items-stretch">
             {PLANS.map((plan) => {
               const price = yearly ? plan.yearlyPrice : plan.monthlyPrice;
               const isHighlighted = plan.highlighted;
