@@ -1,14 +1,16 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useCmsContent } from "@/hooks/useCmsContent";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   BarChart2, Package, ShoppingCart, Users, Truck, FileText,
   PieChart, Shield, Layers, CreditCard, Bell, Settings,
   CheckCircle2, Phone, Mail, MapPin, ArrowRight, Lock,
   Star, Zap, Server, Database, RefreshCw, UserCheck, Store,
-  TrendingUp, LayoutDashboard, AlertCircle, Receipt,
+  TrendingUp, LayoutDashboard, AlertCircle, Receipt, Sparkles,
 } from "lucide-react";
 
 /* ─── Icon map (matches CMS icon names) ─── */
@@ -370,69 +372,128 @@ const FeaturesSection = ({ cms }: { cms: typeof DEFAULTS.features & { extra_json
 };
 
 /* ─── PRICING ─── */
+const PRICING_PLANS = [
+  {
+    name: "Starter",
+    highlighted: false,
+    monthlyPrice: 999,
+    yearlyPrice: 10000,
+    features: ["Up to 2 users", "Inventory management", "Basic reports", "Customer ledger"],
+  },
+  {
+    name: "Pro",
+    highlighted: true,
+    monthlyPrice: 1999,
+    yearlyPrice: 20000,
+    features: ["Up to 5 users", "All Starter features", "Advanced analytics", "Multi-branch ready", "Priority support"],
+  },
+];
+
 const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: any } }) => {
-  const plans: { name: string; price: string; period: string; features: string[]; highlighted: boolean }[] =
-    cms.extra_json?.plans ?? [];
+  const [yearly, setYearly] = useState(false);
+
   return (
     <section id="pricing" className="py-20 bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-14">
+        <div className="text-center mb-10">
           <Badge variant="outline" className="mb-4 px-3 py-1 text-xs">Pricing</Badge>
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{cms.title}</h2>
           {cms.subtitle && <p className="text-muted-foreground text-lg max-w-2xl mx-auto">{cms.subtitle}</p>}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-          {plans.map((plan, i) => (
-            <div
-              key={i}
-              className={`relative rounded-2xl border p-7 flex flex-col gap-6 transition-all ${
-                plan.highlighted
-                  ? "border-primary bg-primary text-primary-foreground shadow-2xl scale-[1.02]"
-                  : "border-border bg-card"
-              }`}
-            >
-              {plan.highlighted && (
-                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary-foreground text-primary text-xs px-3">
-                  <Zap className="h-3 w-3 mr-1" /> Most Popular
-                </Badge>
-              )}
-
-              <div>
-                <p className={`text-sm font-medium mb-1 ${plan.highlighted ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                  {plan.name}
-                </p>
-                <div className="flex items-end gap-1">
-                  <span className="text-xs font-semibold">৳</span>
-                  <span className="text-4xl font-bold leading-none">{plan.price}</span>
-                  <span className={`text-sm mb-0.5 ${plan.highlighted ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                    {plan.period}
-                  </span>
-                </div>
-              </div>
-
-              <ul className="space-y-2.5 flex-1">
-                {plan.features.map((feat, fi) => (
-                  <li key={fi} className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${plan.highlighted ? "text-primary-foreground/80" : "text-primary"}`} />
-                    <span className={plan.highlighted ? "text-primary-foreground/90" : "text-foreground"}>
-                      {feat}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link to="/get-started">
-                <Button
-                  className="w-full"
-                  variant={plan.highlighted ? "secondary" : "default"}
-                >
-                  Start Free Trial
-                </Button>
-              </Link>
-            </div>
-          ))}
+        {/* Toggle */}
+        <div className="flex flex-col items-center gap-3 mb-12">
+          <div className="inline-flex items-center gap-4 bg-muted rounded-full px-6 py-3">
+            <span className={`text-sm font-medium transition-colors ${!yearly ? "text-foreground" : "text-muted-foreground"}`}>
+              Monthly
+            </span>
+            <Switch
+              checked={yearly}
+              onCheckedChange={setYearly}
+              className="data-[state=checked]:bg-primary"
+            />
+            <span className={`text-sm font-medium transition-colors ${yearly ? "text-foreground" : "text-muted-foreground"}`}>
+              Yearly
+            </span>
+          </div>
+          <div className={`flex items-center gap-2 transition-all duration-300 ${yearly ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"}`}>
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold text-primary">Save 2 months with yearly billing</span>
+          </div>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch max-w-3xl mx-auto">
+          {PRICING_PLANS.map((plan, i) => {
+            const price = yearly ? plan.yearlyPrice : plan.monthlyPrice;
+            const period = yearly ? "/year" : "/month";
+            return (
+              <div
+                key={i}
+                className={`relative rounded-2xl border p-7 flex flex-col gap-6 transition-all ${
+                  plan.highlighted
+                    ? "border-primary bg-primary text-primary-foreground shadow-2xl scale-[1.02]"
+                    : "border-border bg-card"
+                }`}
+              >
+                {plan.highlighted && (
+                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary-foreground text-primary text-xs px-3">
+                    <Zap className="h-3 w-3 mr-1" /> Most Popular
+                  </Badge>
+                )}
+
+                <div>
+                  <p className={`text-sm font-medium mb-1 ${plan.highlighted ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                    {plan.name}
+                  </p>
+                  <div className="flex items-end gap-1 mb-1">
+                    <span className="text-xs font-semibold">৳</span>
+                    <span className="text-4xl font-bold leading-none">{price.toLocaleString()}</span>
+                    <span className={`text-sm mb-0.5 ${plan.highlighted ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                      {period}
+                    </span>
+                  </div>
+                  {yearly ? (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <Badge className={`text-[10px] px-2 py-0.5 gap-1 ${plan.highlighted ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground"}`}>
+                        <Sparkles className="h-3 w-3" /> Save 2 months
+                      </Badge>
+                    </div>
+                  ) : (
+                    <p className={`text-xs mt-1 ${plan.highlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                      Switch to yearly to save 2 months
+                    </p>
+                  )}
+                </div>
+
+                <ul className="space-y-2.5 flex-1">
+                  {plan.features.map((feat, fi) => (
+                    <li key={fi} className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${plan.highlighted ? "text-primary-foreground/80" : "text-primary"}`} />
+                      <span className={plan.highlighted ? "text-primary-foreground/90" : "text-foreground"}>
+                        {feat}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <Link to="/get-started">
+                  <Button
+                    className="w-full"
+                    variant={plan.highlighted ? "secondary" : "default"}
+                  >
+                    Start Free Trial
+                  </Button>
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="text-center text-xs text-muted-foreground mt-6">
+          <Link to="/pricing" className="underline underline-offset-2 hover:text-foreground transition-colors">
+            View full pricing details →
+          </Link>
+        </p>
       </div>
     </section>
   );
