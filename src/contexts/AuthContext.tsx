@@ -109,20 +109,41 @@ function computeAccessLevel(
  * Validates and reconciles dealer subscription status against current date.
  * Mutates DB status to "expired" or "active" as needed.
  * Returns the latest subscription record.
+ * Retries once on transient network/RLS failures.
  */
 async function validateAndSyncSubscription(
   dealerId: string
 ): Promise<Subscription | null> {
-  const { data: sub, error } = await supabase
-    .from("subscriptions")
-    .select("*")
-    .eq("dealer_id", dealerId)
-    .order("start_date", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  let sub: Subscription | null = null;
+  let fetchError: { message: string } | null = null;
 
-  if (error) {
-    subLog.error("Fetch error:", error.message);
+  // Retry up to 2 times for transient failures (network hiccup, cold session)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const { data, error } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("dealer_id", dealerId)
+      .order("start_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error) {
+      sub = data as Subscription | null;
+      fetchError = null;
+      break;
+    }
+
+    fetchError = error;
+    subLog.warn(`Subscription fetch attempt ${attempt} failed:`, error.message);
+
+    if (attempt < 2) {
+      // Small delay before retry
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  if (fetchError) {
+    subLog.error("Fetch error after retries:", fetchError.message);
     return null;
   }
 
@@ -207,11 +228,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const accessLevel = computeAccessLevel(subscription, roles, profile?.dealer_id ?? null);
 
   async function loadUserData(userId: string) {
-    // Fetch profile and roles in parallel
+    // Fetch profile and roles in parallel.
+    // Use maybeSingle() for profile to avoid throwing on RLS/network errors.
     const [profileRes, rolesRes] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", userId).single(),
+      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
     ]);
+
+    if (profileRes.error) {
+      subLog.error("Profile fetch error:", profileRes.error.message);
+    }
+    if (rolesRes.error) {
+      subLog.error("Roles fetch error:", rolesRes.error.message);
+    }
 
     const prof = profileRes.data as Profile | null;
     const fetchedRoles = (rolesRes.data as UserRole[]) ?? [];
@@ -234,6 +263,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (userIsDealerRole && !userIsSuperAdmin && prof?.dealer_id) {
       const validatedSub = await validateAndSyncSubscription(prof.dealer_id);
       setSubscription(validatedSub);
+    } else if (userIsDealerRole && !userIsSuperAdmin && !prof?.dealer_id) {
+      // Dealer role but no dealer_id — log and block
+      subLog.error("Dealer role user has no dealer_id! user_id:", userId);
+      setSubscription(null);
     } else {
       // super_admin or no dealer role — no subscription needed
       setSubscription(null);
