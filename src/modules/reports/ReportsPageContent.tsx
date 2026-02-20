@@ -22,6 +22,7 @@ import {
 } from "@/services/reportService";
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ReportsPageContentProps {
   dealerId: string;
@@ -187,6 +188,7 @@ function SalesReport({ dealerId }: { dealerId: string }) {
   const [mode, setMode] = useState<"daily" | "monthly">("monthly");
   const [year, setYear] = useState(currentYear);
   const [month, setMonth] = useState(currentMonth);
+  const { isDealerAdmin } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ["report-sales", dealerId, mode, year, month],
@@ -230,21 +232,23 @@ function SalesReport({ dealerId }: { dealerId: string }) {
                   <TableHead>{mode === "daily" ? "Date" : "Month"}</TableHead>
                   <TableHead className="text-right">Sales</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Profit</TableHead>
+                  {isDealerAdmin && <TableHead className="text-right">Profit</TableHead>}
                   <TableHead className="text-right">Due</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(data ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No data</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isDealerAdmin ? 5 : 4} className="text-center text-muted-foreground">No data</TableCell></TableRow>
                 ) : (data ?? []).map((r) => (
                   <TableRow key={r.date}>
                     <TableCell className="font-medium">{r.date}</TableCell>
                     <TableCell className="text-right">{r.count}</TableCell>
                     <TableCell className="text-right">{formatCurrency(r.totalAmount)}</TableCell>
-                    <TableCell className={`text-right ${r.totalProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                      {formatCurrency(r.totalProfit)}
-                    </TableCell>
+                    {isDealerAdmin && (
+                      <TableCell className={`text-right font-semibold ${r.totalProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+                        {formatCurrency(r.totalProfit)}
+                      </TableCell>
+                    )}
                     <TableCell className={`text-right ${r.totalDue > 0 ? "text-destructive font-semibold" : ""}`}>
                       {formatCurrency(r.totalDue)}
                     </TableCell>
@@ -256,7 +260,9 @@ function SalesReport({ dealerId }: { dealerId: string }) {
                     <TableCell>Total</TableCell>
                     <TableCell className="text-right">{(data ?? []).reduce((s, r) => s + r.count, 0)}</TableCell>
                     <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalAmount, 0))}</TableCell>
-                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalProfit, 0))}</TableCell>
+                    {isDealerAdmin && (
+                      <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalProfit, 0))}</TableCell>
+                    )}
                     <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalDue, 0))}</TableCell>
                   </TableRow>
                 )}

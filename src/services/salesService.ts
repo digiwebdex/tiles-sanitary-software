@@ -49,6 +49,7 @@ export const salesService = {
       .select("*, customers(name, type)", { count: "exact" })
       .eq("dealer_id", dealerId)
       .order("sale_date", { ascending: false })
+      .order("created_at", { ascending: false })
       .range(from, to);
     if (error) throw new Error(error.message);
     return { data: data ?? [], total: count ?? 0 };

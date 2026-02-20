@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { TrendingUp, Package, AlertTriangle, Receipt, Banknote } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface OwnerDashboardProps {
   dealerId: string;
@@ -33,6 +34,7 @@ const barChartConfig = {
 };
 
 const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
+  const { isDealerAdmin } = useAuth();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["owner-dashboard", dealerId],
     queryFn: () => dashboardService.getData(dealerId),
@@ -59,56 +61,72 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
       value: formatCurrency(data.todaySales),
       icon: Banknote,
       accent: "text-primary",
+      ownerOnly: false,
     },
     {
       title: "Today Collection",
       value: formatCurrency(data.todayCollection),
       icon: Banknote,
       accent: "text-primary",
+      ownerOnly: false,
+    },
+    {
+      title: "Today Profit",
+      value: formatCurrency(data.todayProfit),
+      icon: TrendingUp,
+      accent: data.todayProfit >= 0 ? "text-primary" : "text-destructive",
+      ownerOnly: true,
     },
     {
       title: "Monthly Sales",
       value: formatCurrency(data.monthlySales),
       icon: TrendingUp,
       accent: "text-primary",
+      ownerOnly: false,
     },
     {
       title: "Monthly Collection",
       value: formatCurrency(data.monthlyCollection),
       icon: TrendingUp,
       accent: "text-primary",
+      ownerOnly: false,
     },
     {
       title: "Monthly Profit",
       value: formatCurrency(data.monthlyProfit),
       icon: TrendingUp,
       accent: data.monthlyProfit >= 0 ? "text-primary" : "text-destructive",
+      ownerOnly: true,
     },
     {
       title: "Stock Value",
       value: formatCurrency(data.totalStockValue),
       icon: Package,
       accent: "text-primary",
+      ownerOnly: false,
     },
     {
       title: "Customer Due",
       value: formatCurrency(data.totalCustomerDue),
       icon: Receipt,
       accent: data.totalCustomerDue > 0 ? "text-destructive" : "text-primary",
+      ownerOnly: false,
     },
     {
       title: "Supplier Payable",
       value: formatCurrency(data.totalSupplierPayable),
       icon: Receipt,
       accent: data.totalSupplierPayable > 0 ? "text-destructive" : "text-primary",
+      ownerOnly: false,
     },
     {
       title: "Low Stock Items",
       value: String(data.lowStockItems.length),
       icon: AlertTriangle,
       accent: data.lowStockItems.length > 0 ? "text-destructive" : "text-primary",
+      ownerOnly: false,
     },
-  ];
+  ].filter((c) => !c.ownerOnly || isDealerAdmin);
 
   return (
     <div className="space-y-6">

@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 export interface DashboardData {
   todaySales: number;
   todayCollection: number;
+  todayProfit: number;
   monthlySales: number;
   monthlyCollection: number;
   monthlyProfit: number;
@@ -30,6 +31,7 @@ function round2(n: number) {
 const SAFE_DEFAULTS: DashboardData = {
   todaySales: 0,
   todayCollection: 0,
+  todayProfit: 0,
   monthlySales: 0,
   monthlyCollection: 0,
   monthlyProfit: 0,
@@ -63,7 +65,7 @@ export const dashboardService = {
       ] = await Promise.all([
         supabase
           .from("sales")
-          .select("total_amount, paid_amount")
+          .select("total_amount, paid_amount, profit")
           .eq("dealer_id", dealerId)
           .eq("sale_date", todayStr),
 
@@ -112,6 +114,7 @@ export const dashboardService = {
       const todaySalesRows = todaySalesRes.data ?? [];
       const todaySales = todaySalesRows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
       const todayCollection = todaySalesRows.reduce((s, r) => s + (Number(r.paid_amount) || 0), 0);
+      const todayProfit = todaySalesRows.reduce((s, r) => s + (Number((r as any).profit) || 0), 0);
 
       const monthlySalesRows = monthlySalesRes.data ?? [];
       const monthlySales = monthlySalesRows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
@@ -177,6 +180,7 @@ export const dashboardService = {
       return {
         todaySales: round2(todaySales),
         todayCollection: round2(todayCollection),
+        todayProfit: round2(todayProfit),
         monthlySales: round2(monthlySales),
         monthlyCollection: round2(monthlyCollection),
         monthlyProfit: round2(monthlyProfit),

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, FileText } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SaleListProps {
   dealerId: string;
@@ -20,6 +21,7 @@ const PAGE_SIZE = 25;
 const SaleList = ({ dealerId }: SaleListProps) => {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
+  const { isDealerAdmin } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ["sales", dealerId, page],
@@ -56,6 +58,9 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Due</TableHead>
+                  {isDealerAdmin && (
+                    <TableHead className="text-right">Profit</TableHead>
+                  )}
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -75,6 +80,11 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                     <TableCell className={`text-right ${Number(s.due_amount) > 0 ? "text-destructive font-semibold" : ""}`}>
                       {formatCurrency(s.due_amount)}
                     </TableCell>
+                    {isDealerAdmin && (
+                      <TableCell className={`text-right font-semibold ${Number(s.profit) >= 0 ? "text-primary" : "text-destructive"}`}>
+                        {formatCurrency(s.profit)}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Button size="icon" variant="ghost" onClick={() => navigate(`/sales/${s.id}/invoice`)}>
                         <FileText className="h-4 w-4" />
