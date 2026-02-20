@@ -8,12 +8,14 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, Printer, TrendingUp } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const InvoicePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { isDealerAdmin } = useAuth();
 
   const { data: sale, isLoading } = useQuery({
     queryKey: ["sale", id],
@@ -157,6 +159,45 @@ const InvoicePage = () => {
           <span className="text-2xl font-bold text-primary">{formatCurrency(sale.total_amount)}</span>
         </CardContent>
       </Card>
+
+      {/* Profit Summary — Owner only, hidden from print if desired */}
+      {isDealerAdmin && (
+        <Card className="border-primary/30 bg-primary/5 print:hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              Profit Summary
+              <Badge variant="secondary" className="ml-1 text-xs">Owner Only</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-4 text-center md:grid-cols-4">
+            <div className="rounded-md bg-background p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Cost of Goods</p>
+              <p className="text-lg font-bold text-destructive">{formatCurrency((sale as any).cogs ?? 0)}</p>
+            </div>
+            <div className="rounded-md bg-background p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Gross Profit</p>
+              <p className={`text-lg font-bold ${Number((sale as any).gross_profit ?? (sale as any).profit) >= 0 ? "text-primary" : "text-destructive"}`}>
+                {formatCurrency((sale as any).gross_profit ?? (sale as any).profit)}
+              </p>
+            </div>
+            <div className="rounded-md bg-background p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Net Profit</p>
+              <p className={`text-lg font-bold ${Number((sale as any).net_profit ?? (sale as any).profit) >= 0 ? "text-primary" : "text-destructive"}`}>
+                {formatCurrency((sale as any).net_profit ?? (sale as any).profit)}
+              </p>
+            </div>
+            <div className="rounded-md bg-background p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Margin %</p>
+              <p className={`text-lg font-bold ${Number(sale.total_amount) > 0 && Number((sale as any).net_profit ?? (sale as any).profit) >= 0 ? "text-primary" : "text-destructive"}`}>
+                {Number(sale.total_amount) > 0
+                  ? `${(((Number((sale as any).net_profit ?? (sale as any).profit)) / Number(sale.total_amount)) * 100).toFixed(1)}%`
+                  : "—"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

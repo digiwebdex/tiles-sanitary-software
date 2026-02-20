@@ -812,8 +812,10 @@ export type Database = {
           discount_reference: string | null
           due_amount: number
           fitter_reference: string | null
+          gross_profit: number
           id: string
           invoice_number: string | null
+          net_profit: number
           notes: string | null
           paid_amount: number
           payment_mode: string | null
@@ -835,8 +837,10 @@ export type Database = {
           discount_reference?: string | null
           due_amount?: number
           fitter_reference?: string | null
+          gross_profit?: number
           id?: string
           invoice_number?: string | null
+          net_profit?: number
           notes?: string | null
           paid_amount?: number
           payment_mode?: string | null
@@ -858,8 +862,10 @@ export type Database = {
           discount_reference?: string | null
           due_amount?: number
           fitter_reference?: string | null
+          gross_profit?: number
           id?: string
           invoice_number?: string | null
+          net_profit?: number
           notes?: string | null
           paid_amount?: number
           payment_mode?: string | null

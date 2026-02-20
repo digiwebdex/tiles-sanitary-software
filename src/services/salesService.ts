@@ -121,7 +121,9 @@ export const salesService = {
     const subtotal = itemsCalc.reduce((s, i) => s + i.total, 0);
     const totalAmount = subtotal - input.discount;
     const dueAmount = totalAmount - input.paid_amount;
-    const profit = totalAmount - totalCogs;
+    const grossProfit = totalAmount - totalCogs;
+    const netProfit = grossProfit; // transport/labor already baked into landed_cost → COGS
+    const profit = grossProfit; // keep legacy field in sync
 
     const invoiceNumber = await generateInvoiceNumber(input.dealer_id);
 
@@ -141,13 +143,15 @@ export const salesService = {
         due_amount: dueAmount,
         cogs: totalCogs,
         profit,
+        gross_profit: grossProfit,
+        net_profit: netProfit,
         total_box: totalBox,
         total_sft: totalSft,
         total_piece: totalPiece,
         notes: input.notes || null,
         payment_mode: input.payment_mode || null,
         created_by: input.created_by || null,
-      })
+      } as any)
       .select()
       .single();
     if (sErr) throw new Error(sErr.message);

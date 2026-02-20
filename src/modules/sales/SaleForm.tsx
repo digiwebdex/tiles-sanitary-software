@@ -30,7 +30,7 @@ interface SaleFormProps {
 }
 
 const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
-  const { user } = useAuth();
+  const { user, isDealerAdmin } = useAuth();
   const [skuSearch, setSkuSearch] = useState("");
   const [creditCheck, setCreditCheck] = useState<CreditCheckResult | null>(null);
   const [pendingValues, setPendingValues] = useState<SaleFormValues | null>(null);
@@ -82,6 +82,21 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
     enabled: !!dealerId,
   });
 
+  // Fetch stock for live profit preview (owner only)
+  const { data: stockData = [] } = useQuery({
+    queryKey: ["stock-for-sale", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("stock")
+        .select("product_id, average_cost_per_unit")
+        .eq("dealer_id", dealerId);
+      return data ?? [];
+    },
+    enabled: !!dealerId && isDealerAdmin,
+  });
+
+  const stockMap = new Map(stockData.map((s) => [s.product_id, Number(s.average_cost_per_unit)]));
+
   const filteredProducts = (() => {
     if (!skuSearch.trim()) return products;
     const q = skuSearch.toLowerCase();
@@ -122,6 +137,14 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
   const subtotal = watchItems.reduce((s, item, idx) => s + calcItemTotal(idx), 0);
   const totalAmount = subtotal - watchDiscount;
   const dueAmount = Math.max(0, totalAmount - watchPaid);
+
+  // Estimated COGS for live profit preview (owner only)
+  const estimatedCogs = watchItems.reduce((acc, item) => {
+    if (!item.product_id || !item.quantity) return acc;
+    const avgCost = stockMap.get(item.product_id) ?? 0;
+    return acc + item.quantity * avgCost;
+  }, 0);
+  const estimatedGrossProfit = totalAmount - estimatedCogs;
 
   // Summary totals
   const summaryTotals = watchItems.reduce(
@@ -457,6 +480,28 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
             </div>
           </div>
 
+          {/* Live Profit Preview — Owner only */}
+          {isDealerAdmin && estimatedCogs > 0 && (
+            <div className="grid grid-cols-3 gap-3 rounded-md border border-primary/20 bg-primary/5 p-4 text-sm">
+              <div>
+                <span className="text-muted-foreground text-xs uppercase font-semibold">Est. COGS</span>
+                <p className="font-semibold text-destructive">{formatCurrency(estimatedCogs)}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs uppercase font-semibold">Est. Gross Profit</span>
+                <p className={`font-semibold ${estimatedGrossProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+                  {formatCurrency(estimatedGrossProfit)}
+                </p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs uppercase font-semibold">Est. Margin</span>
+                <p className={`font-semibold ${estimatedGrossProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+                  {totalAmount > 0 ? `${((estimatedGrossProfit / totalAmount) * 100).toFixed(1)}%` : "—"}
+                </p>
+              </div>
+            </div>
+          )}
+
           <Button type="submit" disabled={isLoading || creditCheckLoading} className="w-full md:w-auto">
             {creditCheckLoading ? "Checking Credit…" : isLoading ? "Processing…" : "Confirm Sale"}
           </Button>
@@ -530,9 +575,9 @@ const CreditInlineStatus = ({
         </Alert>
       )}
       {check.is_overdue_violated && (
-        <Alert className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-800 dark:text-amber-300 text-sm">
+        <Alert className="border-destructive/30 bg-destructive/5">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <AlertDescription className="text-foreground text-sm">
             Customer has an overdue balance of <strong>{check.overdue_days} days</strong>{" "}
             (max: {check.max_overdue_days} days). Owner approval will be required.
           </AlertDescription>

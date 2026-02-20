@@ -427,6 +427,7 @@ function ProductHistoryReport({ dealerId }: { dealerId: string }) {
 // ─── Accounting Summary ───────────────────────────────────
 function AccountingSummaryReport({ dealerId }: { dealerId: string }) {
   const [year, setYear] = useState(currentYear);
+  const { isDealerAdmin } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ["report-accounting", dealerId, year],
@@ -454,7 +455,7 @@ function AccountingSummaryReport({ dealerId }: { dealerId: string }) {
                   <TableHead className="text-right">Sales</TableHead>
                   <TableHead className="text-right">Purchases</TableHead>
                   <TableHead className="text-right">Expenses</TableHead>
-                  <TableHead className="text-right">Profit</TableHead>
+                  {isDealerAdmin && <TableHead className="text-right">Profit</TableHead>}
                   <TableHead className="text-right">Due</TableHead>
                   <TableHead className="text-right">Cash In</TableHead>
                   <TableHead className="text-right">Cash Out</TableHead>
@@ -467,9 +468,11 @@ function AccountingSummaryReport({ dealerId }: { dealerId: string }) {
                     <TableCell className="text-right">{formatCurrency(r.totalSales)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(r.totalPurchases)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(r.totalExpenses)}</TableCell>
-                    <TableCell className={`text-right font-semibold ${r.netProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                      {formatCurrency(r.netProfit)}
-                    </TableCell>
+                    {isDealerAdmin && (
+                      <TableCell className={`text-right font-semibold ${r.netProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+                        {formatCurrency(r.netProfit)}
+                      </TableCell>
+                    )}
                     <TableCell className={`text-right ${r.totalDue > 0 ? "text-destructive" : ""}`}>
                       {formatCurrency(r.totalDue)}
                     </TableCell>
@@ -483,7 +486,9 @@ function AccountingSummaryReport({ dealerId }: { dealerId: string }) {
                   <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalSales, 0))}</TableCell>
                   <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalPurchases, 0))}</TableCell>
                   <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalExpenses, 0))}</TableCell>
-                  <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.netProfit, 0))}</TableCell>
+                  {isDealerAdmin && (
+                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.netProfit, 0))}</TableCell>
+                  )}
                   <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalDue, 0))}</TableCell>
                   <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.cashIn, 0))}</TableCell>
                   <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.cashOut, 0))}</TableCell>
