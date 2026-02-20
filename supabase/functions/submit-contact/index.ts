@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SmtpClient } from "https://deno.land/x/smtp@v0.7.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,14 +56,26 @@ serve(async (req) => {
       });
     }
 
-    // Send email notification via Resend (if API key is configured)
-    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL") || "support@yourdomain.com";
+    // Send email via SMTP
+    const SMTP_HOST = Deno.env.get("SMTP_HOST");
+    const SMTP_PORT = parseInt(Deno.env.get("SMTP_PORT") || "587");
+    const SMTP_USER = Deno.env.get("SMTP_USER");
+    const SMTP_PASS = Deno.env.get("SMTP_PASS");
+    const SMTP_FROM = Deno.env.get("SMTP_FROM") || SMTP_USER;
+    const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL");
 
-    if (RESEND_API_KEY) {
+    if (SMTP_HOST && SMTP_USER && SMTP_PASS && ADMIN_EMAIL) {
       try {
-        const emailBody = `
-New contact form submission from Tiles & Sanitary ERP website:
+        const client = new SmtpClient();
+
+        await client.connectTLS({
+          hostname: SMTP_HOST,
+          port: SMTP_PORT,
+          username: SMTP_USER!,
+          password: SMTP_PASS!,
+        });
+
+        const emailBody = `New contact form submission from Tiles & Sanitary ERP website:
 
 Name:          ${name.trim()}
 Business Name: ${business_name?.trim() || "—"}
@@ -73,33 +86,23 @@ Message:
 ${message.trim()}
 
 ---
-Submitted at: ${new Date().toLocaleString("en-BD", { timeZone: "Asia/Dhaka" })}
-        `.trim();
+Submitted at: ${new Date().toLocaleString("en-BD", { timeZone: "Asia/Dhaka" })}`;
 
-        const emailRes = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: "Tiles ERP Contact <onboarding@resend.dev>",
-            to: [ADMIN_EMAIL],
-            subject: `New Contact: ${name.trim()} — ${business_name?.trim() || "No business name"}`,
-            text: emailBody,
-          }),
+        await client.send({
+          from: SMTP_FROM!,
+          to: ADMIN_EMAIL,
+          subject: `New Contact: ${name.trim()} — ${business_name?.trim() || "No business name"}`,
+          content: emailBody,
         });
 
-        if (!emailRes.ok) {
-          const errText = await emailRes.text();
-          console.error("Resend email error:", errText);
-          // Don't fail the whole request if email fails — submission is already saved
-        }
+        await client.close();
+        console.log("SMTP email sent successfully.");
       } catch (emailErr) {
-        console.error("Email send exception:", emailErr);
+        console.error("SMTP email error:", emailErr);
+        // Don't fail the whole request if email fails — submission is already saved
       }
     } else {
-      console.log("RESEND_API_KEY not configured — submission saved to DB only.");
+      console.log("SMTP not fully configured — submission saved to DB only.");
     }
 
     return new Response(JSON.stringify({ success: true }), {
