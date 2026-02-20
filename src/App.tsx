@@ -40,6 +40,7 @@ import SASubscriptionsPage from "./pages/super-admin/SASubscriptionsPage";
 import SARevenuePage from "./pages/super-admin/SARevenuePage";
 import SASystemPage from "./pages/super-admin/SASystemPage";
 import SASubscriptionStatusPage from "./pages/super-admin/SASubscriptionStatusPage";
+import SACmsPage from "./pages/super-admin/SACmsPage";
 
 const IS_PRODUCTION = import.meta.env.PROD;
 
@@ -81,6 +82,7 @@ const App = () => (
               <Route path="subscriptions" element={<SASubscriptionsPage />} />
               <Route path="subscription-status" element={<SASubscriptionStatusPage />} />
               <Route path="revenue" element={<SARevenuePage />} />
+              <Route path="cms" element={<SACmsPage />} />
               <Route path="system" element={<SASystemPage />} />
             </Route>
 

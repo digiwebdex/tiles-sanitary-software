@@ -1233,6 +1233,42 @@ export type Database = {
         }
         Relationships: []
       }
+      website_content: {
+        Row: {
+          button_link: string | null
+          button_text: string | null
+          description: string | null
+          extra_json: Json | null
+          id: string
+          section_key: string
+          subtitle: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          button_link?: string | null
+          button_text?: string | null
+          description?: string | null
+          extra_json?: Json | null
+          id?: string
+          section_key: string
+          subtitle?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          button_link?: string | null
+          button_text?: string | null
+          description?: string | null
+          extra_json?: Json | null
+          id?: string
+          section_key?: string
+          subtitle?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
