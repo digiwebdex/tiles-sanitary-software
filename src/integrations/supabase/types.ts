@@ -108,6 +108,67 @@ export type Database = {
           },
         ]
       }
+      credit_overrides: {
+        Row: {
+          created_at: string
+          credit_limit_at_time: number
+          customer_id: string
+          dealer_id: string
+          id: string
+          new_due_at_time: number
+          outstanding_at_time: number
+          overridden_by: string | null
+          override_reason: string
+          sale_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          credit_limit_at_time?: number
+          customer_id: string
+          dealer_id: string
+          id?: string
+          new_due_at_time?: number
+          outstanding_at_time?: number
+          overridden_by?: string | null
+          override_reason: string
+          sale_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          credit_limit_at_time?: number
+          customer_id?: string
+          dealer_id?: string
+          id?: string
+          new_due_at_time?: number
+          outstanding_at_time?: number
+          overridden_by?: string | null
+          override_reason?: string
+          sale_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_overrides_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_overrides_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_overrides_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_ledger: {
         Row: {
           amount: number
@@ -180,9 +241,11 @@ export type Database = {
         Row: {
           address: string | null
           created_at: string
+          credit_limit: number
           dealer_id: string
           email: string | null
           id: string
+          max_overdue_days: number
           name: string
           opening_balance: number
           phone: string | null
@@ -193,9 +256,11 @@ export type Database = {
         Insert: {
           address?: string | null
           created_at?: string
+          credit_limit?: number
           dealer_id: string
           email?: string | null
           id?: string
+          max_overdue_days?: number
           name: string
           opening_balance?: number
           phone?: string | null
@@ -206,9 +271,11 @@ export type Database = {
         Update: {
           address?: string | null
           created_at?: string
+          credit_limit?: number
           dealer_id?: string
           email?: string | null
           id?: string
+          max_overdue_days?: number
           name?: string
           opening_balance?: number
           phone?: string | null

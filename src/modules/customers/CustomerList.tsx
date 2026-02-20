@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Plus, Search, Pencil, ToggleLeft, ToggleRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { CreditStatusBadge } from "@/components/CreditStatusBadge";
 
 const PAGE_SIZE = 25;
 
@@ -138,6 +139,7 @@ const CustomerList = () => {
                   <TableHead>Reference</TableHead>
                   <TableHead className="text-right">Opening Bal.</TableHead>
                   <TableHead className="text-right">Due Balance</TableHead>
+                  <TableHead>Credit</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-20 text-center">Actions</TableHead>
                 </TableRow>
@@ -169,6 +171,17 @@ const CustomerList = () => {
                         <span className={due > 0 ? "text-destructive font-semibold" : "text-muted-foreground"}>
                           {formatCurrency(due)}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {(c.credit_limit > 0 || c.max_overdue_days > 0) ? (
+                          <CreditStatusBadge
+                            outstanding={due}
+                            creditLimit={c.credit_limit}
+                            showTooltip={true}
+                          />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant={c.status === "active" ? "default" : "secondary"}>

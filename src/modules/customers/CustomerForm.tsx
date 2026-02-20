@@ -15,6 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -27,12 +28,14 @@ const schema = z.object({
   reference_name:   z.string().max(100).default(""),
   opening_balance:  z.coerce.number().min(0, "Opening balance cannot be negative").default(0),
   status:           z.enum(["active", "inactive"]).default("active"),
+  credit_limit:     z.coerce.number().min(0, "Credit limit cannot be negative").default(0),
+  max_overdue_days: z.coerce.number().int().min(0, "Must be 0 or more").default(0),
 });
 
 type FormValues = z.infer<typeof schema>;
 
 interface CustomerFormProps {
-  customer?: Customer;
+  customer?: Customer & { credit_limit?: number; max_overdue_days?: number };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -54,6 +57,8 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
       reference_name:  customer?.reference_name ?? "",
       opening_balance: customer?.opening_balance ?? 0,
       status:          (customer?.status as "active" | "inactive") ?? "active",
+      credit_limit:    customer?.credit_limit ?? 0,
+      max_overdue_days: customer?.max_overdue_days ?? 0,
     },
   });
 
@@ -68,6 +73,8 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
           address: values.address,
           reference_name: values.reference_name,
           status: values.status,
+          credit_limit: values.credit_limit,
+          max_overdue_days: values.max_overdue_days,
         });
       } else {
         await customerService.create(dealerId, {
@@ -79,6 +86,8 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
           reference_name: values.reference_name,
           opening_balance: values.opening_balance,
           status: values.status,
+          credit_limit: values.credit_limit,
+          max_overdue_days: values.max_overdue_days,
         });
       }
     },
@@ -242,6 +251,44 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               </FormItem>
             )}
           />
+        </div>
+
+        <Separator />
+
+        {/* Credit Control Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-1">Credit Control</h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            Set 0 to disable credit limit or overdue enforcement.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="credit_limit"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Credit Limit (৳)</FormLabel>
+                  <FormControl>
+                    <Input type="number" min={0} step="0.01" placeholder="0 = no limit" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="max_overdue_days"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Max Overdue Days</FormLabel>
+                  <FormControl>
+                    <Input type="number" min={0} step="1" placeholder="0 = no restriction" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
         </div>
 
         {/* Actions */}
