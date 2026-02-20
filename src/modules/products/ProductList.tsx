@@ -11,7 +11,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Search, Pencil } from "lucide-react";
+import { Plus, Search, Pencil, AlertTriangle } from "lucide-react";
+import { useQuery as useStockQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ProductListProps {
   dealerId: string;
@@ -28,6 +30,23 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const { data, isLoading } = useQuery({
     queryKey: ["products", dealerId, search, page],
     queryFn: () => productService.list(dealerId, search, page),
+    enabled: !!dealerId,
+  });
+
+  // Fetch stock levels for low-stock badge
+  const { data: stockData } = useStockQuery({
+    queryKey: ["products-stock-map", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("stock")
+        .select("product_id, box_qty, piece_qty")
+        .eq("dealer_id", dealerId);
+      const map = new Map<string, number>();
+      for (const s of data ?? []) {
+        map.set(s.product_id, (Number(s.box_qty) || 0) + (Number(s.piece_qty) || 0));
+      }
+      return map;
+    },
     enabled: !!dealerId,
   });
 
@@ -92,13 +111,22 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                     <TableCell>{p.unit_type === "box_sft" ? "Box/SFT" : "Piece"}</TableCell>
                     <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant={p.active ? "default" : "secondary"}
-                        className="cursor-pointer"
-                        onClick={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
-                      >
-                        {p.active ? "Active" : "Inactive"}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <Badge
+                          variant={p.active ? "default" : "secondary"}
+                          className="cursor-pointer"
+                          onClick={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
+                        >
+                          {p.active ? "Active" : "Inactive"}
+                        </Badge>
+                        {p.active && (() => {
+                          const qty = stockData?.get(p.id) ?? 0;
+                          const reorder = p.reorder_level ?? 0;
+                          if (qty === 0) return <Badge variant="destructive" className="text-xs gap-1"><AlertTriangle className="h-3 w-3" />Out of Stock</Badge>;
+                          if (reorder > 0 && qty <= reorder) return <Badge variant="destructive" className="text-xs gap-1 bg-destructive/80"><AlertTriangle className="h-3 w-3" />Low Stock</Badge>;
+                          return null;
+                        })()}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button size="icon" variant="ghost" onClick={() => navigate(`/products/${p.id}/edit`)}>

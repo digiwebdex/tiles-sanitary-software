@@ -19,6 +19,7 @@ import {
   fetchProductHistory,
   fetchAccountingSummary,
   fetchInventoryAgingReport,
+  fetchLowStockReport,
   type InventoryAgingRow,
   REPORT_PAGE_SIZE,
 } from "@/services/reportService";
@@ -49,6 +50,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
           <TabsTrigger value="stock">Stock (SKU)</TabsTrigger>
           <TabsTrigger value="brand-stock">Brand Stock</TabsTrigger>
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
+          <TabsTrigger value="low-stock">Low Stock</TabsTrigger>
           <TabsTrigger value="sales">Sales</TabsTrigger>
           <TabsTrigger value="retailer">Retailer Sales</TabsTrigger>
           <TabsTrigger value="product-history">Product History</TabsTrigger>
@@ -58,6 +60,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
         <TabsContent value="stock"><StockReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="brand-stock"><BrandStockReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="inventory"><InventoryAgingReport dealerId={dealerId} /></TabsContent>
+        <TabsContent value="low-stock"><LowStockReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="sales"><SalesReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="retailer"><RetailerSalesReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="product-history"><ProductHistoryReport dealerId={dealerId} /></TabsContent>
@@ -634,6 +637,105 @@ function InventoryAgingReport({ dealerId }: { dealerId: string }) {
                     <TableCell className="text-right text-primary">{formatCurrency(totalFifoValue)}</TableCell>
                     <TableCell colSpan={2} />
                   </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Low Stock Report ─────────────────────────────────────
+function LowStockReport({ dealerId }: { dealerId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["report-low-stock", dealerId],
+    queryFn: () => fetchLowStockReport(dealerId),
+  });
+
+  const rows = data ?? [];
+  const critical = rows.filter((r) => r.currentStock === 0).length;
+
+  return (
+    <div className="space-y-4">
+      {rows.length > 0 && (
+        <div className="flex flex-wrap gap-4">
+          <Card className="flex-1 min-w-[160px]">
+            <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Low Stock SKUs</CardTitle></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-destructive">{rows.length}</p></CardContent>
+          </Card>
+          <Card className="flex-1 min-w-[160px]">
+            <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Out of Stock</CardTitle></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-destructive">{critical}</p></CardContent>
+          </Card>
+          <Card className="flex-1 min-w-[160px]">
+            <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Need Reorder</CardTitle></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-foreground">{rows.filter((r) => r.suggestedReorderQty > 0).length}</p></CardContent>
+          </Card>
+        </div>
+      )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <span>Low Stock Report</span>
+            {rows.length > 0 && <Badge variant="destructive" className="text-xs">{rows.length} items</Badge>}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-muted-foreground">Loading…</p>
+          ) : rows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                <span className="text-2xl">✓</span>
+              </div>
+              <p className="font-medium text-foreground">All stock levels are healthy</p>
+              <p className="text-sm text-muted-foreground mt-1">No products are below their reorder level</p>
+            </div>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead className="text-right">Reorder Level</TableHead>
+                    <TableHead className="text-right">Current Stock</TableHead>
+                    <TableHead className="text-right">Suggested Reorder Qty</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((r) => (
+                    <TableRow
+                      key={r.productId}
+                      className={r.currentStock === 0 ? "bg-destructive/5" : ""}
+                    >
+                      <TableCell className="font-mono text-sm">{r.sku}</TableCell>
+                      <TableCell className="font-medium">{r.name}</TableCell>
+                      <TableCell>{r.brand || "—"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize text-xs">{r.category}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{r.reorderLevel}</TableCell>
+                      <TableCell className="text-right">
+                        <span className={r.currentStock === 0 ? "text-destructive font-bold" : "text-destructive font-semibold"}>
+                          {r.currentStock}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold text-primary">{r.suggestedReorderQty}</TableCell>
+                      <TableCell>
+                        {r.currentStock === 0 ? (
+                          <Badge variant="destructive" className="text-xs">Out of Stock</Badge>
+                        ) : (
+                          <Badge variant="destructive" className="text-xs bg-destructive/80">Low Stock</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>

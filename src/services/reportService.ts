@@ -723,3 +723,64 @@ export async function fetchInventoryAgingReport(dealerId: string): Promise<{
 }
 
 export const REPORT_PAGE_SIZE = PAGE_SIZE;
+
+// ─── Low Stock Report ─────────────────────────────────────
+export interface LowStockRow {
+  productId: string;
+  sku: string;
+  name: string;
+  brand: string | null;
+  category: string;
+  unitType: string;
+  currentStock: number;
+  reorderLevel: number;
+  suggestedReorderQty: number;
+}
+
+export async function fetchLowStockReport(dealerId: string): Promise<LowStockRow[]> {
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, sku, name, brand, category, unit_type, reorder_level")
+    .eq("dealer_id", dealerId)
+    .eq("active", true)
+    .order("sku");
+
+  if (!products?.length) return [];
+
+  const ids = products.map((p) => p.id);
+  const { data: stocks } = await supabase
+    .from("stock")
+    .select("product_id, box_qty, piece_qty, sft_qty")
+    .eq("dealer_id", dealerId)
+    .in("product_id", ids);
+
+  const stockMap = new Map((stocks ?? []).map((s) => [s.product_id, s]));
+
+  const rows: LowStockRow[] = [];
+  for (const p of products) {
+    const s = stockMap.get(p.id);
+    const boxQty = Number(s?.box_qty ?? 0);
+    const pieceQty = Number(s?.piece_qty ?? 0);
+    const currentStock = boxQty + pieceQty;
+    const reorderLevel = p.reorder_level ?? 0;
+
+    if (currentStock <= reorderLevel) {
+      rows.push({
+        productId: p.id,
+        sku: p.sku,
+        name: p.name,
+        brand: p.brand,
+        category: p.category,
+        unitType: p.unit_type,
+        currentStock,
+        reorderLevel,
+        // Suggest enough to reach 2× reorder level buffer
+        suggestedReorderQty: Math.max(0, reorderLevel * 2 - currentStock),
+      });
+    }
+  }
+
+  // Sort by most critical first (lowest stock relative to reorder level)
+  rows.sort((a, b) => (a.currentStock - a.reorderLevel) - (b.currentStock - b.reorderLevel));
+  return rows;
+}
