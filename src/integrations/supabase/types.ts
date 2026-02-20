@@ -1095,6 +1095,48 @@ export type Database = {
           },
         ]
       }
+      subscription_plans: {
+        Row: {
+          created_at: string
+          daily_summary_enabled: boolean
+          email_enabled: boolean
+          id: string
+          is_active: boolean
+          max_users: number
+          monthly_price: number
+          name: string
+          sms_enabled: boolean
+          updated_at: string
+          yearly_price: number
+        }
+        Insert: {
+          created_at?: string
+          daily_summary_enabled?: boolean
+          email_enabled?: boolean
+          id?: string
+          is_active?: boolean
+          max_users?: number
+          monthly_price?: number
+          name: string
+          sms_enabled?: boolean
+          updated_at?: string
+          yearly_price?: number
+        }
+        Update: {
+          created_at?: string
+          daily_summary_enabled?: boolean
+          email_enabled?: boolean
+          id?: string
+          is_active?: boolean
+          max_users?: number
+          monthly_price?: number
+          name?: string
+          sms_enabled?: boolean
+          updated_at?: string
+          yearly_price?: number
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           created_at: string
