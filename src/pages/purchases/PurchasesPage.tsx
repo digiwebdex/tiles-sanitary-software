@@ -1,12 +1,13 @@
 import PurchaseList from "@/modules/purchases/PurchaseList";
+import { useDealerId } from "@/hooks/useDealerId";
 
-// TODO: Replace with actual dealer_id from auth context
-const TEMP_DEALER_ID = "00000000-0000-0000-0000-000000000000";
-
-const PurchasesPage = () => (
-  <div className="container mx-auto max-w-5xl p-6">
-    <PurchaseList dealerId={TEMP_DEALER_ID} />
-  </div>
-);
+const PurchasesPage = () => {
+  const dealerId = useDealerId();
+  return (
+    <div className="container mx-auto max-w-5xl p-6">
+      <PurchaseList dealerId={dealerId} />
+    </div>
+  );
+};
 
 export default PurchasesPage;
