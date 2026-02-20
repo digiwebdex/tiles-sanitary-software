@@ -33,15 +33,24 @@ const barChartConfig = {
 };
 
 const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["owner-dashboard", dealerId],
     queryFn: () => dashboardService.getData(dealerId),
     enabled: !!dealerId,
     refetchInterval: 60_000,
+    retry: 2,
   });
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return <p className="text-muted-foreground p-6">Loading dashboard…</p>;
+  }
+
+  if (isError || !data) {
+    return (
+      <p className="text-muted-foreground p-6">
+        Dashboard data unavailable. Please refresh the page.
+      </p>
+    );
   }
 
   const summaryCards = [
