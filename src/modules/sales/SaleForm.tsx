@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { saleSchema, type SaleFormValues } from "@/modules/sales/saleSchema";
@@ -13,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Trash2, Search } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface SaleFormProps {
@@ -26,7 +25,7 @@ interface SaleFormProps {
 
 const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabel }: SaleFormProps) => {
   const { user, isDealerAdmin } = useAuth();
-  const [skuSearch, setSkuSearch] = useState("");
+  const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
 
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
@@ -78,13 +77,13 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
 
   const stockMap = new Map(stockData.map((s) => [s.product_id, Number(s.average_cost_per_unit)]));
 
-  const filteredProducts = (() => {
-    if (!skuSearch.trim()) return products;
-    const q = skuSearch.toLowerCase();
+  const getFilteredProducts = (idx: number) => {
+    const q = (itemSearches[idx] ?? "").toLowerCase().trim();
+    if (!q) return products;
     return products.filter(
       (p) => p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)
     );
-  })();
+  };
 
   const watchItems = form.watch("items");
   const watchDiscount = form.watch("discount") || 0;
@@ -233,31 +232,23 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-foreground">Items</h3>
-              <div className="flex gap-2">
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search SKU…"
-                    value={skuSearch}
-                    onChange={(e) => setSkuSearch(e.target.value)}
-                    className="w-48 pl-8"
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => append({ product_id: "", quantity: 0, sale_rate: 0 })}
-                >
-                  <Plus className="mr-1 h-4 w-4" /> Add Item
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => append({ product_id: "", quantity: 0, sale_rate: 0 })}
+              >
+                <Plus className="mr-1 h-4 w-4" /> Add Item
+              </Button>
             </div>
 
             {fields.map((field, idx) => {
               const selectedProduct = getProduct(watchItems[idx]?.product_id);
               const itemSft = calcItemSft(idx);
               const itemTotal = calcItemTotal(idx);
+              const filtered = getFilteredProducts(idx);
+              const searchVal = itemSearches[idx] ?? "";
+              const showDropdown = searchVal.length > 0 && !watchItems[idx]?.product_id;
 
               return (
                 <Card key={field.id}>
@@ -274,21 +265,66 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
                       control={form.control}
                       name={`items.${idx}.product_id`}
                       render={() => (
-                        <FormItem className="col-span-2">
+                        <FormItem className="col-span-2 relative">
                           <FormLabel>Product</FormLabel>
-                          <Select
-                            onValueChange={(v) => handleProductSelect(idx, v)}
-                            value={watchItems[idx]?.product_id}
-                          >
-                            <FormControl><SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger></FormControl>
-                            <SelectContent>
-                              {filteredProducts.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>
-                                  {p.sku} — {p.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          {selectedProduct ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                <span className="font-mono text-muted-foreground">{selectedProduct.sku}</span>
+                                {" — "}
+                                <span>{selectedProduct.name}</span>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-xs text-muted-foreground"
+                                onClick={() => {
+                                  form.setValue(`items.${idx}.product_id`, "");
+                                  form.setValue(`items.${idx}.sale_rate`, 0);
+                                  setItemSearches((s) => ({ ...s, [idx]: "" }));
+                                }}
+                              >
+                                Change
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                placeholder="Search by SKU or name…"
+                                value={searchVal}
+                                onChange={(e) =>
+                                  setItemSearches((s) => ({ ...s, [idx]: e.target.value }))
+                                }
+                                className="pl-8"
+                                autoComplete="off"
+                              />
+                              {searchVal.length > 0 && filtered.length > 0 && (
+                                <div className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover shadow-md">
+                                  {filtered.map((p) => (
+                                    <button
+                                      key={p.id}
+                                      type="button"
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
+                                      onClick={() => {
+                                        handleProductSelect(idx, p.id);
+                                        setItemSearches((s) => ({ ...s, [idx]: "" }));
+                                      }}
+                                    >
+                                      <span className="font-mono text-xs text-muted-foreground">{p.sku}</span>
+                                      <span className="truncate">{p.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {searchVal.length > 0 && filtered.length === 0 && (
+                                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-3 text-sm text-muted-foreground shadow-md">
+                                  No products found
+                                </div>
+                              )}
+                            </div>
+                          )}
                           <FormMessage />
                         </FormItem>
                       )}
