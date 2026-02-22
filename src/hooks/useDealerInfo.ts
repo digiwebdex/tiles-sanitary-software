@@ -6,6 +6,7 @@ export interface DealerInfo {
   name: string;
   phone: string | null;
   address: string | null;
+  challan_template: string;
 }
 
 export function useDealerInfo() {
@@ -16,7 +17,7 @@ export function useDealerInfo() {
     queryFn: async (): Promise<DealerInfo> => {
       const { data, error } = await supabase
         .from("dealers")
-        .select("name, phone, address")
+        .select("name, phone, address, challan_template")
         .eq("id", dealerId)
         .single();
       if (error) throw new Error(error.message);

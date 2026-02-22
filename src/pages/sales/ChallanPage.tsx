@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Printer, Truck, FileCheck, X } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, Printer, Truck, FileCheck, X, Layout } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import ModernChallanDocument from "@/components/challan/ModernChallanDocument";
 
 const ChallanPage = () => {
   const { saleId } = useParams<{ saleId: string }>();
@@ -19,7 +21,15 @@ const ChallanPage = () => {
   const dealerId = useDealerId();
   const queryClient = useQueryClient();
   const [showPrices, setShowPrices] = useState(false);
+  const [template, setTemplate] = useState<string>("classic");
   const { data: dealerInfo } = useDealerInfo();
+
+  // Sync template from dealer settings
+  useEffect(() => {
+    if (dealerInfo?.challan_template) {
+      setTemplate(dealerInfo.challan_template);
+    }
+  }, [dealerInfo?.challan_template]);
 
   const { data: sale, isLoading: saleLoading } = useQuery({
     queryKey: ["sale", saleId],
@@ -134,8 +144,24 @@ const ChallanPage = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Template selector */}
+          <div className="flex items-center gap-1.5">
+            <Layout className="h-4 w-4 text-muted-foreground" />
+            <Select value={template} onValueChange={setTemplate}>
+              <SelectTrigger className="h-8 w-[120px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="classic">Classic</SelectItem>
+                <SelectItem value="modern">Modern</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator orientation="vertical" className="h-6 hidden sm:block" />
+
           {/* Show Prices toggle */}
-          <div className="flex items-center gap-2 mr-2">
+          <div className="flex items-center gap-2">
             <Switch checked={showPrices} onCheckedChange={setShowPrices} id="show-prices" />
             <label htmlFor="show-prices" className="text-sm text-muted-foreground cursor-pointer select-none">
               Show Prices
@@ -178,6 +204,40 @@ const ChallanPage = () => {
       {/* Preview */}
       <div className="no-print min-h-screen bg-muted/40 py-8 px-4">
         <div id="challan-print-area" className="mx-auto max-w-[210mm] bg-background shadow-lg rounded-lg overflow-hidden">
+          {template === "modern" ? (
+            <ModernChallanDocument
+              sale={sale}
+              items={items}
+              customer={customer}
+              challan={activeChallan}
+              showPrices={showPrices}
+              dealerInfo={dealerInfo}
+            />
+          ) : (
+            <ChallanDocument
+              sale={sale}
+              items={items}
+              customer={customer}
+              challan={activeChallan}
+              showPrices={showPrices}
+              dealerInfo={dealerInfo}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Print-only version */}
+      <div id="challan-print-area" className="hidden print:block">
+        {template === "modern" ? (
+          <ModernChallanDocument
+            sale={sale}
+            items={items}
+            customer={customer}
+            challan={activeChallan}
+            showPrices={showPrices}
+            dealerInfo={dealerInfo}
+          />
+        ) : (
           <ChallanDocument
             sale={sale}
             items={items}
@@ -186,19 +246,7 @@ const ChallanPage = () => {
             showPrices={showPrices}
             dealerInfo={dealerInfo}
           />
-        </div>
-      </div>
-
-      {/* Print-only version */}
-      <div id="challan-print-area" className="hidden print:block">
-        <ChallanDocument
-          sale={sale}
-          items={items}
-          customer={customer}
-          challan={activeChallan}
-          showPrices={showPrices}
-          dealerInfo={dealerInfo}
-        />
+        )}
       </div>
     </>
   );

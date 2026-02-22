@@ -389,6 +389,7 @@ export type Database = {
       dealers: {
         Row: {
           address: string | null
+          challan_template: string
           created_at: string
           id: string
           name: string
@@ -397,6 +398,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          challan_template?: string
           created_at?: string
           id?: string
           name: string
@@ -405,6 +407,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          challan_template?: string
           created_at?: string
           id?: string
           name?: string
