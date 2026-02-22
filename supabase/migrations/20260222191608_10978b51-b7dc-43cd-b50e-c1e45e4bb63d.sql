@@ -1,0 +1,1 @@
+ALTER TABLE public.challans ADD COLUMN show_price boolean NOT NULL DEFAULT false;

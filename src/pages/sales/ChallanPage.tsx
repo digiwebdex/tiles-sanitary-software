@@ -4,12 +4,14 @@ import { challanService } from "@/services/challanService";
 import { salesService } from "@/services/salesService";
 import { useDealerId } from "@/hooks/useDealerId";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Printer, Truck, FileCheck, X, Layout } from "lucide-react";
+import { ArrowLeft, Printer, Truck, FileCheck, X, Layout, Eye, EyeOff } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -20,6 +22,7 @@ const ChallanPage = () => {
   const navigate = useNavigate();
   const dealerId = useDealerId();
   const queryClient = useQueryClient();
+  const { isDealerAdmin } = useAuth();
   const [showPrices, setShowPrices] = useState(false);
   const [template, setTemplate] = useState<string>("classic");
   const { data: dealerInfo } = useDealerInfo();
@@ -43,12 +46,34 @@ const ChallanPage = () => {
     enabled: !!saleId,
   });
 
+  // Sync showPrices from saved challan show_price
+  useEffect(() => {
+    const active = (challans ?? []).find((c: any) => c.status !== "cancelled");
+    if (active) {
+      setShowPrices(!!(active as any).show_price);
+    }
+  }, [challans]);
+
+  // Persist show_price toggle to DB (dealer_admin only)
+  const handleShowPriceToggle = async (checked: boolean) => {
+    setShowPrices(checked);
+    const active = (challans ?? []).find((c: any) => c.status !== "cancelled");
+    if (active) {
+      await supabase
+        .from("challans")
+        .update({ show_price: checked } as any)
+        .eq("id", active.id);
+      queryClient.invalidateQueries({ queryKey: ["challans", saleId] });
+    }
+  };
+
   const createChallanMutation = useMutation({
     mutationFn: () =>
       challanService.create({
         dealer_id: dealerId,
         sale_id: saleId!,
         challan_date: new Date().toISOString().split("T")[0],
+        show_price: showPrices,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["challans", saleId] });
@@ -160,6 +185,15 @@ const ChallanPage = () => {
           <Badge className={statusColor[saleStatus] ?? ""}>
             {saleStatus?.replace(/_/g, " ").toUpperCase()}
           </Badge>
+          {/* Price visibility badge */}
+          {activeChallan && (
+            <Badge variant="outline" className={showPrices
+              ? "bg-green-100 text-green-800 border-green-300"
+              : "bg-amber-100 text-amber-800 border-amber-300"
+            }>
+              {showPrices ? <><Eye className="h-3 w-3 mr-1" /> Price Visible</> : <><EyeOff className="h-3 w-3 mr-1" /> Price Hidden</>}
+            </Badge>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -179,13 +213,15 @@ const ChallanPage = () => {
 
           <Separator orientation="vertical" className="h-6 hidden sm:block" />
 
-          {/* Show Prices toggle */}
-          <div className="flex items-center gap-2">
-            <Switch checked={showPrices} onCheckedChange={setShowPrices} id="show-prices" />
-            <label htmlFor="show-prices" className="text-sm text-muted-foreground cursor-pointer select-none">
-              Show Prices
-            </label>
-          </div>
+          {/* Show Prices toggle — dealer_admin only */}
+          {isDealerAdmin && (
+            <div className="flex items-center gap-2">
+              <Switch checked={showPrices} onCheckedChange={handleShowPriceToggle} id="show-prices" />
+              <label htmlFor="show-prices" className="text-sm text-muted-foreground cursor-pointer select-none">
+                Show Prices
+              </label>
+            </div>
+          )}
 
           <Separator orientation="vertical" className="h-6 hidden sm:block" />
 

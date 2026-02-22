@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Search, Eye, FileText } from "lucide-react";
+import { Search, Eye, EyeOff, FileText } from "lucide-react";
 import { format } from "date-fns";
 
 const statusStyles: Record<string, string> = {
@@ -76,6 +76,7 @@ const ChallansPage = () => {
                 <TableHead>Customer</TableHead>
                 <TableHead>Invoice Ref</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Price</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -89,6 +90,17 @@ const ChallansPage = () => {
                   <TableCell>
                     <Badge variant="outline" className={statusStyles[c.status] ?? ""}>
                       {c.status?.charAt(0).toUpperCase() + c.status?.slice(1)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={(c as any).show_price
+                      ? "bg-green-100 text-green-800 border-green-300"
+                      : "bg-amber-100 text-amber-800 border-amber-300"
+                    }>
+                      {(c as any).show_price
+                        ? <><Eye className="h-3 w-3 mr-1 inline" />Visible</>
+                        : <><EyeOff className="h-3 w-3 mr-1 inline" />Hidden</>
+                      }
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">

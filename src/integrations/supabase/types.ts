@@ -119,6 +119,7 @@ export type Database = {
           id: string
           notes: string | null
           sale_id: string
+          show_price: boolean
           status: string
           transport_name: string | null
           vehicle_no: string | null
@@ -133,6 +134,7 @@ export type Database = {
           id?: string
           notes?: string | null
           sale_id: string
+          show_price?: boolean
           status?: string
           transport_name?: string | null
           vehicle_no?: string | null
@@ -147,6 +149,7 @@ export type Database = {
           id?: string
           notes?: string | null
           sale_id?: string
+          show_price?: boolean
           status?: string
           transport_name?: string | null
           vehicle_no?: string | null

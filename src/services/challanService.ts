@@ -15,6 +15,7 @@ export interface CreateChallanInput {
   vehicle_no?: string;
   notes?: string;
   created_by?: string;
+  show_price?: boolean;
 }
 
 async function generateChallanNumber(dealerId: string): Promise<string> {
@@ -96,6 +97,7 @@ export const challanService = {
         notes: input.notes || null,
         status: "pending",
         created_by: input.created_by || null,
+        show_price: input.show_price ?? false,
       } as any)
       .select()
       .single();
