@@ -108,6 +108,66 @@ export type Database = {
           },
         ]
       }
+      challans: {
+        Row: {
+          challan_date: string
+          challan_no: string
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          driver_name: string | null
+          id: string
+          notes: string | null
+          sale_id: string
+          status: string
+          transport_name: string | null
+          vehicle_no: string | null
+        }
+        Insert: {
+          challan_date?: string
+          challan_no: string
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          driver_name?: string | null
+          id?: string
+          notes?: string | null
+          sale_id: string
+          status?: string
+          transport_name?: string | null
+          vehicle_no?: string | null
+        }
+        Update: {
+          challan_date?: string
+          challan_no?: string
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          driver_name?: string | null
+          id?: string
+          notes?: string | null
+          sale_id?: string
+          status?: string
+          transport_name?: string | null
+          vehicle_no?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "challans_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challans_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_submissions: {
         Row: {
           business_name: string | null
@@ -854,6 +914,8 @@ export type Database = {
           payment_mode: string | null
           profit: number
           sale_date: string
+          sale_status: string
+          sale_type: string
           total_amount: number
           total_box: number
           total_piece: number
@@ -879,6 +941,8 @@ export type Database = {
           payment_mode?: string | null
           profit?: number
           sale_date?: string
+          sale_status?: string
+          sale_type?: string
           total_amount?: number
           total_box?: number
           total_piece?: number
@@ -904,6 +968,8 @@ export type Database = {
           payment_mode?: string | null
           profit?: number
           sale_date?: string
+          sale_status?: string
+          sale_type?: string
           total_amount?: number
           total_box?: number
           total_piece?: number
@@ -1001,6 +1067,8 @@ export type Database = {
           id: string
           piece_qty: number
           product_id: string
+          reserved_box_qty: number
+          reserved_piece_qty: number
           sft_qty: number
           updated_at: string
         }
@@ -1011,6 +1079,8 @@ export type Database = {
           id?: string
           piece_qty?: number
           product_id: string
+          reserved_box_qty?: number
+          reserved_piece_qty?: number
           sft_qty?: number
           updated_at?: string
         }
@@ -1021,6 +1091,8 @@ export type Database = {
           id?: string
           piece_qty?: number
           product_id?: string
+          reserved_box_qty?: number
+          reserved_piece_qty?: number
           sft_qty?: number
           updated_at?: string
         }

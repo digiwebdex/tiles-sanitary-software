@@ -9,6 +9,7 @@ export const saleItemSchema = z.object({
 export const saleSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required").max(200),
   sale_date: z.string().min(1, "Date is required"),
+  sale_type: z.enum(["direct_invoice", "challan_mode"]).default("direct_invoice"),
   discount: z.coerce.number().min(0).default(0),
   discount_reference: z.string().trim().max(100).optional().or(z.literal("")),
   client_reference: z.string().trim().max(100).optional().or(z.literal("")),

@@ -16,10 +16,11 @@ const CreateSalePage = () => {
 
   const mutation = useMutation({
     mutationFn: async (values: SaleFormValues) => {
-      await salesService.create({
+      const result = await salesService.create({
         dealer_id: dealerId,
         customer_name: values.customer_name,
         sale_date: values.sale_date,
+        sale_type: values.sale_type,
         discount: values.discount,
         discount_reference: values.discount_reference || "",
         client_reference: values.client_reference || "",
@@ -28,11 +29,16 @@ const CreateSalePage = () => {
         notes: values.notes,
         items: values.items as SaleItemInput[],
       });
+      return { id: result!.id, sale_type: values.sale_type };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["stock"] });
-      toast.success("Sale confirmed & stock updated");
+      if (data.sale_type === "challan_mode") {
+        toast.success("Sale created in challan mode (draft)");
+      } else {
+        toast.success("Sale confirmed & stock updated");
+      }
       navigate("/sales");
     },
     onError: (e) => toast.error(e.message),

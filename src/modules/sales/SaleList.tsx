@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Plus, FileText } from "lucide-react";
+import { Plus, FileText, Truck } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -55,6 +55,8 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                   <TableHead>Invoice</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Customer</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Due</TableHead>
@@ -65,33 +67,60 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sales.map((s: any) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-mono text-sm">{s.invoice_number}</TableCell>
-                    <TableCell>{s.sale_date}</TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2">
-                        {s.customers?.name ?? "—"}
-                        <Badge variant="outline" className="text-xs capitalize">{s.customers?.type}</Badge>
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(s.total_amount)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(s.paid_amount)}</TableCell>
-                    <TableCell className={`text-right ${Number(s.due_amount) > 0 ? "text-destructive font-semibold" : ""}`}>
-                      {formatCurrency(s.due_amount)}
-                    </TableCell>
-                    {isDealerAdmin && (
-                      <TableCell className={`text-right font-semibold ${Number(s.profit) >= 0 ? "text-primary" : "text-destructive"}`}>
-                        {formatCurrency(s.profit)}
+                {sales.map((s: any) => {
+                  const isChallan = s.sale_type === "challan_mode";
+                  const statusColors: Record<string, string> = {
+                    draft: "bg-yellow-100 text-yellow-800",
+                    challan_created: "bg-blue-100 text-blue-800",
+                    delivered: "bg-green-100 text-green-800",
+                    invoiced: "bg-primary/10 text-primary",
+                  };
+                  return (
+                    <TableRow key={s.id}>
+                      <TableCell className="font-mono text-sm">{s.invoice_number}</TableCell>
+                      <TableCell>{s.sale_date}</TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-2">
+                          {s.customers?.name ?? "—"}
+                          <Badge variant="outline" className="text-xs capitalize">{s.customers?.type}</Badge>
+                        </span>
                       </TableCell>
-                    )}
-                    <TableCell>
-                      <Button size="icon" variant="ghost" onClick={() => navigate(`/sales/${s.id}/invoice`)}>
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {isChallan ? "Challan" : "Direct"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`text-xs ${statusColors[s.sale_status] ?? ""}`}>
+                          {(s.sale_status ?? "invoiced").replace(/_/g, " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(s.total_amount)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(s.paid_amount)}</TableCell>
+                      <TableCell className={`text-right ${Number(s.due_amount) > 0 ? "text-destructive font-semibold" : ""}`}>
+                        {formatCurrency(s.due_amount)}
+                      </TableCell>
+                      {isDealerAdmin && (
+                        <TableCell className={`text-right font-semibold ${Number(s.profit) >= 0 ? "text-primary" : "text-destructive"}`}>
+                          {formatCurrency(s.profit)}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <div className="flex gap-1">
+                          {isChallan && s.sale_status !== "invoiced" ? (
+                            <Button size="icon" variant="ghost" onClick={() => navigate(`/sales/${s.id}/challan`)}>
+                              <Truck className="h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <Button size="icon" variant="ghost" onClick={() => navigate(`/sales/${s.id}/invoice`)}>
+                              <FileText className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
