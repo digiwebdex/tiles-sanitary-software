@@ -112,9 +112,12 @@ const ChallanPage = () => {
             width: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
+            font-size: 12px !important;
           }
           .no-print { display: none !important; }
-          @page { size: A4; margin: 12mm 15mm; }
+          @page { size: A4 portrait; margin: 10mm 12mm; }
+          table { page-break-inside: avoid; }
+          .challan-signature { page-break-inside: avoid; }
         }
       `}</style>
 
@@ -213,188 +216,209 @@ interface ChallanDocumentProps {
 }
 
 const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo }: ChallanDocumentProps) => {
+  const challanDate = challan ? (challan as any).challan_date : sale.sale_date;
+  const challanNo = challan ? (challan as any).challan_no : "—";
+  const status = challan ? (challan as any).status : null;
+
   return (
-    <div className="p-10 font-sans text-[13px] leading-relaxed text-gray-800">
-      {/* ── Header with dealer branding ── */}
-      <div className="border-b-4 border-gray-900 pb-5 mb-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-gray-900 uppercase">
-              {dealerInfo?.name ?? "Your Business Name"}
-            </h1>
-            <p className="text-xs text-gray-500 mt-0.5">Tile & Sanitary Dealer</p>
-            {dealerInfo?.phone && <p className="text-xs text-gray-500">{dealerInfo.phone}</p>}
-            {dealerInfo?.address && <p className="text-xs text-gray-500 max-w-[260px]">{dealerInfo.address}</p>}
-          </div>
-          <div className="text-right">
-            {challan && (
-              <div className={`inline-block px-3 py-1 rounded text-xs font-bold tracking-widest uppercase border ${
-                (challan as any).status === "delivered"
-                  ? "text-green-700 bg-green-50 border-green-300"
-                  : (challan as any).status === "cancelled"
-                  ? "text-red-700 bg-red-50 border-red-300"
-                  : "text-blue-700 bg-blue-50 border-blue-300"
-              }`}>
-                {(challan as any).status}
-              </div>
-            )}
-          </div>
+    <div className="p-8 sm:p-10 font-sans text-[13px] leading-relaxed text-foreground print:p-6">
+
+      {/* ═══ HEADER ═══ */}
+      <div className="text-center border-b-2 border-foreground pb-4 mb-1">
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight uppercase text-foreground">
+          {dealerInfo?.name ?? "Your Business Name"}
+        </h1>
+        <p className="text-[11px] text-muted-foreground mt-0.5">Tile & Sanitary Dealer</p>
+        <div className="flex items-center justify-center gap-3 mt-1 text-[11px] text-muted-foreground">
+          {dealerInfo?.phone && <span>📞 {dealerInfo.phone}</span>}
+          {dealerInfo?.address && <span>📍 {dealerInfo.address}</span>}
         </div>
       </div>
 
-      {/* ── Title bar ── */}
-      <div className="bg-gray-900 text-white rounded-md px-5 py-3 mb-6 flex items-center justify-between">
-        <h2 className="text-lg font-bold tracking-wide uppercase">Delivery Challan</h2>
-        <div className="text-right text-xs space-y-0.5">
-          {challan && (
-            <p className="text-sm font-mono font-bold">{(challan as any).challan_no}</p>
+      {/* ═══ TITLE BAR ═══ */}
+      <div className="bg-foreground text-background py-2.5 px-5 flex items-center justify-between my-4 print:my-3">
+        <h2 className="text-base font-bold tracking-[0.15em] uppercase">Delivery Challan</h2>
+        <div className="text-right text-[11px] space-y-0.5">
+          <p className="font-mono font-bold text-sm">{challanNo}</p>
+          <p>Date: {challanDate}</p>
+        </div>
+      </div>
+
+      {/* ═══ CUSTOMER & TRANSPORT ═══ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 border border-border mb-5 print:mb-4">
+        {/* Deliver To */}
+        <div className="p-4 sm:border-r border-border">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground mb-2 border-b border-border pb-1">
+            Deliver To
+          </p>
+          <p className="font-bold text-[15px] text-foreground">{customer?.name ?? "—"}</p>
+          {customer?.type && (
+            <span className="inline-block mt-1 text-[9px] uppercase tracking-wider bg-muted text-muted-foreground px-2 py-0.5 rounded-sm font-semibold">
+              {customer.type}
+            </span>
           )}
-          <p>Date: {challan ? (challan as any).challan_date : sale.sale_date}</p>
-          <p>Ref: {sale.invoice_number ?? "—"}</p>
+          {customer?.phone && <p className="text-[11px] text-muted-foreground mt-1.5">📞 {customer.phone}</p>}
+          {customer?.address && <p className="text-[11px] text-muted-foreground leading-snug">{customer.address}</p>}
         </div>
-      </div>
-
-      {/* ── Deliver To + Transport Details ── */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="border rounded-md p-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Deliver To</p>
-          <p className="font-bold text-base text-gray-900">{customer?.name ?? "—"}</p>
-          {customer?.phone && <p className="text-xs text-gray-600 mt-1">{customer.phone}</p>}
-          {customer?.address && <p className="text-xs text-gray-600">{customer.address}</p>}
-        </div>
-        <div className="border rounded-md p-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Transport Details</p>
+        {/* Transport */}
+        <div className="p-4 border-t sm:border-t-0 border-border">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground mb-2 border-b border-border pb-1">
+            Transport Details
+          </p>
           {challan ? (
-            <div className="space-y-1 text-xs">
-              {(challan as any).driver_name && (
-                <p><span className="text-gray-400">Driver:</span> <span className="font-semibold text-gray-700">{(challan as any).driver_name}</span></p>
-              )}
-              {(challan as any).transport_name && (
-                <p><span className="text-gray-400">Transport:</span> <span className="font-semibold text-gray-700">{(challan as any).transport_name}</span></p>
-              )}
-              {(challan as any).vehicle_no && (
-                <p><span className="text-gray-400">Vehicle:</span> <span className="font-semibold text-gray-700">{(challan as any).vehicle_no}</span></p>
-              )}
-              {!(challan as any).driver_name && !(challan as any).transport_name && !(challan as any).vehicle_no && (
-                <p className="text-gray-400 italic">Not specified</p>
-              )}
+            <div className="space-y-1.5 text-[12px]">
+              <div className="grid grid-cols-[80px_1fr] gap-1">
+                <span className="text-muted-foreground">Driver:</span>
+                <span className="font-medium text-foreground">{(challan as any).driver_name || "—"}</span>
+              </div>
+              <div className="grid grid-cols-[80px_1fr] gap-1">
+                <span className="text-muted-foreground">Transport:</span>
+                <span className="font-medium text-foreground">{(challan as any).transport_name || "—"}</span>
+              </div>
+              <div className="grid grid-cols-[80px_1fr] gap-1">
+                <span className="text-muted-foreground">Vehicle:</span>
+                <span className="font-medium text-foreground">{(challan as any).vehicle_no || "—"}</span>
+              </div>
             </div>
           ) : (
-            <p className="text-xs text-gray-400 italic">No challan created yet</p>
+            <p className="text-[11px] text-muted-foreground italic">No challan created yet</p>
           )}
         </div>
       </div>
 
-      {/* ── Items Table ── */}
-      <div className="mb-6 rounded-md overflow-hidden border">
-        <table className="w-full text-[13px]">
+      {/* ═══ REFERENCE INFO ═══ */}
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] mb-4 text-muted-foreground">
+        <span><strong className="text-foreground">Invoice Ref:</strong> {sale.invoice_number ?? "—"}</span>
+        {sale.client_reference && <span><strong className="text-foreground">Client Ref:</strong> {sale.client_reference}</span>}
+        {sale.fitter_reference && <span><strong className="text-foreground">Fitter:</strong> {sale.fitter_reference}</span>}
+        {status && (
+          <span>
+            <strong className="text-foreground">Status:</strong>{" "}
+            <span className={`font-semibold ${
+              status === "delivered" ? "text-green-700" : status === "cancelled" ? "text-destructive" : "text-blue-700"
+            }`}>
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+            </span>
+          </span>
+        )}
+      </div>
+
+      {/* ═══ ITEMS TABLE ═══ */}
+      <div className="mb-5 print:mb-4">
+        <table className="w-full text-[12px] border-collapse">
           <thead>
-            <tr className="bg-gray-900 text-white">
-              <th className="px-3 py-2.5 text-left font-semibold w-10">#</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Product</th>
-              <th className="px-3 py-2.5 text-center font-semibold w-20">Qty</th>
-              <th className="px-3 py-2.5 text-center font-semibold w-20">SFT</th>
-              {showPrices && <th className="px-3 py-2.5 text-right font-semibold w-24">Rate</th>}
-              {showPrices && <th className="px-3 py-2.5 text-right font-semibold w-28">Amount</th>}
+            <tr className="bg-foreground text-background">
+              <th className="px-3 py-2 text-left font-semibold w-8 border border-foreground">#</th>
+              <th className="px-3 py-2 text-left font-semibold border border-foreground">Item Description</th>
+              <th className="px-3 py-2 text-center font-semibold w-16 border border-foreground">Qty</th>
+              <th className="px-3 py-2 text-center font-semibold w-14 border border-foreground">Unit</th>
+              <th className="px-3 py-2 text-center font-semibold w-20 border border-foreground">SFT</th>
+              {showPrices && <th className="px-3 py-2 text-right font-semibold w-24 border border-foreground">Rate</th>}
+              {showPrices && <th className="px-3 py-2 text-right font-semibold w-28 border border-foreground">Amount</th>}
             </tr>
           </thead>
           <tbody>
             {items.map((item: any, idx: number) => (
-              <tr key={item.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-3 py-2.5 text-gray-400">{idx + 1}</td>
-                <td className="px-3 py-2.5">
-                  <p className="font-semibold text-gray-900">{item.products?.name}</p>
-                  <p className="text-[10px] text-gray-400 font-mono">{item.products?.sku}</p>
+              <tr key={item.id} className={idx % 2 === 0 ? "bg-background" : "bg-muted/40"}>
+                <td className="px-3 py-2 border border-border text-muted-foreground text-center">{idx + 1}</td>
+                <td className="px-3 py-2 border border-border">
+                  <p className="font-semibold text-foreground leading-tight">{item.products?.name}</p>
+                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.products?.sku}</p>
                 </td>
-                <td className="px-3 py-2.5 text-center">
-                  <span className="font-medium">{item.quantity}</span>
-                  <span className="ml-1 text-[10px] text-gray-400">
-                    {item.products?.unit_type === "box_sft" ? "box" : "pc"}
-                  </span>
+                <td className="px-3 py-2 border border-border text-center font-semibold text-foreground">
+                  {item.quantity}
                 </td>
-                <td className="px-3 py-2.5 text-center text-gray-600">
+                <td className="px-3 py-2 border border-border text-center text-muted-foreground text-[11px]">
+                  {item.products?.unit_type === "box_sft" ? "Box" : "Pc"}
+                </td>
+                <td className="px-3 py-2 border border-border text-center text-foreground">
                   {item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}
                 </td>
                 {showPrices && (
-                  <td className="px-3 py-2.5 text-right text-gray-700">{formatCurrency(item.sale_rate)}</td>
+                  <td className="px-3 py-2 border border-border text-right text-foreground">{formatCurrency(item.sale_rate)}</td>
                 )}
                 {showPrices && (
-                  <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{formatCurrency(item.total)}</td>
+                  <td className="px-3 py-2 border border-border text-right font-bold text-foreground">{formatCurrency(item.total)}</td>
                 )}
+              </tr>
+            ))}
+            {/* Empty rows for print alignment */}
+            {items.length < 5 && Array.from({ length: 5 - items.length }).map((_, i) => (
+              <tr key={`empty-${i}`} className="print:table-row hidden">
+                <td className="px-3 py-2 border border-border">&nbsp;</td>
+                <td className="px-3 py-2 border border-border"></td>
+                <td className="px-3 py-2 border border-border"></td>
+                <td className="px-3 py-2 border border-border"></td>
+                <td className="px-3 py-2 border border-border"></td>
+                {showPrices && <td className="px-3 py-2 border border-border"></td>}
+                {showPrices && <td className="px-3 py-2 border border-border"></td>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* ── Quantity Summary Bar ── */}
-      <div className="mb-6 bg-gray-50 rounded-md border px-5 py-3 flex items-center justify-around text-center">
-        <div>
-          <p className="text-[10px] uppercase text-gray-400 font-bold">Total Box</p>
-          <p className="text-lg font-bold text-gray-900">{Number(sale.total_box)}</p>
-        </div>
-        <Separator orientation="vertical" className="h-10" />
-        <div>
-          <p className="text-[10px] uppercase text-gray-400 font-bold">Total SFT</p>
-          <p className="text-lg font-bold text-gray-900">{Number(sale.total_sft).toFixed(2)}</p>
-        </div>
-        <Separator orientation="vertical" className="h-10" />
-        <div>
-          <p className="text-[10px] uppercase text-gray-400 font-bold">Total Piece</p>
-          <p className="text-lg font-bold text-gray-900">{Number(sale.total_piece)}</p>
+      {/* ═══ QUANTITY SUMMARY ═══ */}
+      <div className="mb-5 print:mb-4 border border-border">
+        <div className="grid grid-cols-3 divide-x divide-border">
+          {[
+            { label: "Total Boxes", value: Number(sale.total_box) },
+            { label: "Total SFT", value: Number(sale.total_sft).toFixed(2) },
+            { label: "Total Pieces", value: Number(sale.total_piece) },
+          ].map((s) => (
+            <div key={s.label} className="py-3 px-4 text-center">
+              <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-muted-foreground">{s.label}</p>
+              <p className="text-xl font-black text-foreground mt-0.5">{s.value}</p>
+            </div>
+          ))}
         </div>
         {showPrices && (
-          <>
-            <Separator orientation="vertical" className="h-10" />
-            <div>
-              <p className="text-[10px] uppercase text-gray-400 font-bold">Total Amount</p>
-              <p className="text-lg font-bold text-gray-900">{formatCurrency(sale.total_amount)}</p>
-            </div>
-          </>
+          <div className="border-t border-border py-3 px-4 text-center bg-muted/40">
+            <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-muted-foreground">Total Amount</p>
+            <p className="text-xl font-black text-foreground mt-0.5">{formatCurrency(sale.total_amount)}</p>
+          </div>
         )}
       </div>
 
-      {/* ── Notes ── */}
+      {/* ═══ NOTES ═══ */}
       {challan && (challan as any).notes && (
-        <div className="rounded-md border p-4 mb-6">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Notes</p>
-          <p className="text-xs text-gray-600">{(challan as any).notes}</p>
+        <div className="border border-border p-3 mb-5 print:mb-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground mb-1">Notes</p>
+          <p className="text-[11px] text-foreground">{(challan as any).notes}</p>
         </div>
       )}
 
-      {/* ── Terms & Conditions ── */}
-      <div className="rounded-md border p-4 mb-8">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Terms & Conditions</p>
-        <ul className="text-[10px] text-gray-500 list-disc list-inside space-y-0.5">
-          <li>Goods once delivered will not be taken back without prior approval.</li>
-          <li>Please check the goods at the time of delivery.</li>
-          <li>This is a delivery challan and not a tax invoice.</li>
-        </ul>
+      {/* ═══ TERMS & CONDITIONS ═══ */}
+      <div className="border border-border p-3 mb-8 print:mb-6">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground mb-1">Terms & Conditions</p>
+        <ol className="text-[10px] text-muted-foreground list-decimal list-inside space-y-0.5">
+          <li>Goods once delivered will not be taken back without prior written approval.</li>
+          <li>Please check the goods thoroughly at the time of delivery.</li>
+          <li>This is a delivery challan only — not a tax invoice.</li>
+          <li>Any discrepancy must be reported within 24 hours of delivery.</li>
+        </ol>
       </div>
 
-      {/* ── Signature Areas ── */}
-      <div className="grid grid-cols-2 gap-12 mt-4 mb-6">
+      {/* ═══ SIGNATURES ═══ */}
+      <div className="challan-signature grid grid-cols-3 gap-6 mt-6 mb-4">
         <div className="text-center">
-          <div className="h-20"></div>
-          <div className="border-t border-gray-400 pt-2">
-            <p className="text-xs text-gray-500 font-medium">Receiver's Signature & Stamp</p>
-          </div>
+          <div className="h-16 border-b border-foreground/30"></div>
+          <p className="text-[10px] text-muted-foreground font-semibold mt-2">Prepared By</p>
         </div>
         <div className="text-center">
-          <div className="h-20"></div>
-          <div className="border-t border-gray-400 pt-2">
-            <p className="text-xs text-gray-500 font-medium">Authorized Signature & Stamp</p>
-          </div>
+          <div className="h-16 border-b border-foreground/30"></div>
+          <p className="text-[10px] text-muted-foreground font-semibold mt-2">Receiver's Signature & Stamp</p>
+        </div>
+        <div className="text-center">
+          <div className="h-16 border-b border-foreground/30"></div>
+          <p className="text-[10px] text-muted-foreground font-semibold mt-2">Authorized Signatory</p>
         </div>
       </div>
 
-      {/* ── Footer ── */}
-      <Separator className="mb-3" />
-      <div className="flex justify-between text-[10px] text-gray-400">
-        <span>This is a delivery challan, not a tax invoice.</span>
-        <span>
-          {challan ? `Challan #${(challan as any).challan_no}` : sale.invoice_number} · {challan ? (challan as any).challan_date : sale.sale_date}
-        </span>
+      {/* ═══ FOOTER ═══ */}
+      <div className="border-t border-border pt-2 mt-4 flex justify-between text-[9px] text-muted-foreground">
+        <span>This document is a delivery challan and does not serve as a tax invoice.</span>
+        <span className="font-mono">{challanNo} · {challanDate}</span>
       </div>
     </div>
   );
