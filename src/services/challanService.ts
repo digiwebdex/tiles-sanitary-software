@@ -129,6 +129,7 @@ export const challanService = {
       .from("challans")
       .select("*, sales(id, sale_status)")
       .eq("id", challanId)
+      .eq("dealer_id", dealerId)
       .single();
     if (error || !challan) throw new Error("Challan not found");
     if ((challan as any).status !== "pending") throw new Error("Challan is not pending");
@@ -161,6 +162,7 @@ export const challanService = {
       .from("sales")
       .select("*, sale_items(product_id, quantity, total, products(unit_type, per_box_sft)), customers(name)")
       .eq("id", saleId)
+      .eq("dealer_id", dealerId)
       .single();
     if (saleErr || !sale) throw new Error("Sale not found");
     if ((sale as any).sale_status !== "delivered" && (sale as any).sale_status !== "challan_created") {
@@ -231,6 +233,7 @@ export const challanService = {
       .from("challans")
       .select("*, sales(id, sale_items(product_id, quantity, products(unit_type)))")
       .eq("id", challanId)
+      .eq("dealer_id", dealerId)
       .single();
     if (error || !challan) throw new Error("Challan not found");
 
