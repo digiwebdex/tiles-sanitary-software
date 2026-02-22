@@ -17,6 +17,7 @@ export interface CreateSaleInput {
   dealer_id: string;
   customer_name: string;
   sale_date: string;
+  sale_type?: "direct_invoice" | "challan_mode";
   discount: number;
   discount_reference: string;
   client_reference: string;
@@ -148,6 +149,7 @@ export const salesService = {
     const netProfit = grossProfit; // transport/labor already baked into landed_cost → COGS
     const profit = grossProfit; // keep legacy field in sync
 
+    const isChallanMode = input.sale_type === "challan_mode";
     const invoiceNumber = await generateInvoiceNumber(input.dealer_id);
 
     const { data: sale, error: sErr } = await supabase
@@ -174,6 +176,8 @@ export const salesService = {
         notes: input.notes || null,
         payment_mode: input.payment_mode || null,
         created_by: input.created_by || null,
+        sale_type: input.sale_type || "direct_invoice",
+        sale_status: isChallanMode ? "draft" : "invoiced",
       } as any)
       .select()
       .single();
@@ -192,42 +196,45 @@ export const salesService = {
     const { error: iErr } = await supabase.from("sale_items").insert(itemRows);
     if (iErr) throw new Error(iErr.message);
 
-    for (const item of input.items) {
-      await stockService.deductStock(item.product_id, item.quantity, input.dealer_id);
-    }
+    // For challan_mode: don't deduct stock or create ledger entries yet
+    if (!isChallanMode) {
+      for (const item of input.items) {
+        await stockService.deductStock(item.product_id, item.quantity, input.dealer_id);
+      }
 
-    await customerLedgerService.addEntry({
-      dealer_id: input.dealer_id,
-      customer_id: customerId,
-      sale_id: sale!.id,
-      type: "sale",
-      amount: totalAmount,
-      description: `Sale ${invoiceNumber}`,
-      entry_date: input.sale_date,
-    });
-
-    if (input.paid_amount > 0) {
       await customerLedgerService.addEntry({
         dealer_id: input.dealer_id,
         customer_id: customerId,
         sale_id: sale!.id,
-        type: "payment",
-        amount: -input.paid_amount,
-        description: `Payment received for ${invoiceNumber}`,
+        type: "sale",
+        amount: totalAmount,
+        description: `Sale ${invoiceNumber}`,
         entry_date: input.sale_date,
       });
-    }
 
-    if (input.paid_amount > 0) {
-      await cashLedgerService.addEntry({
-        dealer_id: input.dealer_id,
-        type: "receipt",
-        amount: input.paid_amount,
-        description: `Payment received: ${invoiceNumber}`,
-        reference_type: "sales",
-        reference_id: sale!.id,
-        entry_date: input.sale_date,
-      });
+      if (input.paid_amount > 0) {
+        await customerLedgerService.addEntry({
+          dealer_id: input.dealer_id,
+          customer_id: customerId,
+          sale_id: sale!.id,
+          type: "payment",
+          amount: -input.paid_amount,
+          description: `Payment received for ${invoiceNumber}`,
+          entry_date: input.sale_date,
+        });
+      }
+
+      if (input.paid_amount > 0) {
+        await cashLedgerService.addEntry({
+          dealer_id: input.dealer_id,
+          type: "receipt",
+          amount: input.paid_amount,
+          description: `Payment received: ${invoiceNumber}`,
+          reference_type: "sales",
+          reference_id: sale!.id,
+          entry_date: input.sale_date,
+        });
+      }
     }
 
     // Audit log

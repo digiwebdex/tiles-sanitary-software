@@ -32,6 +32,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     defaultValues: {
       customer_name: dv?.customer_name ?? "",
       sale_date: dv?.sale_date ?? new Date().toISOString().split("T")[0],
+      sale_type: dv?.sale_type ?? "direct_invoice",
       discount: dv?.discount ?? 0,
       discount_reference: dv?.discount_reference ?? "",
       client_reference: dv?.client_reference ?? "",
@@ -157,6 +158,44 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     <>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
+          {/* Sale Type Toggle */}
+          <div className="flex items-center gap-4 rounded-md border bg-muted/50 p-3">
+            <span className="text-sm font-medium text-foreground">Sale Type:</span>
+            <FormField
+              control={form.control}
+              name="sale_type"
+              render={({ field }) => (
+                <FormItem className="flex items-center gap-2 space-y-0">
+                  <div className="flex rounded-md border overflow-hidden">
+                    <button
+                      type="button"
+                      className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+                        field.value === "direct_invoice"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background text-muted-foreground hover:bg-accent"
+                      }`}
+                      onClick={() => field.onChange("direct_invoice")}
+                    >
+                      Direct Invoice
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+                        field.value === "challan_mode"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background text-muted-foreground hover:bg-accent"
+                      }`}
+                      onClick={() => field.onChange("challan_mode")}
+                    >
+                      Challan Mode
+                    </button>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
           {/* Header */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <FormField
@@ -448,7 +487,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
           )}
 
           <Button type="submit" disabled={isLoading} className="w-full md:w-auto">
-            {isLoading ? "Processing…" : (submitLabel ?? "Confirm Sale")}
+            {isLoading ? "Processing…" : (submitLabel ?? (form.watch("sale_type") === "challan_mode" ? "Create Sale (Challan)" : "Confirm Sale"))}
           </Button>
         </form>
       </Form>

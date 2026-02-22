@@ -145,5 +145,129 @@ export const stockService = {
     return applyStockChange(productId, dealerId, quantity, type);
   },
 
+  /**
+   * Reserve stock: reduce available, increase reserved (for challan workflow)
+   */
+  async reserveStock(productId: string, quantity: number, dealerId: string) {
+    if (quantity <= 0) throw new Error("Quantity must be positive");
+
+    const product = await getProduct(productId);
+    const stock = await getOrCreateStock(productId, dealerId);
+
+    if (product.unit_type === "box_sft") {
+      const available = Number(stock.box_qty) - Number((stock as any).reserved_box_qty ?? 0);
+      if (quantity > available) throw new Error(`Insufficient available box stock (available: ${available})`);
+      const { error } = await supabase
+        .from("stock")
+        .update({
+          box_qty: Number(stock.box_qty) - quantity,
+          sft_qty: (Number(stock.box_qty) - quantity) * (product.per_box_sft ?? 0),
+          reserved_box_qty: Number((stock as any).reserved_box_qty ?? 0) + quantity,
+        } as any)
+        .eq("product_id", productId)
+        .eq("dealer_id", dealerId);
+      if (error) throw new Error(`Reserve stock failed: ${error.message}`);
+    } else {
+      const available = Number(stock.piece_qty) - Number((stock as any).reserved_piece_qty ?? 0);
+      if (quantity > available) throw new Error(`Insufficient available piece stock (available: ${available})`);
+      const { error } = await supabase
+        .from("stock")
+        .update({
+          piece_qty: Number(stock.piece_qty) - quantity,
+          reserved_piece_qty: Number((stock as any).reserved_piece_qty ?? 0) + quantity,
+        } as any)
+        .eq("product_id", productId)
+        .eq("dealer_id", dealerId);
+      if (error) throw new Error(`Reserve stock failed: ${error.message}`);
+    }
+
+    await logAudit({
+      dealer_id: dealerId,
+      action: "stock_reserve",
+      table_name: "stock",
+      record_id: stock.id,
+      new_data: { product_id: productId, quantity, type: "reserve" },
+    });
+  },
+
+  /**
+   * Unreserve stock: move from reserved back to available (challan cancelled)
+   */
+  async unreserveStock(productId: string, quantity: number, dealerId: string) {
+    if (quantity <= 0) throw new Error("Quantity must be positive");
+
+    const product = await getProduct(productId);
+    const stock = await getOrCreateStock(productId, dealerId);
+
+    if (product.unit_type === "box_sft") {
+      const { error } = await supabase
+        .from("stock")
+        .update({
+          box_qty: Number(stock.box_qty) + quantity,
+          sft_qty: (Number(stock.box_qty) + quantity) * (product.per_box_sft ?? 0),
+          reserved_box_qty: Math.max(0, Number((stock as any).reserved_box_qty ?? 0) - quantity),
+        } as any)
+        .eq("product_id", productId)
+        .eq("dealer_id", dealerId);
+      if (error) throw new Error(`Unreserve stock failed: ${error.message}`);
+    } else {
+      const { error } = await supabase
+        .from("stock")
+        .update({
+          piece_qty: Number(stock.piece_qty) + quantity,
+          reserved_piece_qty: Math.max(0, Number((stock as any).reserved_piece_qty ?? 0) - quantity),
+        } as any)
+        .eq("product_id", productId)
+        .eq("dealer_id", dealerId);
+      if (error) throw new Error(`Unreserve stock failed: ${error.message}`);
+    }
+
+    await logAudit({
+      dealer_id: dealerId,
+      action: "stock_unreserve",
+      table_name: "stock",
+      record_id: stock.id,
+      new_data: { product_id: productId, quantity, type: "unreserve" },
+    });
+  },
+
+  /**
+   * Deduct reserved stock permanently (challan → invoice conversion)
+   */
+  async deductReservedStock(productId: string, quantity: number, dealerId: string) {
+    if (quantity <= 0) throw new Error("Quantity must be positive");
+
+    const product = await getProduct(productId);
+    const stock = await getOrCreateStock(productId, dealerId);
+
+    if (product.unit_type === "box_sft") {
+      const { error } = await supabase
+        .from("stock")
+        .update({
+          reserved_box_qty: Math.max(0, Number((stock as any).reserved_box_qty ?? 0) - quantity),
+        } as any)
+        .eq("product_id", productId)
+        .eq("dealer_id", dealerId);
+      if (error) throw new Error(`Deduct reserved stock failed: ${error.message}`);
+    } else {
+      const { error } = await supabase
+        .from("stock")
+        .update({
+          reserved_piece_qty: Math.max(0, Number((stock as any).reserved_piece_qty ?? 0) - quantity),
+        } as any)
+        .eq("product_id", productId)
+        .eq("dealer_id", dealerId);
+      if (error) throw new Error(`Deduct reserved stock failed: ${error.message}`);
+    }
+
+    await logAudit({
+      dealer_id: dealerId,
+      action: "stock_deduct_reserved",
+      table_name: "stock",
+      record_id: stock.id,
+      new_data: { product_id: productId, quantity, type: "deduct_reserved" },
+    });
+  },
+
   updateAverageCost,
 };
