@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard, Package, ShoppingCart, Receipt, RotateCcw,
-  BookOpen, BarChart3, LogOut, Settings, Clock, Truck, Users, ShieldCheck,
+  BookOpen, BarChart3, LogOut, Settings, Clock, Truck, Users, ShieldCheck, FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,7 @@ const navItems = [
   { path: "/purchases", label: "Purchases", icon: ShoppingCart },
   { path: "/customers", label: "Customers", icon: Users },
   { path: "/sales", label: "Sales", icon: Receipt },
+  { path: "/challans", label: "Challans", icon: FileText },
   { path: "/sales-returns", label: "Returns", icon: RotateCcw },
   { path: "/ledger", label: "Ledger", icon: BookOpen },
   { path: "/reports", label: "Reports", icon: BarChart3, readonlyAllowed: true },
