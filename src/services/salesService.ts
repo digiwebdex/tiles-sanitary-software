@@ -15,7 +15,7 @@ export interface SaleItemInput {
 
 export interface CreateSaleInput {
   dealer_id: string;
-  customer_id: string;
+  customer_name: string;
   sale_date: string;
   discount: number;
   discount_reference: string;
@@ -67,10 +67,33 @@ export const salesService = {
 
   async create(input: CreateSaleInput) {
     rateLimits.api("sale_create");
-    // Tenant isolation guard — reject forged dealer_id
     await assertDealerId(input.dealer_id);
-    // Service-level validation
-    validateInput(createSaleServiceSchema, input);
+
+    // Find or create customer by name
+    const customerName = input.customer_name.trim();
+    let customerId: string;
+    const { data: existing } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("dealer_id", input.dealer_id)
+      .ilike("name", customerName)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      customerId = existing.id;
+    } else {
+      const { data: created, error: cErr } = await supabase
+        .from("customers")
+        .insert({ dealer_id: input.dealer_id, name: customerName, type: "customer" as const, status: "active" })
+        .select("id")
+        .single();
+      if (cErr) throw new Error(cErr.message);
+      customerId = created!.id;
+    }
+
+    // Service-level validation (validate items etc.)
+    validateInput(createSaleServiceSchema, { ...input, customer_id: customerId });
 
     // Fetch product details + stock for avg cost
     const productIds = input.items.map((i) => i.product_id);
@@ -131,7 +154,7 @@ export const salesService = {
       .from("sales")
       .insert({
         dealer_id: input.dealer_id,
-        customer_id: input.customer_id,
+        customer_id: customerId,
         invoice_number: invoiceNumber,
         sale_date: input.sale_date,
         total_amount: totalAmount,
@@ -175,7 +198,7 @@ export const salesService = {
 
     await customerLedgerService.addEntry({
       dealer_id: input.dealer_id,
-      customer_id: input.customer_id,
+      customer_id: customerId,
       sale_id: sale!.id,
       type: "sale",
       amount: totalAmount,
@@ -186,7 +209,7 @@ export const salesService = {
     if (input.paid_amount > 0) {
       await customerLedgerService.addEntry({
         dealer_id: input.dealer_id,
-        customer_id: input.customer_id,
+        customer_id: customerId,
         sale_id: sale!.id,
         type: "payment",
         amount: -input.paid_amount,
@@ -216,7 +239,7 @@ export const salesService = {
       record_id: sale!.id,
       new_data: {
         invoice_number: invoiceNumber,
-        customer_id: input.customer_id,
+        customer_id: customerId,
         total_amount: totalAmount,
         item_count: input.items.length,
       },
@@ -229,7 +252,7 @@ export const salesService = {
         const { data: customer } = await supabase
           .from("customers")
           .select("name, phone")
-          .eq("id", input.customer_id)
+          .eq("id", customerId)
           .single();
         notificationService.notifySaleCreated(input.dealer_id, {
           invoice_number: invoiceNumber,

@@ -9,18 +9,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Trash2, Search, AlertTriangle, ShieldAlert } from "lucide-react";
+import { Plus, Trash2, Search } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { checkCreditBeforeSale, logCreditOverride, type CreditCheckResult } from "@/services/creditService";
-import { CreditStatusBadge } from "@/components/CreditStatusBadge";
-import { CreditApprovalDialog } from "@/components/CreditApprovalDialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface SaleFormProps {
@@ -32,15 +25,11 @@ interface SaleFormProps {
 const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
   const { user, isDealerAdmin } = useAuth();
   const [skuSearch, setSkuSearch] = useState("");
-  const [creditCheck, setCreditCheck] = useState<CreditCheckResult | null>(null);
-  const [pendingValues, setPendingValues] = useState<SaleFormValues | null>(null);
-  const [showApprovalDialog, setShowApprovalDialog] = useState(false);
-  const [creditCheckLoading, setCreditCheckLoading] = useState(false);
 
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
     defaultValues: {
-      customer_id: "",
+      customer_name: "",
       sale_date: new Date().toISOString().split("T")[0],
       discount: 0,
       discount_reference: "",
@@ -57,17 +46,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
     name: "items",
   });
 
-  const { data: customers = [] } = useQuery({
-    queryKey: ["customers", dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("customers")
-        .select("id, name, type, credit_limit, max_overdue_days")
-        .eq("dealer_id", dealerId);
-      return data ?? [];
-    },
-    enabled: !!dealerId,
-  });
+  // We no longer need to fetch customers for a dropdown — customer is a text field now
 
   const { data: products = [] } = useQuery({
     queryKey: ["products-active", dealerId],
@@ -108,9 +87,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
   const watchItems = form.watch("items");
   const watchDiscount = form.watch("discount") || 0;
   const watchPaid = form.watch("paid_amount") || 0;
-  const watchCustomerId = form.watch("customer_id");
-
-  const selectedCustomer = customers.find((c) => c.id === watchCustomerId);
+  const watchCustomerName = form.watch("customer_name");
 
   const getProduct = (pid: string) => products.find((p) => p.id === pid);
 
@@ -142,7 +119,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
   const estimatedCogs = watchItems.reduce((acc, item) => {
     if (!item.product_id || !item.quantity) return acc;
     const avgCost = stockMap.get(item.product_id) ?? 0;
-    return acc + item.quantity * avgCost;
+    return acc + Number(item.quantity) * avgCost;
   }, 0);
   const estimatedGrossProfit = totalAmount - estimatedCogs;
 
@@ -169,59 +146,11 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
     }
   };
 
-  /** Intercept submit to run credit check first */
+  /** Submit — credit check is skipped since customer may be new */
   const handleFormSubmit = async (values: SaleFormValues) => {
-    if (!values.customer_id) {
-      await onSubmit(values);
-      return;
-    }
-
-    setCreditCheckLoading(true);
-    try {
-      const check = await checkCreditBeforeSale(values.customer_id, dealerId, dueAmount);
-      setCreditCheck(check);
-
-      if (check.is_credit_exceeded || check.is_overdue_violated) {
-        setPendingValues(values);
-        setShowApprovalDialog(true);
-      } else {
-        await onSubmit(values);
-        setCreditCheck(null);
-      }
-    } finally {
-      setCreditCheckLoading(false);
-    }
+    await onSubmit(values);
   };
 
-  const handleApproveOverride = async (reason: string) => {
-    if (!pendingValues) return;
-    setShowApprovalDialog(false);
-
-    // Submit sale first
-    await onSubmit(pendingValues);
-
-    // Then log override (fire-and-forget; sale is already committed)
-    if (creditCheck && watchCustomerId && user?.id) {
-      void logCreditOverride({
-        dealer_id: dealerId,
-        customer_id: watchCustomerId,
-        sale_id: "", // sale_id not available here — logged without it
-        override_reason: reason,
-        overridden_by: user.id,
-        credit_limit_at_time: creditCheck.credit_limit,
-        outstanding_at_time: creditCheck.current_outstanding,
-        new_due_at_time: dueAmount,
-      });
-    }
-
-    setCreditCheck(null);
-    setPendingValues(null);
-  };
-
-  const handleCancelOverride = () => {
-    setShowApprovalDialog(false);
-    setPendingValues(null);
-  };
 
   return (
     <>
@@ -231,23 +160,11 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <FormField
               control={form.control}
-              name="customer_id"
+              name="customer_name"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Customer</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          <span className="flex items-center gap-2">
-                            {c.name}
-                            <Badge variant="outline" className="text-xs capitalize">{c.type}</Badge>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FormControl><Input placeholder="Type customer name" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -309,16 +226,6 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
             />
           </div>
 
-          {/* Credit status for selected customer */}
-          {selectedCustomer && watchCustomerId && (
-            <CreditInlineStatus
-              customerId={watchCustomerId}
-              dealerId={dealerId}
-              creditLimit={Number(selectedCustomer.credit_limit ?? 0)}
-              maxOverdueDays={Number(selectedCustomer.max_overdue_days ?? 0)}
-              projectedDue={dueAmount}
-            />
-          )}
 
           {/* Items */}
           <div className="space-y-4">
@@ -502,88 +409,12 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
             </div>
           )}
 
-          <Button type="submit" disabled={isLoading || creditCheckLoading} className="w-full md:w-auto">
-            {creditCheckLoading ? "Checking Credit…" : isLoading ? "Processing…" : "Confirm Sale"}
+          <Button type="submit" disabled={isLoading} className="w-full md:w-auto">
+            {isLoading ? "Processing…" : "Confirm Sale"}
           </Button>
         </form>
       </Form>
-
-      {/* Credit Approval Dialog */}
-      {showApprovalDialog && creditCheck && (
-        <CreditApprovalDialog
-          open={showApprovalDialog}
-          creditCheck={creditCheck}
-          customerName={selectedCustomer?.name ?? "Customer"}
-          onApprove={handleApproveOverride}
-          onCancel={handleCancelOverride}
-        />
-      )}
     </>
-  );
-};
-
-/** Inline credit status widget shown below customer selector */
-const CreditInlineStatus = ({
-  customerId,
-  dealerId,
-  creditLimit,
-  maxOverdueDays,
-  projectedDue,
-}: {
-  customerId: string;
-  dealerId: string;
-  creditLimit: number;
-  maxOverdueDays: number;
-  projectedDue: number;
-}) => {
-  const { data: check } = useQuery({
-    queryKey: ["credit-check-inline", customerId, dealerId],
-    queryFn: () => checkCreditBeforeSale(customerId, dealerId, 0),
-    enabled: !!customerId && !!dealerId,
-    staleTime: 30_000,
-  });
-
-  if (!check) return null;
-
-  const isWarning = check.is_credit_exceeded || check.is_overdue_violated;
-  const projectedExceeds = creditLimit > 0 && (check.current_outstanding + projectedDue) > creditLimit;
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
-        <span className="text-muted-foreground">Credit Status:</span>
-        <CreditStatusBadge
-          outstanding={check.current_outstanding}
-          creditLimit={check.credit_limit}
-          overdueDays={check.overdue_days}
-          maxOverdueDays={check.max_overdue_days}
-          showTooltip={true}
-        />
-        <span className="text-muted-foreground ml-auto text-xs">
-          Outstanding: <strong className="text-foreground">{formatCurrency(check.current_outstanding)}</strong>
-          {creditLimit > 0 && (
-            <> / Limit: <strong className="text-foreground">{formatCurrency(creditLimit)}</strong></>
-          )}
-        </span>
-      </div>
-      {projectedExceeds && projectedDue > 0 && (
-        <Alert className="border-destructive/50 bg-destructive/5">
-          <ShieldAlert className="h-4 w-4 text-destructive" />
-          <AlertDescription className="text-destructive text-sm">
-            This sale will exceed the credit limit. Owner approval will be required.
-          </AlertDescription>
-        </Alert>
-      )}
-      {check.is_overdue_violated && (
-        <Alert className="border-destructive/30 bg-destructive/5">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-          <AlertDescription className="text-foreground text-sm">
-            Customer has an overdue balance of <strong>{check.overdue_days} days</strong>{" "}
-            (max: {check.max_overdue_days} days). Owner approval will be required.
-          </AlertDescription>
-        </Alert>
-      )}
-    </div>
   );
 };
 

@@ -7,7 +7,7 @@ export const saleItemSchema = z.object({
 });
 
 export const saleSchema = z.object({
-  customer_id: z.string().min(1, "Customer is required"),
+  customer_name: z.string().trim().min(1, "Customer name is required").max(200),
   sale_date: z.string().min(1, "Date is required"),
   discount: z.coerce.number().min(0).default(0),
   discount_reference: z.string().trim().max(100).optional().or(z.literal("")),

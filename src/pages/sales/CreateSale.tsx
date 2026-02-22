@@ -18,7 +18,7 @@ const CreateSalePage = () => {
     mutationFn: async (values: SaleFormValues) => {
       await salesService.create({
         dealer_id: dealerId,
-        customer_id: values.customer_id,
+        customer_name: values.customer_name,
         sale_date: values.sale_date,
         discount: values.discount,
         discount_reference: values.discount_reference || "",
