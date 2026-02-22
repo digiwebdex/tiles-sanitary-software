@@ -2,7 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { salesService } from "@/services/salesService";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Printer, Download, TrendingUp } from "lucide-react";
+import { ArrowLeft, Printer, Download, TrendingUp, Pencil } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +68,9 @@ const InvoicePage = () => {
           <span className="font-semibold text-foreground">Invoice Preview</span>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate(`/sales/${id}/edit`)}>
+            <Pencil className="mr-2 h-4 w-4" /> Edit
+          </Button>
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="mr-2 h-4 w-4" /> Print
           </Button>

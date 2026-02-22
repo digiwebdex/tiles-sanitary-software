@@ -24,6 +24,7 @@ import ViewPurchase from "./pages/purchases/ViewPurchase";
 import SalesPage from "./pages/sales/SalesPage";
 import CreateSale from "./pages/sales/CreateSale";
 import InvoicePage from "./pages/sales/InvoicePage";
+import EditSale from "./pages/sales/EditSale";
 import SalesReturnsPage from "./pages/sales-returns/SalesReturnsPage";
 import CreateSalesReturn from "./pages/sales-returns/CreateSalesReturn";
 import LedgerPage from "./pages/ledger/LedgerPage";
@@ -118,6 +119,7 @@ const App = () => (
             <Route path="/sales" element={<ProtectedRoute><AppLayout><SalesPage /></AppLayout></ProtectedRoute>} />
             <Route path="/sales/new" element={<ProtectedRoute><AppLayout><CreateSale /></AppLayout></ProtectedRoute>} />
             <Route path="/sales/:id/invoice" element={<ProtectedRoute><AppLayout><InvoicePage /></AppLayout></ProtectedRoute>} />
+            <Route path="/sales/:id/edit" element={<ProtectedRoute><AppLayout><EditSale /></AppLayout></ProtectedRoute>} />
             <Route path="/sales-returns" element={<ProtectedRoute><AppLayout><SalesReturnsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/sales-returns/new" element={<ProtectedRoute><AppLayout><CreateSalesReturn /></AppLayout></ProtectedRoute>} />
             <Route path="/ledger" element={<ProtectedRoute><AppLayout><LedgerPage /></AppLayout></ProtectedRoute>} />

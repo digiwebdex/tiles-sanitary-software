@@ -20,24 +20,26 @@ interface SaleFormProps {
   dealerId: string;
   onSubmit: (values: SaleFormValues) => Promise<void>;
   isLoading?: boolean;
+  defaultValues?: Partial<SaleFormValues>;
+  submitLabel?: string;
 }
 
-const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
+const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabel }: SaleFormProps) => {
   const { user, isDealerAdmin } = useAuth();
   const [skuSearch, setSkuSearch] = useState("");
 
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
     defaultValues: {
-      customer_name: "",
-      sale_date: new Date().toISOString().split("T")[0],
-      discount: 0,
-      discount_reference: "",
-      client_reference: "",
-      fitter_reference: "",
-      paid_amount: 0,
-      notes: "",
-      items: [{ product_id: "", quantity: 0, sale_rate: 0 }],
+      customer_name: dv?.customer_name ?? "",
+      sale_date: dv?.sale_date ?? new Date().toISOString().split("T")[0],
+      discount: dv?.discount ?? 0,
+      discount_reference: dv?.discount_reference ?? "",
+      client_reference: dv?.client_reference ?? "",
+      fitter_reference: dv?.fitter_reference ?? "",
+      paid_amount: dv?.paid_amount ?? 0,
+      notes: dv?.notes ?? "",
+      items: dv?.items?.length ? dv.items : [{ product_id: "", quantity: 0, sale_rate: 0 }],
     },
   });
 
@@ -410,7 +412,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading }: SaleFormProps) => {
           )}
 
           <Button type="submit" disabled={isLoading} className="w-full md:w-auto">
-            {isLoading ? "Processing…" : "Confirm Sale"}
+            {isLoading ? "Processing…" : (submitLabel ?? "Confirm Sale")}
           </Button>
         </form>
       </Form>

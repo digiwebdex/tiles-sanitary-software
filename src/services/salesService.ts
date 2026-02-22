@@ -270,4 +270,186 @@ export const salesService = {
 
     return sale;
   },
+
+  async update(saleId: string, input: CreateSaleInput) {
+    rateLimits.api("sale_update");
+    await assertDealerId(input.dealer_id);
+
+    // 1. Fetch existing sale + items for reversal
+    const { data: oldSale, error: fetchErr } = await supabase
+      .from("sales")
+      .select("*, sale_items(product_id, quantity)")
+      .eq("id", saleId)
+      .single();
+    if (fetchErr || !oldSale) throw new Error("Sale not found");
+
+    const oldItems = (oldSale as any).sale_items ?? [];
+    const oldCustomerId = oldSale.customer_id;
+    const oldPaidAmount = Number(oldSale.paid_amount);
+
+    // 2. Restore old stock
+    for (const item of oldItems) {
+      await stockService.restoreStock(item.product_id, Number(item.quantity), input.dealer_id);
+    }
+
+    // 3. Delete old ledger entries for this sale
+    await supabase.from("customer_ledger").delete().eq("sale_id", saleId).eq("dealer_id", input.dealer_id);
+    await supabase.from("cash_ledger").delete().eq("reference_id", saleId).eq("dealer_id", input.dealer_id);
+
+    // 4. Delete old sale items
+    await supabase.from("sale_items").delete().eq("sale_id", saleId);
+
+    // 5. Find or create customer by name
+    const customerName = input.customer_name.trim();
+    let customerId: string;
+    const { data: existing } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("dealer_id", input.dealer_id)
+      .ilike("name", customerName)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      customerId = existing.id;
+    } else {
+      const { data: created, error: cErr } = await supabase
+        .from("customers")
+        .insert({ dealer_id: input.dealer_id, name: customerName, type: "customer" as const, status: "active" })
+        .select("id")
+        .single();
+      if (cErr) throw new Error(cErr.message);
+      customerId = created!.id;
+    }
+
+    // 6. Recalculate totals
+    const productIds = input.items.map((i) => i.product_id);
+    const [productsRes, stockRes] = await Promise.all([
+      supabase.from("products").select("id, unit_type, per_box_sft").in("id", productIds),
+      supabase.from("stock").select("product_id, average_cost_per_unit").eq("dealer_id", input.dealer_id).in("product_id", productIds),
+    ]);
+    if (productsRes.error) throw new Error(productsRes.error.message);
+    if (stockRes.error) throw new Error(stockRes.error.message);
+
+    const productMap = new Map(productsRes.data!.map((p) => [p.id, p]));
+    const stockMap = new Map(stockRes.data!.map((s) => [s.product_id, s]));
+
+    let totalBox = 0, totalSft = 0, totalPiece = 0, totalCogs = 0;
+
+    const itemsCalc = input.items.map((item) => {
+      const product = productMap.get(item.product_id);
+      const stock = stockMap.get(item.product_id);
+      const avgCost = stock ? Number(stock.average_cost_per_unit) : 0;
+      const unitType = product?.unit_type ?? "piece";
+      const perBoxSft = product?.per_box_sft ?? 0;
+      let itemTotal: number;
+      let itemSft: number | null = null;
+
+      if (unitType === "box_sft") {
+        totalBox += item.quantity;
+        itemSft = item.quantity * perBoxSft;
+        totalSft += itemSft;
+        itemTotal = itemSft * item.sale_rate;
+      } else {
+        totalPiece += item.quantity;
+        itemTotal = item.quantity * item.sale_rate;
+      }
+
+      totalCogs += item.quantity * avgCost;
+      return { ...item, total: itemTotal, total_sft: itemSft };
+    });
+
+    const subtotal = itemsCalc.reduce((s, i) => s + i.total, 0);
+    const totalAmount = subtotal - input.discount;
+    const dueAmount = totalAmount - input.paid_amount;
+    const grossProfit = totalAmount - totalCogs;
+
+    // 7. Update sales record
+    const { error: sErr } = await supabase
+      .from("sales")
+      .update({
+        customer_id: customerId,
+        sale_date: input.sale_date,
+        total_amount: totalAmount,
+        discount: input.discount,
+        discount_reference: input.discount_reference || null,
+        client_reference: input.client_reference || null,
+        fitter_reference: input.fitter_reference || null,
+        paid_amount: input.paid_amount,
+        due_amount: dueAmount,
+        cogs: totalCogs,
+        profit: grossProfit,
+        gross_profit: grossProfit,
+        net_profit: grossProfit,
+        total_box: totalBox,
+        total_sft: totalSft,
+        total_piece: totalPiece,
+        notes: input.notes || null,
+        payment_mode: input.payment_mode || null,
+      } as any)
+      .eq("id", saleId);
+    if (sErr) throw new Error(sErr.message);
+
+    // 8. Insert new sale items
+    const itemRows = itemsCalc.map((item) => ({
+      sale_id: saleId,
+      dealer_id: input.dealer_id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      sale_rate: item.sale_rate,
+      total: item.total,
+      total_sft: item.total_sft,
+    }));
+    const { error: iErr } = await supabase.from("sale_items").insert(itemRows);
+    if (iErr) throw new Error(iErr.message);
+
+    // 9. Deduct new stock
+    for (const item of input.items) {
+      await stockService.deductStock(item.product_id, item.quantity, input.dealer_id);
+    }
+
+    // 10. Re-create ledger entries
+    await customerLedgerService.addEntry({
+      dealer_id: input.dealer_id,
+      customer_id: customerId,
+      sale_id: saleId,
+      type: "sale",
+      amount: totalAmount,
+      description: `Sale ${oldSale.invoice_number} (edited)`,
+      entry_date: input.sale_date,
+    });
+
+    if (input.paid_amount > 0) {
+      await customerLedgerService.addEntry({
+        dealer_id: input.dealer_id,
+        customer_id: customerId,
+        sale_id: saleId,
+        type: "payment",
+        amount: -input.paid_amount,
+        description: `Payment for ${oldSale.invoice_number} (edited)`,
+        entry_date: input.sale_date,
+      });
+      await cashLedgerService.addEntry({
+        dealer_id: input.dealer_id,
+        type: "receipt",
+        amount: input.paid_amount,
+        description: `Payment: ${oldSale.invoice_number} (edited)`,
+        reference_type: "sales",
+        reference_id: saleId,
+        entry_date: input.sale_date,
+      });
+    }
+
+    // 11. Audit log
+    await logAudit({
+      dealer_id: input.dealer_id,
+      action: "sale_update",
+      table_name: "sales",
+      record_id: saleId,
+      old_data: { total_amount: Number(oldSale.total_amount), customer_id: oldCustomerId, paid_amount: oldPaidAmount },
+      new_data: { total_amount: totalAmount, customer_id: customerId, paid_amount: input.paid_amount },
+    });
+
+    return { id: saleId };
+  },
 };
