@@ -19,7 +19,7 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
     <div className="p-8 sm:p-10 font-sans text-[13px] leading-relaxed text-foreground print:p-6">
 
       {/* ═══ MODERN HEADER — gradient accent strip ═══ */}
-      <div className="relative mb-6">
+      <div className="challan-header relative mb-6">
         <div className="h-2 bg-gradient-to-r from-primary via-primary/70 to-primary/30 rounded-t-md" />
         <div className="border border-t-0 border-border rounded-b-md px-6 py-5">
           <div className="flex items-start justify-between">
@@ -73,7 +73,7 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
       </div>
 
       {/* ═══ CUSTOMER & TRANSPORT — modern cards ═══ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 print:mb-5">
+      <div className="challan-section grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 print:mb-5">
         {/* Customer card */}
         <div className="rounded-lg border border-border bg-muted/20 p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -157,7 +157,7 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
       </div>
 
       {/* ═══ QUANTITY SUMMARY — modern cards row ═══ */}
-      <div className="grid grid-cols-3 gap-3 mb-6 print:mb-5">
+      <div className="challan-section grid grid-cols-3 gap-3 mb-6 print:mb-5">
         {[
           { label: "Total Boxes", value: Number(sale.total_box), color: "bg-blue-50 border-blue-200 text-blue-900" },
           { label: "Total SFT", value: Number(sale.total_sft).toFixed(2), color: "bg-green-50 border-green-200 text-green-900" },
@@ -212,7 +212,7 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
       </div>
 
       {/* ═══ FOOTER ═══ */}
-      <div className="mt-6">
+      <div className="challan-footer mt-6">
         <div className="h-1 bg-gradient-to-r from-primary via-primary/70 to-primary/30 rounded-full mb-2" />
         <div className="flex justify-between text-[9px] text-muted-foreground">
           <span>This document is a delivery challan and does not serve as a tax invoice.</span>

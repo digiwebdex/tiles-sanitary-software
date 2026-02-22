@@ -113,10 +113,18 @@ const ChallanPage = () => {
     <>
       <style>{`
         @media print {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           body * { visibility: hidden !important; }
           #challan-print-area, #challan-print-area * { visibility: visible !important; }
           #challan-print-area {
-            position: fixed !important;
+            position: absolute !important;
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
@@ -125,9 +133,20 @@ const ChallanPage = () => {
             font-size: 12px !important;
           }
           .no-print { display: none !important; }
-          @page { size: A4 portrait; margin: 10mm 12mm; }
-          table { page-break-inside: avoid; }
-          .challan-signature { page-break-inside: avoid; }
+          @page {
+            size: A4 portrait;
+            margin: 15mm 15mm 20mm 15mm;
+          }
+          /* Page break control */
+          table { page-break-inside: auto; }
+          thead { display: table-header-group; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          .challan-signature { page-break-inside: avoid; break-inside: avoid; }
+          .challan-section { page-break-inside: avoid; break-inside: avoid; }
+          .challan-header { page-break-after: avoid; break-after: avoid; }
+          .challan-footer { page-break-before: avoid; break-before: avoid; }
+          /* Orphan/widow control */
+          p, li { orphans: 3; widows: 3; }
         }
       `}</style>
 
@@ -272,7 +291,7 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
     <div className="p-8 sm:p-10 font-sans text-[13px] leading-relaxed text-foreground print:p-6">
 
       {/* ═══ HEADER ═══ */}
-      <div className="text-center border-b-2 border-foreground pb-4 mb-1">
+      <div className="challan-header text-center border-b-2 border-foreground pb-4 mb-1">
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight uppercase text-foreground">
           {dealerInfo?.name ?? "Your Business Name"}
         </h1>
@@ -293,7 +312,7 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
       </div>
 
       {/* ═══ CUSTOMER & TRANSPORT ═══ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 border border-border mb-5 print:mb-4">
+      <div className="challan-section grid grid-cols-1 sm:grid-cols-2 gap-0 border border-border mb-5 print:mb-4">
         {/* Deliver To */}
         <div className="p-4 sm:border-r border-border">
           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground mb-2 border-b border-border pb-1">
@@ -407,7 +426,7 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
       </div>
 
       {/* ═══ QUANTITY SUMMARY ═══ */}
-      <div className="mb-5 print:mb-4 border border-border">
+      <div className="challan-section mb-5 print:mb-4 border border-border">
         <div className="grid grid-cols-3 divide-x divide-border">
           {[
             { label: "Total Boxes", value: Number(sale.total_box) },
@@ -464,7 +483,7 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
       </div>
 
       {/* ═══ FOOTER ═══ */}
-      <div className="border-t border-border pt-2 mt-4 flex justify-between text-[9px] text-muted-foreground">
+      <div className="challan-footer border-t border-border pt-2 mt-4 flex justify-between text-[9px] text-muted-foreground">
         <span>This document is a delivery challan and does not serve as a tax invoice.</span>
         <span className="font-mono">{challanNo} · {challanDate}</span>
       </div>
