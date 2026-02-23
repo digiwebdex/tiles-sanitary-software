@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import {
   BarChart3, Package, Layers, Tags, AlertTriangle,
   Receipt, CalendarDays, Calendar, CreditCard,
-  ShoppingCart, DollarSign, Users, History, BookOpen, Clock,
+  ShoppingCart, DollarSign, Users, History, BookOpen, Clock, TrendingUp,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -59,6 +59,7 @@ const reportNavItems = [
   { key: "payments", label: "Payments Report", icon: CreditCard },
   { key: "product-history", label: "Product History", icon: History },
   { key: "accounting", label: "Expenses Report", icon: DollarSign },
+  { key: "profit-analysis", label: "Profit Analysis", icon: TrendingUp },
   { key: "due-aging", label: "Due Aging", icon: Clock },
 ];
 
@@ -81,6 +82,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "product-history": return <ProductHistoryReport dealerId={dealerId} />;
       case "accounting": return <AccountingSummaryReport dealerId={dealerId} />;
       case "due-aging": return <DueAgingReport dealerId={dealerId} />;
+      case "profit-analysis": return <ProfitAnalysisReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
@@ -1665,6 +1667,267 @@ function DueAgingReport({ dealerId }: { dealerId: string }) {
                       <TableCell className="text-right">৳{Math.round(totals.d90).toLocaleString()}</TableCell>
                       <TableCell className="text-right text-destructive">৳{Math.round(totals.d90plus).toLocaleString()}</TableCell>
                       <TableCell className="text-right">৳{Math.round(totals.total).toLocaleString()}</TableCell>
+                    </TableRow>
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Profit Analysis per Product ───────────────────────────
+function ProfitAnalysisReport({ dealerId }: { dealerId: string }) {
+  const { isDealerAdmin } = useAuth();
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"profit" | "margin" | "revenue">("profit");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["report-profit-analysis", dealerId],
+    queryFn: async () => {
+      // Get all products
+      const { data: products, error: pErr } = await supabase
+        .from("products")
+        .select("id, sku, name, brand, category, unit_type")
+        .eq("dealer_id", dealerId)
+        .eq("active", true);
+      if (pErr) throw new Error(pErr.message);
+
+      // Get all sale items with cost info
+      const { data: saleItems, error: siErr } = await supabase
+        .from("sale_items")
+        .select("product_id, quantity, sale_rate, total, total_sft")
+        .eq("dealer_id", dealerId);
+      if (siErr) throw new Error(siErr.message);
+
+      // Get stock for avg cost
+      const { data: stocks, error: stErr } = await supabase
+        .from("stock")
+        .select("product_id, average_cost_per_unit")
+        .eq("dealer_id", dealerId);
+      if (stErr) throw new Error(stErr.message);
+
+      // Get purchase items for weighted avg cost (more accurate)
+      const { data: purchaseItems, error: piErr } = await supabase
+        .from("purchase_items")
+        .select("product_id, quantity, landed_cost")
+        .eq("dealer_id", dealerId);
+      if (piErr) throw new Error(piErr.message);
+
+      const costMap = new Map<string, number>();
+      const costQtyMap = new Map<string, { totalCost: number; totalQty: number }>();
+
+      // Build weighted avg cost from purchase items
+      for (const pi of purchaseItems ?? []) {
+        const cur = costQtyMap.get(pi.product_id) ?? { totalCost: 0, totalQty: 0 };
+        const qty = Number(pi.quantity) || 0;
+        const cost = Number(pi.landed_cost) || 0;
+        cur.totalCost += cost * qty;
+        cur.totalQty += qty;
+        costQtyMap.set(pi.product_id, cur);
+      }
+
+      for (const [pid, val] of costQtyMap) {
+        costMap.set(pid, val.totalQty > 0 ? val.totalCost / val.totalQty : 0);
+      }
+
+      // Fallback to stock avg cost
+      for (const s of stocks ?? []) {
+        if (!costMap.has(s.product_id)) {
+          costMap.set(s.product_id, Number(s.average_cost_per_unit) || 0);
+        }
+      }
+
+      // Aggregate sales per product
+      const salesAgg = new Map<string, { qtySold: number; revenue: number; totalSft: number }>();
+      for (const si of saleItems ?? []) {
+        const cur = salesAgg.get(si.product_id) ?? { qtySold: 0, revenue: 0, totalSft: 0 };
+        cur.qtySold += Number(si.quantity) || 0;
+        cur.revenue += Number(si.total) || 0;
+        cur.totalSft += Number(si.total_sft) || 0;
+        salesAgg.set(si.product_id, cur);
+      }
+
+      const rows = (products ?? [])
+        .map((p) => {
+          const sales = salesAgg.get(p.id) ?? { qtySold: 0, revenue: 0, totalSft: 0 };
+          const avgCost = costMap.get(p.id) ?? 0;
+          const cogs = sales.qtySold * avgCost;
+          const profit = sales.revenue - cogs;
+          const marginPct = sales.revenue > 0 ? (profit / sales.revenue) * 100 : 0;
+          const avgSaleRate = sales.qtySold > 0 ? sales.revenue / sales.qtySold : 0;
+
+          return {
+            id: p.id,
+            sku: p.sku,
+            name: p.name,
+            brand: p.brand ?? "—",
+            category: p.category,
+            qtySold: Math.round(sales.qtySold * 100) / 100,
+            totalSft: Math.round(sales.totalSft * 100) / 100,
+            avgCost: Math.round(avgCost * 100) / 100,
+            avgSaleRate: Math.round(avgSaleRate * 100) / 100,
+            revenue: Math.round(sales.revenue * 100) / 100,
+            cogs: Math.round(cogs * 100) / 100,
+            profit: Math.round(profit * 100) / 100,
+            marginPct: Math.round(marginPct * 10) / 10,
+          };
+        })
+        .filter((r) => r.qtySold > 0); // only show products that have been sold
+
+      return rows;
+    },
+    enabled: isDealerAdmin,
+  });
+
+  if (!isDealerAdmin) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center text-muted-foreground">
+          Profit analysis is only available to owners.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const rows = (data ?? [])
+    .filter(
+      (r) =>
+        r.name.toLowerCase().includes(search.toLowerCase()) ||
+        r.sku.toLowerCase().includes(search.toLowerCase()) ||
+        r.brand.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sortBy === "margin") return b.marginPct - a.marginPct;
+      if (sortBy === "revenue") return b.revenue - a.revenue;
+      return b.profit - a.profit;
+    });
+
+  const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+  const totalCogs = rows.reduce((s, r) => s + r.cogs, 0);
+  const totalProfit = rows.reduce((s, r) => s + r.profit, 0);
+  const overallMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card>
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-muted-foreground">Total Revenue</p>
+            <p className="text-lg font-bold text-foreground">৳{Math.round(totalRevenue).toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-muted-foreground">Total COGS</p>
+            <p className="text-lg font-bold text-muted-foreground">৳{Math.round(totalCogs).toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-muted-foreground">Total Profit</p>
+            <p className={`text-lg font-bold ${totalProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+              ৳{Math.round(totalProfit).toLocaleString()}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-muted-foreground">Overall Margin</p>
+            <p className={`text-lg font-bold ${overallMargin >= 0 ? "text-primary" : "text-destructive"}`}>
+              {overallMargin.toFixed(1)}%
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <Input
+          placeholder="Search product, SKU, brand..."
+          className="max-w-xs"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="profit">Highest Profit</SelectItem>
+            <SelectItem value="margin">Highest Margin</SelectItem>
+            <SelectItem value="revenue">Highest Revenue</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Brand</TableHead>
+                  <TableHead className="text-right">Qty Sold</TableHead>
+                  <TableHead className="text-right">Avg Cost</TableHead>
+                  <TableHead className="text-right">Avg Sale Rate</TableHead>
+                  <TableHead className="text-right">Revenue</TableHead>
+                  <TableHead className="text-right">COGS</TableHead>
+                  <TableHead className="text-right">Profit</TableHead>
+                  <TableHead className="text-right">Margin %</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                ) : rows.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No sales data found</TableCell></TableRow>
+                ) : (
+                  <>
+                    {rows.map((r) => (
+                      <TableRow key={r.id} className={r.profit < 0 ? "bg-destructive/5" : ""}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium text-foreground">{r.name}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{r.sku}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">{r.brand}</TableCell>
+                        <TableCell className="text-right">{r.qtySold}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">৳{r.avgCost.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">৳{r.avgSaleRate.toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-medium">৳{r.revenue.toLocaleString()}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">৳{r.cogs.toLocaleString()}</TableCell>
+                        <TableCell className={`text-right font-bold ${r.profit >= 0 ? "text-primary" : "text-destructive"}`}>
+                          ৳{r.profit.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge
+                            variant={r.marginPct >= 20 ? "default" : r.marginPct >= 0 ? "secondary" : "destructive"}
+                            className="text-xs"
+                          >
+                            {r.marginPct.toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {/* Totals */}
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={3}>Total ({rows.length} products)</TableCell>
+                      <TableCell />
+                      <TableCell />
+                      <TableCell className="text-right">৳{Math.round(totalRevenue).toLocaleString()}</TableCell>
+                      <TableCell className="text-right">৳{Math.round(totalCogs).toLocaleString()}</TableCell>
+                      <TableCell className={`text-right ${totalProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+                        ৳{Math.round(totalProfit).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">{overallMargin.toFixed(1)}%</TableCell>
                     </TableRow>
                   </>
                 )}
