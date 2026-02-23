@@ -148,7 +148,7 @@ const CustomerList = () => {
                 {customers.map((c) => {
                   const due = ledgerSums[c.id] ?? 0;
                   return (
-                    <TableRow key={c.id} className={c.status === "inactive" ? "opacity-60" : ""}>
+                    <TableRow key={c.id} className={`cursor-pointer ${c.status === "inactive" ? "opacity-60" : ""}`} onClick={() => navigate(`/customers/${c.id}/edit`)}>
                       <TableCell className="font-medium">
                         <div>{c.name}</div>
                         {c.email && (
