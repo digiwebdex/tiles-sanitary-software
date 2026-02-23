@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -26,6 +25,12 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
+import {
+  BarChart3, Package, Layers, Tags, AlertTriangle,
+  Receipt, CalendarDays, Calendar, CreditCard,
+  ShoppingCart, DollarSign, Users, History, BookOpen,
+} from "lucide-react";
 
 interface ReportsPageContentProps {
   dealerId: string;
@@ -39,37 +44,88 @@ const months = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+const reportNavItems = [
+  { key: "stock", label: "Products Report", icon: Package },
+  { key: "brand-stock", label: "Brands Report", icon: Tags },
+  { key: "inventory", label: "Inventory Report", icon: Layers },
+  { key: "low-stock", label: "Low Stock Report", icon: AlertTriangle },
+  { key: "sales", label: "Sales Report", icon: Receipt },
+  { key: "retailer", label: "Customers Report", icon: Users },
+  { key: "purchases", label: "Purchases Report", icon: ShoppingCart },
+  { key: "payments", label: "Payments Report", icon: CreditCard },
+  { key: "product-history", label: "Product History", icon: History },
+  { key: "accounting", label: "Expenses Report", icon: DollarSign },
+];
+
 const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
-  const [tab, setTab] = useState("stock");
+  const [activeReport, setActiveReport] = useState("stock");
+
+  const renderReport = () => {
+    switch (activeReport) {
+      case "stock": return <StockReport dealerId={dealerId} />;
+      case "brand-stock": return <BrandStockReport dealerId={dealerId} />;
+      case "inventory": return <InventoryAgingReport dealerId={dealerId} />;
+      case "low-stock": return <LowStockReport dealerId={dealerId} />;
+      case "sales": return <SalesReport dealerId={dealerId} />;
+      case "purchases": return <PurchasesReport dealerId={dealerId} />;
+      case "payments": return <PaymentsReport dealerId={dealerId} />;
+      case "retailer": return <RetailerSalesReport dealerId={dealerId} />;
+      case "product-history": return <ProductHistoryReport dealerId={dealerId} />;
+      case "accounting": return <AccountingSummaryReport dealerId={dealerId} />;
+      default: return <StockReport dealerId={dealerId} />;
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-foreground">Reports</h1>
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="stock">Stock (SKU)</TabsTrigger>
-          <TabsTrigger value="brand-stock">Brand Stock</TabsTrigger>
-          <TabsTrigger value="inventory">Inventory</TabsTrigger>
-          <TabsTrigger value="low-stock">Low Stock</TabsTrigger>
-          <TabsTrigger value="sales">Sales</TabsTrigger>
-          <TabsTrigger value="purchases">Purchases</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
-          <TabsTrigger value="retailer">Retailer Sales</TabsTrigger>
-          <TabsTrigger value="product-history">Product History</TabsTrigger>
-          <TabsTrigger value="accounting">Accounting</TabsTrigger>
-        </TabsList>
+    <div className="flex min-h-[calc(100vh-8rem)]">
+      {/* Sidebar */}
+      <aside className="hidden md:flex w-56 flex-col border-r bg-card p-3 gap-0.5 shrink-0">
+        <div className="flex items-center gap-2 px-3 py-2 mb-2">
+          <BarChart3 className="h-5 w-5 text-primary" />
+          <h2 className="text-sm font-bold text-foreground">Reports</h2>
+        </div>
+        <nav className="space-y-0.5">
+          {reportNavItems.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setActiveReport(item.key)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+                activeReport === item.key
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </aside>
 
-        <TabsContent value="stock"><StockReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="brand-stock"><BrandStockReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="inventory"><InventoryAgingReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="low-stock"><LowStockReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="sales"><SalesReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="purchases"><PurchasesReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="payments"><PaymentsReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="retailer"><RetailerSalesReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="product-history"><ProductHistoryReport dealerId={dealerId} /></TabsContent>
-        <TabsContent value="accounting"><AccountingSummaryReport dealerId={dealerId} /></TabsContent>
-      </Tabs>
+      {/* Mobile horizontal scroll nav */}
+      <nav className="flex md:hidden overflow-x-auto border-b bg-card px-2 py-1 gap-1 absolute top-0 left-0 right-0 z-10">
+        {reportNavItems.map((item) => (
+          <button
+            key={item.key}
+            onClick={() => setActiveReport(item.key)}
+            className={cn(
+              "flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition-colors",
+              activeReport === item.key
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground"
+            )}
+          >
+            <item.icon className="h-3 w-3" />
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-4 lg:p-6 md:pt-4 pt-12">
+        {renderReport()}
+      </div>
     </div>
   );
 };
