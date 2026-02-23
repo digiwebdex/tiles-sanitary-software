@@ -88,4 +88,15 @@ export const deliveryService = {
       new_data: { status },
     });
   },
+
+  async getById(id: string, dealerId: string) {
+    const { data, error } = await supabase
+      .from("deliveries")
+      .select("*, challans(challan_no), sales(invoice_number, sale_items(*, products(name, sku, unit_type, per_box_sft)), customers(name, phone, address))")
+      .eq("id", id)
+      .eq("dealer_id", dealerId)
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  },
 };
