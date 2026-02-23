@@ -17,6 +17,7 @@ import {
 import Pagination from "@/components/Pagination";
 import { useToast } from "@/hooks/use-toast";
 import { Search, Eye, Pencil, Download, Trash2 } from "lucide-react";
+import DeliveryDetailDialog from "./DeliveryDetailDialog";
 
 interface DeliveryListProps {
   dealerId: string;
@@ -40,6 +41,7 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [detailId, setDetailId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -145,7 +147,7 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
                   const phone = d.receiver_phone || customer?.phone;
 
                   return (
-                    <TableRow key={d.id}>
+                    <TableRow key={d.id} className="cursor-pointer" onClick={() => setDetailId(d.id)}>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={selected.has(d.id)}
@@ -169,7 +171,7 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setDetailId(d.id)}>
                               <Eye className="mr-2 h-4 w-4" /> Delivery Details
                             </DropdownMenuItem>
                             {d.status !== "delivered" && (
@@ -203,6 +205,11 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
           <Pagination page={page} totalItems={total} pageSize={25} onPageChange={setPage} />
         </>
       )}
+      <DeliveryDetailDialog
+        deliveryId={detailId}
+        dealerId={dealerId}
+        onClose={() => setDetailId(null)}
+      />
     </div>
   );
 };
