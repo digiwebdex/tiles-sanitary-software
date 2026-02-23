@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import { Printer, X } from "lucide-react";
 
 interface Props {
@@ -24,16 +25,30 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
     enabled: !!deliveryId,
   });
 
+  // Get delivered qty for the whole sale (for progress)
+  const saleId = (delivery as any)?.sale_id;
+  const { data: deliveredQtyMap = {} } = useQuery({
+    queryKey: ["delivered-qty", saleId],
+    queryFn: () => deliveryService.getDeliveredQtyBySale(saleId, dealerId),
+    enabled: !!saleId,
+  });
+
   if (!deliveryId) return null;
 
   const sale = (delivery as any)?.sales;
   const customer = sale?.customers;
-  const items = sale?.sale_items ?? [];
+  const deliveryItems = (delivery as any)?.delivery_items ?? [];
+  const saleItems = sale?.sale_items ?? [];
   const challanNo = (delivery as any)?.challans?.challan_no;
+  const deliveryNo = (delivery as any)?.delivery_no;
   const invoiceNo = sale?.invoice_number;
   const address = delivery?.delivery_address || customer?.address || "—";
   const phone = delivery?.receiver_phone || customer?.phone;
   const businessName = dealerInfo?.name ?? "Your Business";
+
+  // Use delivery_items if available, fall back to sale_items
+  const displayItems = deliveryItems.length > 0 ? deliveryItems : saleItems;
+  const isPartialTracking = deliveryItems.length > 0;
 
   const statusLabel = delivery?.status === "delivered"
     ? "Delivered"
@@ -44,17 +59,12 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
   return (
     <Dialog open={!!deliveryId} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
-        {/* Header toolbar */}
         <div className="flex items-center justify-between px-6 pt-4 pb-2">
           <DialogTitle className="sr-only">Delivery Details</DialogTitle>
           <div />
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.print()}
-            >
-              <Printer className="mr-1.5 h-3.5 w-3.5" /> Print
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => window.print()}>
+              <Printer className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -85,7 +95,7 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
             <table className="w-full text-sm">
               <tbody>
                 <InfoRow label="Date" value={delivery.delivery_date} />
-                <InfoRow label="Delivery Reference No" value={challanNo || `DO${delivery.id.slice(0, 12)}`} />
+                <InfoRow label="Delivery No" value={deliveryNo || challanNo || `DO${delivery.id.slice(0, 12)}`} />
                 <InfoRow label="Sale Reference No" value={invoiceNo || "—"} />
                 <InfoRow label="Customer" value={customer?.name ?? delivery.receiver_name ?? "—"} />
                 <InfoRow
@@ -121,8 +131,10 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
 
             {/* Items */}
             <div>
-              <p className="font-semibold text-foreground mb-2">Items</p>
-              {items.length === 0 ? (
+              <p className="font-semibold text-foreground mb-2">
+                {isPartialTracking ? "ডেলিভারি আইটেম" : "Items"}
+              </p>
+              {displayItems.length === 0 ? (
                 <p className="text-muted-foreground text-xs">No items linked to this delivery.</p>
               ) : (
                 <table className="w-full text-sm border-collapse">
@@ -135,11 +147,11 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item: any, idx: number) => {
+                    {displayItems.map((item: any, idx: number) => {
                       const product = item.products;
                       const isBox = product?.unit_type === "box_sft";
-                      const sft = item.total_sft ? `${Number(item.total_sft).toFixed(2)} Sft` : "";
-                      const boxPcs = isBox ? `${item.quantity} box` : `${item.quantity} pc`;
+                      const qty = Number(item.quantity);
+                      const boxPcs = isBox ? `${qty} box` : `${qty} pc`;
 
                       return (
                         <tr key={item.id} className={idx % 2 === 0 ? "bg-background" : "bg-muted/20"}>
@@ -151,7 +163,7 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
                             )}
                           </td>
                           <td className="px-3 py-2 border-b text-center">{boxPcs}</td>
-                          <td className="px-3 py-2 border-b text-right">{sft || boxPcs}</td>
+                          <td className="px-3 py-2 border-b text-right">{boxPcs}</td>
                         </tr>
                       );
                     })}
@@ -159,6 +171,45 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
                 </table>
               )}
             </div>
+
+            {/* Delivery Progress Section */}
+            {saleItems.length > 0 && (
+              <>
+                <Separator />
+                <div>
+                  <p className="font-semibold text-foreground mb-2">ডেলিভারি প্রগ্রেস</p>
+                  <div className="space-y-2">
+                    {saleItems.map((si: any) => {
+                      const product = si.products;
+                      const isBox = product?.unit_type === "box_sft";
+                      const unit = isBox ? "box" : "pc";
+                      const ordered = Number(si.quantity);
+                      const delivered = deliveredQtyMap[si.id] || 0;
+                      const remaining = Math.max(0, ordered - delivered);
+                      const progress = ordered > 0 ? (delivered / ordered) * 100 : 0;
+
+                      return (
+                        <div key={si.id} className="rounded-md border p-3 space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium">{product?.name}</span>
+                            <span className="text-muted-foreground">
+                              {delivered}/{ordered} {unit}
+                            </span>
+                          </div>
+                          <Progress value={Math.min(progress, 100)} className="h-2" />
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>ডেলিভারড: {delivered} {unit}</span>
+                            <span className={remaining > 0 ? "text-orange-600 font-medium" : "text-green-600 font-medium"}>
+                              {remaining > 0 ? `বাকী: ${remaining} ${unit}` : "সম্পূর্ণ ✓"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
 
             <Separator />
 

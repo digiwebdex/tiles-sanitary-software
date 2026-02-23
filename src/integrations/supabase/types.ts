@@ -481,6 +481,7 @@ export type Database = {
           dealer_id: string
           delivery_address: string | null
           delivery_date: string
+          delivery_no: string | null
           id: string
           notes: string | null
           receiver_name: string | null
@@ -495,6 +496,7 @@ export type Database = {
           dealer_id: string
           delivery_address?: string | null
           delivery_date?: string
+          delivery_no?: string | null
           id?: string
           notes?: string | null
           receiver_name?: string | null
@@ -509,6 +511,7 @@ export type Database = {
           dealer_id?: string
           delivery_address?: string | null
           delivery_date?: string
+          delivery_no?: string | null
           id?: string
           notes?: string | null
           receiver_name?: string | null
@@ -536,6 +539,65 @@ export type Database = {
             columns: ["sale_id"]
             isOneToOne: false
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_items: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          delivery_id: string
+          id: string
+          product_id: string
+          quantity: number
+          sale_item_id: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          delivery_id: string
+          id?: string
+          product_id: string
+          quantity?: number
+          sale_item_id: string
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          delivery_id?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+          sale_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_items_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_items_delivery_id_fkey"
+            columns: ["delivery_id"]
+            isOneToOne: false
+            referencedRelation: "deliveries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_items_sale_item_id_fkey"
+            columns: ["sale_item_id"]
+            isOneToOne: false
+            referencedRelation: "sale_items"
             referencedColumns: ["id"]
           },
         ]

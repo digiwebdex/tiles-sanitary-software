@@ -143,8 +143,12 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
                   const customer = (d.sales as any)?.customers;
                   const challanNo = (d.challans as any)?.challan_no;
                   const invoiceNo = (d.sales as any)?.invoice_number;
+                  const deliveryNo = (d as any)?.delivery_no;
                   const address = d.delivery_address || customer?.address || "—";
                   const phone = d.receiver_phone || customer?.phone;
+                  const deliveryItemsList = (d as any)?.delivery_items ?? [];
+                  const itemCount = deliveryItemsList.length;
+                  const totalQty = deliveryItemsList.reduce((sum: number, di: any) => sum + Number(di.quantity), 0);
 
                   return (
                     <TableRow key={d.id} className="cursor-pointer" onClick={() => setDetailId(d.id)}>
@@ -155,12 +159,18 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
                         />
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{d.delivery_date}</TableCell>
-                      <TableCell className="font-mono text-sm">{challanNo || `DO${d.id.slice(0, 12)}`}</TableCell>
+                      <TableCell className="font-mono text-sm">{deliveryNo || challanNo || `DO${d.id.slice(0, 12)}`}</TableCell>
                       <TableCell className="font-mono text-sm">{invoiceNo || "—"}</TableCell>
                       <TableCell>{customer?.name ?? d.receiver_name ?? "—"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[200px]">
-                        <p>{address}</p>
-                        {phone && <p>Tel: {phone}</p>}
+                        {itemCount > 0 ? (
+                          <span className="font-medium text-foreground">{itemCount} আইটেম, {totalQty} ইউনিট</span>
+                        ) : (
+                          <>
+                            <p>{address}</p>
+                            {phone && <p>Tel: {phone}</p>}
+                          </>
+                        )}
                       </TableCell>
                       <TableCell>{statusBadge(d.status)}</TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>

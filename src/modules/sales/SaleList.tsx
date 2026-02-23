@@ -21,6 +21,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import CreateDeliveryDialog from "@/modules/deliveries/CreateDeliveryDialog";
 
 interface SaleListProps {
   dealerId: string;
@@ -34,6 +35,7 @@ const statusColors: Record<string, string> = {
   delivered: "default",
   invoiced: "default",
   completed: "default",
+  partially_delivered: "outline",
 };
 
 const paymentStatusVariant = (due: number, paid: number) => {
@@ -53,27 +55,27 @@ const SaleList = ({ dealerId }: SaleListProps) => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deliverySale, setDeliverySale] = useState<any>(null);
   const { isDealerAdmin, profile } = useAuth();
   const queryClient = useQueryClient();
 
-  const addDeliveryMutation = useMutation({
-    mutationFn: (sale: any) =>
-      deliveryService.create({
-        dealer_id: dealerId,
-        sale_id: sale.id,
-        delivery_date: new Date().toISOString().split("T")[0],
-        receiver_name: sale.customers?.name || undefined,
-        delivery_address: sale.customers?.address || undefined,
-        receiver_phone: sale.customers?.phone || undefined,
-        created_by: profile?.id,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["deliveries"] });
-      toast.success("Delivery created successfully");
-      navigate("/deliveries");
+  // Fetch sale items for the delivery dialog
+  const { data: deliverySaleData } = useQuery({
+    queryKey: ["sale-for-delivery", deliverySale?.id],
+    queryFn: async () => {
+      if (!deliverySale?.id) return null;
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data: sData, error } = await supabase
+        .from("sales")
+        .select("*, sale_items(*, products(name, sku, unit_type, per_box_sft)), customers(name, phone, address)")
+        .eq("id", deliverySale.id)
+        .single();
+      if (error) throw new Error(error.message);
+      return sData;
     },
-    onError: (err: Error) => toast.error(err.message),
+    enabled: !!deliverySale?.id,
   });
+
   const { data, isLoading } = useQuery({
     queryKey: ["sales", dealerId, page, search],
     queryFn: () => salesService.list(dealerId, page, search),
@@ -218,7 +220,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                                 <Package className="mr-2 h-4 w-4" /> Packing List
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem onClick={() => addDeliveryMutation.mutate(s)}>
+                            <DropdownMenuItem onClick={() => setDeliverySale(s)}>
                               <Truck className="mr-2 h-4 w-4" /> Add Delivery
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => navigate(`/sales/${s.id}/invoice`)}>
@@ -241,6 +243,13 @@ const SaleList = ({ dealerId }: SaleListProps) => {
           )}
         </>
       )}
+
+      <CreateDeliveryDialog
+        open={!!deliverySale}
+        onClose={() => setDeliverySale(null)}
+        sale={deliverySaleData ?? deliverySale}
+        dealerId={dealerId}
+      />
     </div>
   );
 };
