@@ -267,6 +267,33 @@ export const salesService = {
           .select("name, phone")
           .eq("id", customerId)
           .single();
+
+        // Fetch product names for SMS item details
+        const productIds = input.items.map(i => i.product_id);
+        const { data: products } = await supabase
+          .from("products")
+          .select("id, name, unit_type")
+          .in("id", productIds);
+        const productMap = new Map((products ?? []).map(p => [p.id, p]));
+
+        const itemDetails = input.items.map(item => {
+          const prod = productMap.get(item.product_id);
+          return {
+            name: prod?.name ?? "Product",
+            quantity: item.quantity,
+            unit: prod?.unit_type === "box_sft" ? "box" : "pc",
+            rate: item.sale_rate,
+            total: item.quantity * item.sale_rate,
+          };
+        });
+
+        // Get dealer name
+        const { data: dealer } = await supabase
+          .from("dealers")
+          .select("name")
+          .eq("id", input.dealer_id)
+          .single();
+
         notificationService.notifySaleCreated(input.dealer_id, {
           invoice_number: invoiceNumber,
           customer_name: customer?.name ?? "Customer",
@@ -275,6 +302,9 @@ export const salesService = {
           paid_amount: input.paid_amount,
           due_amount: dueAmount,
           sale_date: input.sale_date,
+          sale_id: sale!.id,
+          items: itemDetails,
+          dealer_name: dealer?.name ?? "",
         });
       } catch {
         // Swallow — notification fetch failure must not surface

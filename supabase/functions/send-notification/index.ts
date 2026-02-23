@@ -130,17 +130,33 @@ async function sendSMS(phone: string, message: string): Promise<{ success: boole
 
 // ─── Message builders ────────────────────────────────────────────────────────
 
+const PUBLISHED_URL = "https://tiles-sanitary-software.lovable.app";
+
 function buildSaleMessage(payload: Record<string, unknown>, recipient: string): string {
   const inv = payload.invoice_number ?? "N/A";
   const customer = payload.customer_name ?? "Customer";
   const amount = payload.total_amount ?? 0;
   const paid = payload.paid_amount ?? 0;
   const due = payload.due_amount ?? 0;
+  const saleId = payload.sale_id as string | undefined;
+  const dealerName = payload.dealer_name as string | undefined;
+  const items = payload.items as Array<{ name: string; quantity: number; unit: string; rate: number; total: number }> | undefined;
   const customerPhone = (payload.customer_phone as string | null) ?? null;
-  if (customerPhone && recipient === customerPhone) {
-    return `Dear ${customer},\nThank you for your purchase!\nInvoice: ${inv}\nAmount: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT`;
+
+  const invoiceLink = saleId ? `\n\nInvoice: ${PUBLISHED_URL}/sales/${saleId}/invoice` : "";
+
+  // Build items summary
+  let itemsSummary = "";
+  if (items && items.length > 0) {
+    itemsSummary = "\n\nItems:\n" + items.map((item, i) =>
+      `${i + 1}. ${item.name} - ${item.quantity} ${item.unit} x ${item.rate} = ${item.total} BDT`
+    ).join("\n");
   }
-  return `Sale Alert!\nInvoice: ${inv}\nCustomer: ${customer}\nAmount: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT`;
+
+  if (customerPhone && recipient === customerPhone) {
+    return `${dealerName ? dealerName + "\n" : ""}Dear ${customer},\nThank you for your purchase!\n\nInvoice: ${inv}\nDate: ${payload.sale_date ?? ""}${itemsSummary}\n\nTotal: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT${invoiceLink}`;
+  }
+  return `Sale Alert!\nInvoice: ${inv}\nCustomer: ${customer}${itemsSummary}\n\nAmount: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT${invoiceLink}`;
 }
 
 function buildDailySummaryMessage(payload: Record<string, unknown>): string {

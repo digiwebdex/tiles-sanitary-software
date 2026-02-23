@@ -16,6 +16,14 @@ const log = createLogger("NotificationService");
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
 const EDGE_FN_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/send-notification`;
 
+export interface SaleItemDetail {
+  name: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  total: number;
+}
+
 export interface SaleNotificationPayload {
   invoice_number: string;
   customer_name: string;
@@ -24,6 +32,9 @@ export interface SaleNotificationPayload {
   paid_amount: number;
   due_amount: number;
   sale_date: string;
+  sale_id?: string;
+  items?: SaleItemDetail[];
+  dealer_name?: string;
 }
 
 export interface DailySummaryPayload {
