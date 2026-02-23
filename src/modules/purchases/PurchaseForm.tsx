@@ -141,7 +141,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
             <p className="mb-4 text-sm text-muted-foreground">
               Please fill in the information below. The field labels marked with <span className="text-destructive">*</span> are required input fields.
             </p>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="invoice_number"
@@ -160,17 +160,6 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                   <FormItem>
                     <FormLabel>Purchase Date <span className="text-destructive">*</span></FormLabel>
                     <FormControl><Input type="date" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes</FormLabel>
-                    <FormControl><Textarea placeholder="Optional notes" rows={1} {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -401,14 +390,48 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
           </div>
         )}
 
-        {/* Grand total & submit */}
-        <div className="flex items-center justify-between rounded-md border bg-muted/50 p-4">
-          <span className="font-semibold text-foreground">
-            Grand Total: {formatCurrency(grandTotal)}
-          </span>
+        {/* Notes */}
+        <Card>
+          <CardContent className="pt-5">
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Note</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Add purchase notes..." rows={4} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Submit / Reset buttons */}
+        <div className="flex items-center gap-3">
           <Button type="submit" disabled={isLoading || fields.length === 0}>
-            {isLoading ? "Saving…" : "Save Purchase"}
+            {isLoading ? "Saving…" : "Submit"}
           </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => form.reset()}
+            disabled={isLoading}
+          >
+            Reset
+          </Button>
+        </div>
+
+        {/* Summary footer */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border bg-accent/30 px-4 py-3 text-sm">
+          <span className="text-muted-foreground">Items <strong className="text-foreground">{fields.length}</strong></span>
+          <span className="text-muted-foreground">Total <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, item) => s + (item.quantity || 0) * (item.purchase_rate || 0), 0))}</strong></span>
+          <span className="text-muted-foreground">Transport <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, item) => s + (item.transport_cost || 0), 0))}</strong></span>
+          <span className="text-muted-foreground">Labor <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, item) => s + (item.labor_cost || 0), 0))}</strong></span>
+          <span className="text-muted-foreground">Other <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, item) => s + (item.other_cost || 0), 0))}</strong></span>
+          <span className="ml-auto font-semibold text-foreground">Grand Total <strong>{formatCurrency(grandTotal)}</strong></span>
         </div>
       </form>
     </Form>
