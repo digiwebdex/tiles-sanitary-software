@@ -11,9 +11,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, AlertTriangle, Barcode, Printer } from "lucide-react";
-import { useQuery as useStockQuery } from "@tanstack/react-query";
+import { Plus, Search, Pencil, AlertTriangle, Barcode, Printer, MoreHorizontal, Eye, Copy, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BarcodePrintDialog from "./BarcodePrintDialog";
 
@@ -38,7 +40,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     enabled: !!dealerId,
   });
 
-  const { data: stockData } = useStockQuery({
+  const { data: stockData } = useQuery({
     queryKey: ["products-stock-map", dealerId],
     queryFn: async () => {
       const { data } = await supabase
@@ -48,6 +50,23 @@ const ProductList = ({ dealerId }: ProductListProps) => {
       const map = new Map<string, number>();
       for (const s of data ?? []) {
         map.set(s.product_id, (Number(s.box_qty) || 0) + (Number(s.piece_qty) || 0));
+      }
+      return map;
+    },
+    enabled: !!dealerId,
+  });
+
+  // Fetch average cost for products
+  const { data: costData } = useQuery({
+    queryKey: ["products-cost-map", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("stock")
+        .select("product_id, average_cost_per_unit")
+        .eq("dealer_id", dealerId);
+      const map = new Map<string, number>();
+      for (const s of data ?? []) {
+        map.set(s.product_id, Number(s.average_cost_per_unit) || 0);
       }
       return map;
     },
@@ -96,6 +115,28 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     setBarcodeOpen(true);
   };
 
+  const handleDuplicate = async (p: typeof products[0]) => {
+    try {
+      await productService.create({
+        dealer_id: dealerId,
+        name: `${p.name} (Copy)`,
+        sku: `${p.sku}-COPY`,
+        category: p.category,
+        unit_type: p.unit_type,
+        per_box_sft: p.per_box_sft,
+        default_sale_rate: p.default_sale_rate,
+        reorder_level: p.reorder_level,
+        brand: p.brand,
+        size: p.size,
+        color: p.color,
+      });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success("Product duplicated");
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
   const barcodeProducts = barcodeSingle ? [barcodeSingle] : selectedProducts;
 
   return (
@@ -130,7 +171,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         <p className="text-muted-foreground">No products found.</p>
       ) : (
         <>
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -140,59 +181,99 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                       onCheckedChange={toggleAll}
                     />
                   </TableHead>
-                  <TableHead>SKU</TableHead>
+                  <TableHead>Code</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Brand</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Rate</TableHead>
+                  <TableHead className="text-right">Alert Qty</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-20" />
+                  <TableHead className="w-20">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selected.has(p.id)}
-                        onCheckedChange={() => toggleSelect(p.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{p.sku}</TableCell>
-                    <TableCell>{p.name}</TableCell>
-                    <TableCell className="capitalize">{p.category}</TableCell>
-                    <TableCell>{p.unit_type === "box_sft" ? "Box/SFT" : "Piece"}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1.5 items-center">
-                        <Badge
-                          variant={p.active ? "default" : "secondary"}
-                          className="cursor-pointer"
-                          onClick={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
-                        >
-                          {p.active ? "Active" : "Inactive"}
-                        </Badge>
-                        {p.active && (() => {
-                          const qty = stockData?.get(p.id) ?? 0;
-                          const reorder = p.reorder_level ?? 0;
-                          if (qty === 0) return <Badge variant="destructive" className="text-xs gap-1"><AlertTriangle className="h-3 w-3" />Out of Stock</Badge>;
-                          if (reorder > 0 && qty <= reorder) return <Badge variant="destructive" className="text-xs gap-1 bg-destructive/80"><AlertTriangle className="h-3 w-3" />Low Stock</Badge>;
-                          return null;
-                        })()}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => openSingleBarcode(p)} title="Print Barcode">
-                          <Barcode className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => navigate(`/products/${p.id}/edit`)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {products.map((p) => {
+                  const qty = stockData?.get(p.id) ?? 0;
+                  const cost = costData?.get(p.id) ?? 0;
+                  const reorder = p.reorder_level ?? 0;
+
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selected.has(p.id)}
+                          onCheckedChange={() => toggleSelect(p.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{p.sku}</TableCell>
+                      <TableCell>
+                        <div>
+                          <span>{p.name}</span>
+                          {p.size && <span className="text-xs text-muted-foreground ml-1">(Size: {p.size})</span>}
+                          {p.per_box_sft && <span className="text-xs text-muted-foreground ml-1">(Box: {p.per_box_sft}sft)</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell>{p.brand || "—"}</TableCell>
+                      <TableCell className="capitalize">{p.category}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(cost)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
+                      <TableCell className={`text-right font-medium ${qty < 0 ? "text-destructive" : ""}`}>
+                        {qty.toFixed(2)}
+                      </TableCell>
+                      <TableCell>{p.unit_type === "box_sft" ? "Sft" : "Piece"}</TableCell>
+                      <TableCell className="text-right">{reorder > 0 ? reorder : "—"}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1 items-center">
+                          <Badge
+                            variant={p.active ? "default" : "secondary"}
+                            className="cursor-pointer text-xs"
+                            onClick={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
+                          >
+                            {p.active ? "Active" : "Inactive"}
+                          </Badge>
+                          {p.active && qty === 0 && (
+                            <Badge variant="destructive" className="text-xs gap-1">
+                              <AlertTriangle className="h-3 w-3" />Out
+                            </Badge>
+                          )}
+                          {p.active && reorder > 0 && qty > 0 && qty <= reorder && (
+                            <Badge variant="destructive" className="text-xs gap-1 bg-destructive/80">
+                              <AlertTriangle className="h-3 w-3" />Low
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline" className="h-8 px-3 text-xs">
+                              Actions
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => navigate(`/products/${p.id}/edit`)}>
+                              <Pencil className="mr-2 h-4 w-4" /> Edit Product
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDuplicate(p)}>
+                              <Copy className="mr-2 h-4 w-4" /> Duplicate Product
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openSingleBarcode(p)}>
+                              <Barcode className="mr-2 h-4 w-4" /> Print Barcode/Label
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> {p.active ? "Deactivate" : "Activate"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
