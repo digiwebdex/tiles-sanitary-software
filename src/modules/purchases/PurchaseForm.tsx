@@ -21,9 +21,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Plus, Trash2, Search, Package } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useState } from "react";
 
 interface PurchaseFormProps {
   dealerId: string;
@@ -33,6 +43,8 @@ interface PurchaseFormProps {
 }
 
 const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: PurchaseFormProps) => {
+  const [productSearch, setProductSearch] = useState("");
+
   const form = useForm<PurchaseFormValues>({
     resolver: zodResolver(purchaseSchema),
     defaultValues: {
@@ -40,17 +52,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
       invoice_number: "",
       purchase_date: new Date().toISOString().split("T")[0],
       notes: "",
-      items: [
-        {
-          product_id: "",
-          quantity: 0,
-          purchase_rate: 0,
-          offer_price: 0,
-          transport_cost: 0,
-          labor_cost: 0,
-          other_cost: 0,
-        },
-      ],
+      items: [],
     },
   });
 
@@ -85,6 +87,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
   });
 
   const watchItems = form.watch("items");
+  const watchSupplierId = form.watch("supplier_id");
 
   const getItemProduct = (productId: string) =>
     products.find((p) => p.id === productId);
@@ -106,215 +109,304 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
     return null;
   };
 
+  const filteredProducts = products.filter((p) => {
+    if (!productSearch.trim()) return true;
+    const q = productSearch.toLowerCase();
+    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+  });
+
+  const addProduct = (productId: string) => {
+    // Don't add duplicates
+    if (watchItems.some((item) => item.product_id === productId)) return;
+    append({
+      product_id: productId,
+      quantity: 0,
+      purchase_rate: 0,
+      offer_price: 0,
+      transport_cost: 0,
+      labor_cost: 0,
+      other_cost: 0,
+    });
+    setProductSearch("");
+  };
+
+  const grandTotal = watchItems.reduce((s, _, i) => s + calcLandedCost(i), 0);
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <FormField
-            control={form.control}
-            name="supplier_id"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Supplier</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl><SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger></FormControl>
-                  <SelectContent>
-                    {suppliers.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="invoice_number"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Invoice No</FormLabel>
-                <FormControl><Input placeholder="INV-001" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="purchase_date"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Purchase Date</FormLabel>
-                <FormControl><Input type="date" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+        {/* Top section: Reference, Date */}
+        <Card>
+          <CardContent className="pt-5">
+            <p className="mb-4 text-sm text-muted-foreground">
+              Please fill in the information below. The field labels marked with <span className="text-destructive">*</span> are required input fields.
+            </p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="invoice_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Reference No</FormLabel>
+                    <FormControl><Input placeholder="INV-001" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="purchase_date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Purchase Date <span className="text-destructive">*</span></FormLabel>
+                    <FormControl><Input type="date" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes</FormLabel>
+                    <FormControl><Textarea placeholder="Optional notes" rows={1} {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-foreground">Items</h3>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                append({
-                  product_id: "",
-                  quantity: 0,
-                  purchase_rate: 0,
-                  offer_price: 0,
-                  transport_cost: 0,
-                  labor_cost: 0,
-                  other_cost: 0,
-                })
-              }
-            >
-              <Plus className="mr-1 h-4 w-4" /> Add Item
-            </Button>
+        {/* Supplier selection - required before adding products */}
+        <Alert className="border-accent bg-accent/50">
+          <AlertDescription className="text-accent-foreground">
+            Please select a supplier before adding any product
+          </AlertDescription>
+        </Alert>
+
+        <Card>
+          <CardContent className="pt-5">
+            <FormField
+              control={form.control}
+              name="supplier_id"
+              render={({ field }) => (
+                <FormItem className="max-w-sm">
+                  <FormLabel>Supplier <span className="text-destructive">*</span></FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Supplier" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {suppliers.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Product search bar */}
+        <Card>
+          <CardContent className="pt-5">
+            <div className="relative">
+              <div className="flex items-center gap-2 rounded-md border bg-background">
+                <Package className="ml-3 h-5 w-5 text-muted-foreground" />
+                <Input
+                  placeholder="Search products by name or SKU to add..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="border-0 shadow-none focus-visible:ring-0"
+                  disabled={!watchSupplierId}
+                />
+                <Search className="mr-3 h-4 w-4 text-muted-foreground" />
+              </div>
+              {productSearch.trim() && watchSupplierId && (
+                <div className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover shadow-lg">
+                  {filteredProducts.length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground">No products found</div>
+                  ) : (
+                    filteredProducts.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
+                        onClick={() => addProduct(p.id)}
+                        disabled={watchItems.some((item) => item.product_id === p.id)}
+                      >
+                        <span className="font-medium">{p.sku}</span>
+                        <span className="text-muted-foreground">— {p.name}</span>
+                        {watchItems.some((item) => item.product_id === p.id) && (
+                          <span className="ml-auto text-xs text-muted-foreground">(added)</span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            {!watchSupplierId && (
+              <p className="mt-2 text-xs text-muted-foreground">Select a supplier first to add products</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Items table */}
+        {fields.length > 0 && (
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-8">#</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="w-24">Qty</TableHead>
+                      <TableHead className="w-28">Rate</TableHead>
+                      {showOfferPrice && <TableHead className="w-28">Offer Price</TableHead>}
+                      <TableHead className="w-24">Transport</TableHead>
+                      <TableHead className="w-24">Labor</TableHead>
+                      <TableHead className="w-24">Other</TableHead>
+                      <TableHead className="w-24">SFT</TableHead>
+                      <TableHead className="w-28 text-right">Landed Cost</TableHead>
+                      <TableHead className="w-10"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fields.map((field, idx) => {
+                      const product = getItemProduct(watchItems[idx]?.product_id);
+                      const totalSft = calcTotalSft(idx);
+                      const landedCost = calcLandedCost(idx);
+
+                      return (
+                        <TableRow key={field.id}>
+                          <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                          <TableCell>
+                            <div className="text-sm font-medium">{product?.name ?? "—"}</div>
+                            <div className="text-xs text-muted-foreground">{product?.sku}</div>
+                          </TableCell>
+                          <TableCell>
+                            <FormField
+                              control={form.control}
+                              name={`items.${idx}.quantity`}
+                              render={({ field: f }) => (
+                                <FormItem className="space-y-0">
+                                  <FormControl>
+                                    <Input type="number" step="0.01" className="h-8 text-sm" {...f} />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <FormField
+                              control={form.control}
+                              name={`items.${idx}.purchase_rate`}
+                              render={({ field: f }) => (
+                                <FormItem className="space-y-0">
+                                  <FormControl>
+                                    <Input type="number" step="0.01" className="h-8 text-sm" {...f} />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </TableCell>
+                          {showOfferPrice && (
+                            <TableCell>
+                              <FormField
+                                control={form.control}
+                                name={`items.${idx}.offer_price`}
+                                render={({ field: f }) => (
+                                  <FormItem className="space-y-0">
+                                    <FormControl>
+                                      <Input type="number" step="0.01" className="h-8 text-sm" {...f} />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            <FormField
+                              control={form.control}
+                              name={`items.${idx}.transport_cost`}
+                              render={({ field: f }) => (
+                                <FormItem className="space-y-0">
+                                  <FormControl>
+                                    <Input type="number" step="0.01" className="h-8 text-sm" {...f} />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <FormField
+                              control={form.control}
+                              name={`items.${idx}.labor_cost`}
+                              render={({ field: f }) => (
+                                <FormItem className="space-y-0">
+                                  <FormControl>
+                                    <Input type="number" step="0.01" className="h-8 text-sm" {...f} />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <FormField
+                              control={form.control}
+                              name={`items.${idx}.other_cost`}
+                              render={({ field: f }) => (
+                                <FormItem className="space-y-0">
+                                  <FormControl>
+                                    <Input type="number" step="0.01" className="h-8 text-sm" {...f} />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {totalSft !== null ? totalSft.toFixed(2) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-sm">
+                            {formatCurrency(landedCost)}
+                          </TableCell>
+                          <TableCell>
+                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove(idx)}>
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {fields.length === 0 && watchSupplierId && (
+          <div className="rounded-md border border-dashed p-8 text-center text-muted-foreground">
+            <Package className="mx-auto mb-2 h-8 w-8" />
+            <p>Please add products to order list</p>
+            <p className="mt-1 text-xs">Use the search bar above to find and add products</p>
           </div>
+        )}
 
-          {fields.map((field, idx) => {
-            const selectedProduct = getItemProduct(watchItems[idx]?.product_id);
-            const totalSft = calcTotalSft(idx);
-            const landedCost = calcLandedCost(idx);
-
-            return (
-              <Card key={field.id}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm">Item {idx + 1}</CardTitle>
-                  {fields.length > 1 && (
-                    <Button type="button" variant="ghost" size="icon" onClick={() => remove(idx)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  <FormField
-                    control={form.control}
-                    name={`items.${idx}.product_id`}
-                    render={({ field: f }) => (
-                      <FormItem className="col-span-2">
-                        <FormLabel>Product</FormLabel>
-                        <Select onValueChange={f.onChange} value={f.value}>
-                          <FormControl><SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger></FormControl>
-                          <SelectContent>
-                            {products.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.sku} — {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`items.${idx}.quantity`}
-                    render={({ field: f }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {selectedProduct?.unit_type === "box_sft" ? "Box Qty" : "Piece Qty"}
-                        </FormLabel>
-                        <FormControl><Input type="number" step="0.01" {...f} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`items.${idx}.purchase_rate`}
-                    render={({ field: f }) => (
-                      <FormItem>
-                        <FormLabel>Purchase Rate</FormLabel>
-                        <FormControl><Input type="number" step="0.01" {...f} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  {showOfferPrice && (
-                    <FormField
-                      control={form.control}
-                      name={`items.${idx}.offer_price`}
-                      render={({ field: f }) => (
-                        <FormItem>
-                          <FormLabel>Offer Price</FormLabel>
-                          <FormControl><Input type="number" step="0.01" {...f} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-                  <FormField
-                    control={form.control}
-                    name={`items.${idx}.transport_cost`}
-                    render={({ field: f }) => (
-                      <FormItem>
-                        <FormLabel>Transport</FormLabel>
-                        <FormControl><Input type="number" step="0.01" {...f} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`items.${idx}.labor_cost`}
-                    render={({ field: f }) => (
-                      <FormItem>
-                        <FormLabel>Labor</FormLabel>
-                        <FormControl><Input type="number" step="0.01" {...f} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`items.${idx}.other_cost`}
-                    render={({ field: f }) => (
-                      <FormItem>
-                        <FormLabel>Other Cost</FormLabel>
-                        <FormControl><Input type="number" step="0.01" {...f} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="col-span-2 flex gap-4 rounded-md bg-muted p-3 text-sm md:col-span-4">
-                    {totalSft !== null && (
-                      <span className="text-muted-foreground">
-                        Total SFT: <strong className="text-foreground">{totalSft.toFixed(2)}</strong>
-                      </span>
-                    )}
-                    <span className="text-muted-foreground">
-                      Landed Cost: <strong className="text-foreground">{formatCurrency(landedCost)}</strong>
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        <FormField
-          control={form.control}
-          name="notes"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Notes</FormLabel>
-              <FormControl><Textarea placeholder="Optional notes" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
+        {/* Grand total & submit */}
         <div className="flex items-center justify-between rounded-md border bg-muted/50 p-4">
           <span className="font-semibold text-foreground">
-            Grand Total: {formatCurrency(watchItems.reduce((s, _, i) => s + calcLandedCost(i), 0))}
+            Grand Total: {formatCurrency(grandTotal)}
           </span>
-          <Button type="submit" disabled={isLoading}>
+          <Button type="submit" disabled={isLoading || fields.length === 0}>
             {isLoading ? "Saving…" : "Save Purchase"}
           </Button>
         </div>
