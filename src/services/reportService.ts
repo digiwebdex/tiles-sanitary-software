@@ -82,6 +82,109 @@ export async function fetchStockReport(
   return { rows, total: count ?? 0 };
 }
 
+// ─── Products Report (with Purchase/Sale/Profit/Stock) ────
+export interface ProductReportRow {
+  productId: string;
+  sku: string;
+  name: string;
+  purchasedQty: number;
+  purchasedAmount: number;
+  soldQty: number;
+  soldAmount: number;
+  profitOrLoss: number;
+  stockQty: number;
+  stockAmount: number;
+}
+
+export async function fetchProductsReport(
+  dealerId: string,
+  page: number,
+  search?: string
+): Promise<{ rows: ProductReportRow[]; total: number }> {
+  let pQuery = supabase
+    .from("products")
+    .select("id, sku, name, brand, category, unit_type, per_box_sft", { count: "exact" })
+    .eq("dealer_id", dealerId)
+    .eq("active", true)
+    .order("sku");
+
+  if (search?.trim()) {
+    pQuery = pQuery.or(`sku.ilike.%${search.trim()}%,name.ilike.%${search.trim()}%,brand.ilike.%${search.trim()}%`);
+  }
+
+  pQuery = pQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+  const { data: products, count, error } = await pQuery;
+  if (error) throw new Error(error.message);
+
+  const ids = (products ?? []).map((p) => p.id);
+  if (ids.length === 0) return { rows: [], total: 0 };
+
+  // Fetch purchase items, sale items, and stock in parallel
+  const [purchaseItemsRes, saleItemsRes, stocksRes] = await Promise.all([
+    supabase
+      .from("purchase_items")
+      .select("product_id, quantity, total")
+      .eq("dealer_id", dealerId)
+      .in("product_id", ids),
+    supabase
+      .from("sale_items")
+      .select("product_id, quantity, total")
+      .eq("dealer_id", dealerId)
+      .in("product_id", ids),
+    supabase
+      .from("stock")
+      .select("product_id, box_qty, piece_qty, average_cost_per_unit")
+      .eq("dealer_id", dealerId)
+      .in("product_id", ids),
+  ]);
+
+  // Aggregate purchases by product
+  const purchaseMap: Record<string, { qty: number; amount: number }> = {};
+  for (const pi of purchaseItemsRes.data ?? []) {
+    if (!purchaseMap[pi.product_id]) purchaseMap[pi.product_id] = { qty: 0, amount: 0 };
+    purchaseMap[pi.product_id].qty += Number(pi.quantity);
+    purchaseMap[pi.product_id].amount += Number(pi.total);
+  }
+
+  // Aggregate sales by product
+  const saleMap: Record<string, { qty: number; amount: number }> = {};
+  for (const si of saleItemsRes.data ?? []) {
+    if (!saleMap[si.product_id]) saleMap[si.product_id] = { qty: 0, amount: 0 };
+    saleMap[si.product_id].qty += Number(si.quantity);
+    saleMap[si.product_id].amount += Number(si.total);
+  }
+
+  const stockMap = new Map((stocksRes.data ?? []).map((s) => [s.product_id, s]));
+
+  const rows: ProductReportRow[] = (products ?? []).map((p) => {
+    const purchased = purchaseMap[p.id] ?? { qty: 0, amount: 0 };
+    const sold = saleMap[p.id] ?? { qty: 0, amount: 0 };
+    const s = stockMap.get(p.id);
+    const stockQty = Number(s?.box_qty ?? 0) + Number(s?.piece_qty ?? 0);
+    const avgCost = Number(s?.average_cost_per_unit ?? 0);
+
+    // Profit = Sales revenue - Cost of goods sold (using avg cost * sold qty)
+    const cogs = sold.qty * avgCost;
+    const profitOrLoss = round2(sold.amount - cogs);
+
+    return {
+      productId: p.id,
+      sku: p.sku,
+      name: `${p.name}${p.category === 'tiles' && p.per_box_sft ? ` (Box: ${p.per_box_sft}sft)` : ''}`,
+      purchasedQty: purchased.qty,
+      purchasedAmount: round2(purchased.amount),
+      soldQty: sold.qty,
+      soldAmount: round2(sold.amount),
+      profitOrLoss,
+      stockQty,
+      stockAmount: round2(stockQty * avgCost),
+    };
+  });
+
+  return { rows, total: count ?? 0 };
+}
+
 // ─── Brand-wise Stock ─────────────────────────────────────
 export interface BrandStockRow {
   brand: string;

@@ -12,6 +12,7 @@ import {
 import Pagination from "@/components/Pagination";
 import {
   fetchStockReport,
+  fetchProductsReport,
   fetchBrandStockReport,
   fetchSalesReport,
   fetchRetailerSalesReport,
@@ -130,22 +131,22 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
   );
 };
 
-// ─── Stock Report ─────────────────────────────────────────
+// ─── Products Report ──────────────────────────────────────
 function StockReport({ dealerId }: { dealerId: string }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["report-stock", dealerId, page, search],
-    queryFn: () => fetchStockReport(dealerId, page, search),
+    queryKey: ["report-products", dealerId, page, search],
+    queryFn: () => fetchProductsReport(dealerId, page, search),
   });
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-        <CardTitle className="text-base">Stock Report (SKU-wise)</CardTitle>
+        <CardTitle className="text-base">Products Report</CardTitle>
         <Input
-          placeholder="Search SKU, name, brand…"
+          placeholder="Search…"
           className="max-w-xs"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -158,38 +159,35 @@ function StockReport({ dealerId }: { dealerId: string }) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Box</TableHead>
-                    <TableHead className="text-right">SFT</TableHead>
-                    <TableHead className="text-right">Piece</TableHead>
-                    <TableHead className="text-right">Avg Cost</TableHead>
-                    <TableHead className="text-right">Value</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Product Code</TableHead>
+                    <TableHead>Product Name</TableHead>
+                    <TableHead className="text-right">Purchased</TableHead>
+                    <TableHead className="text-right">Sold</TableHead>
+                    <TableHead className="text-right">Profit and/or Loss</TableHead>
+                    <TableHead className="text-right">Stock (Qty) Amt</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(data?.rows ?? []).length === 0 ? (
-                    <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground">No products</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No products</TableCell></TableRow>
                   ) : (data?.rows ?? []).map((r) => (
                     <TableRow key={r.productId}>
                       <TableCell className="font-mono text-sm">{r.sku}</TableCell>
                       <TableCell className="font-medium">{r.name}</TableCell>
-                      <TableCell>{r.brand || "—"}</TableCell>
-                      <TableCell><Badge variant="outline" className="capitalize text-xs">{r.category}</Badge></TableCell>
-                      <TableCell className="text-right">{r.boxQty}</TableCell>
-                      <TableCell className="text-right">{r.sftQty.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{r.pieceQty}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(r.avgCost)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(r.stockValue)}</TableCell>
-                      <TableCell>
-                        {r.isLow ? (
-                          <Badge variant="destructive" className="text-xs">Low</Badge>
-                        ) : (
-                          <Badge variant="secondary" className="text-xs">OK</Badge>
-                        )}
+                      <TableCell className="text-right">
+                        <span className="text-muted-foreground">({r.purchasedQty})</span>{" "}
+                        {formatCurrency(r.purchasedAmount)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-muted-foreground">({r.soldQty})</span>{" "}
+                        {formatCurrency(r.soldAmount)}
+                      </TableCell>
+                      <TableCell className={`text-right font-semibold ${r.profitOrLoss >= 0 ? "text-primary" : "text-destructive"}`}>
+                        {formatCurrency(r.profitOrLoss)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-muted-foreground">({r.stockQty})</span>{" "}
+                        {formatCurrency(r.stockAmount)}
                       </TableCell>
                     </TableRow>
                   ))}
