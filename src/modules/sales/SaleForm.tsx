@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { saleSchema, type SaleFormValues } from "@/modules/sales/saleSchema";
@@ -10,10 +10,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, Search } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Plus, Trash2, Search, Barcode } from "lucide-react";
+import { formatCurrency, CURRENCY_CODE } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { Separator } from "@/components/ui/separator";
 
 interface SaleFormProps {
   dealerId: string;
@@ -48,8 +52,6 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     name: "items",
   });
 
-  // We no longer need to fetch customers for a dropdown — customer is a text field now
-
   const { data: products = [] } = useQuery({
     queryKey: ["products-active", dealerId],
     queryFn: async () => {
@@ -63,7 +65,6 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     enabled: !!dealerId,
   });
 
-  // Fetch stock for live profit preview (owner only)
   const { data: stockData = [] } = useQuery({
     queryKey: ["stock-for-sale", dealerId],
     queryFn: async () => {
@@ -89,7 +90,6 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
   const watchItems = form.watch("items");
   const watchDiscount = form.watch("discount") || 0;
   const watchPaid = form.watch("paid_amount") || 0;
-  const watchCustomerName = form.watch("customer_name");
 
   const getProduct = (pid: string) => products.find((p) => p.id === pid);
 
@@ -113,11 +113,10 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     return null;
   };
 
-  const subtotal = watchItems.reduce((s, item, idx) => s + calcItemTotal(idx), 0);
+  const subtotal = watchItems.reduce((s, _, idx) => s + calcItemTotal(idx), 0);
   const totalAmount = subtotal - watchDiscount;
   const dueAmount = Math.max(0, totalAmount - watchPaid);
 
-  // Estimated COGS for live profit preview (owner only)
   const estimatedCogs = watchItems.reduce((acc, item) => {
     if (!item.product_id || !item.quantity) return acc;
     const avgCost = stockMap.get(item.product_id) ?? 0;
@@ -125,7 +124,6 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
   }, 0);
   const estimatedGrossProfit = totalAmount - estimatedCogs;
 
-  // Summary totals
   const summaryTotals = watchItems.reduce(
     (acc, item) => {
       const product = getProduct(item.product_id);
@@ -148,350 +146,378 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     }
   };
 
-  /** Submit — credit check is skipped since customer may be new */
   const handleFormSubmit = async (values: SaleFormValues) => {
     await onSubmit(values);
   };
 
-
   return (
-    <>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
-          {/* Sale Type Toggle */}
-          <div className="flex items-center gap-4 rounded-md border bg-muted/50 p-3">
-            <span className="text-sm font-medium text-foreground">Sale Type:</span>
-            <FormField
-              control={form.control}
-              name="sale_type"
-              render={({ field }) => (
-                <FormItem className="flex items-center gap-2 space-y-0">
-                  <div className="flex rounded-md border overflow-hidden">
-                    <button
-                      type="button"
-                      className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                        field.value === "direct_invoice"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-background text-muted-foreground hover:bg-accent"
-                      }`}
-                      onClick={() => field.onChange("direct_invoice")}
-                    >
-                      Direct Invoice
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-                        field.value === "challan_mode"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-background text-muted-foreground hover:bg-accent"
-                      }`}
-                      onClick={() => field.onChange("challan_mode")}
-                    >
-                      Challan Mode
-                    </button>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-5 pb-28">
+        {/* Sale Info Card */}
+        <Card>
+          <CardContent className="pt-5 space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="client_reference"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Reference No</FormLabel>
+                    <FormControl><Input placeholder="Auto or manual" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="sale_date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sale Date *</FormLabel>
+                    <FormControl><Input type="date" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="sale_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sale Type</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="direct_invoice">Direct Invoice</SelectItem>
+                        <SelectItem value="challan_mode">Challan Mode</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Customer & References */}
+        <Card>
+          <CardContent className="pt-5 space-y-4">
+            <div className="rounded-md border border-yellow-300 bg-yellow-50 px-4 py-2 text-xs text-yellow-800">
+              Please select customer before adding any product
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="customer_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Customer *</FormLabel>
+                    <FormControl><Input placeholder="Type customer name" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="fitter_reference"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fitter Reference</FormLabel>
+                    <FormControl><Input placeholder="Fitter ID" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Product Search Bar */}
+        <Card>
+          <CardContent className="pt-5">
+            <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-3">
+              <Barcode className="h-5 w-5 text-muted-foreground shrink-0" />
+              <span className="text-sm text-muted-foreground">Please add products to order list</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Order Items */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">Order Items *</h3>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => append({ product_id: "", quantity: 0, sale_rate: 0 })}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" /> Add Item
+            </Button>
           </div>
 
-          {/* Header */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <FormField
-              control={form.control}
-              name="customer_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Customer</FormLabel>
-                  <FormControl><Input placeholder="Type customer name" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="sale_date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Sale Date</FormLabel>
-                  <FormControl><Input type="date" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="client_reference"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Client Reference</FormLabel>
-                  <FormControl><Input placeholder="Client ref" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="fitter_reference"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Fitter Reference</FormLabel>
-                  <FormControl><Input placeholder="Fitter ID" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="discount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Discount (৳)</FormLabel>
-                  <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="discount_reference"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Discount Reference</FormLabel>
-                  <FormControl><Input placeholder="Reason / approval" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          {/* Table header */}
+          <div className="hidden md:grid md:grid-cols-12 gap-2 rounded-t-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
+            <div className="col-span-5">Product (Code - Name)</div>
+            <div className="col-span-2 text-center">Quantity</div>
+            <div className="col-span-2 text-right">Unit Price</div>
+            <div className="col-span-2 text-right">Subtotal ({CURRENCY_CODE})</div>
+            <div className="col-span-1 text-center">⋯</div>
           </div>
 
+          {fields.map((field, idx) => {
+            const selectedProduct = getProduct(watchItems[idx]?.product_id);
+            const itemSft = calcItemSft(idx);
+            const itemTotal = calcItemTotal(idx);
+            const filtered = getFilteredProducts(idx);
+            const searchVal = itemSearches[idx] ?? "";
 
-          {/* Items */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Items</h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => append({ product_id: "", quantity: 0, sale_rate: 0 })}
+            return (
+              <div
+                key={field.id}
+                className="grid grid-cols-1 gap-2 rounded-md border bg-background p-3 md:grid-cols-12 md:items-center md:gap-2 md:p-2"
               >
-                <Plus className="mr-1 h-4 w-4" /> Add Item
-              </Button>
+                {/* Product */}
+                <div className="col-span-5 relative">
+                  <FormField
+                    control={form.control}
+                    name={`items.${idx}.product_id`}
+                    render={() => (
+                      <FormItem className="space-y-0">
+                        {selectedProduct ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex-1 rounded border px-2 py-1.5 text-sm bg-muted/30">
+                              <span className="font-mono text-xs text-muted-foreground">{selectedProduct.sku}</span>
+                              {" — "}
+                              <span>{selectedProduct.name}</span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              onClick={() => {
+                                form.setValue(`items.${idx}.product_id`, "");
+                                form.setValue(`items.${idx}.sale_rate`, 0);
+                                setItemSearches((s) => ({ ...s, [idx]: "" }));
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              placeholder="Search SKU or name…"
+                              value={searchVal}
+                              onChange={(e) =>
+                                setItemSearches((s) => ({ ...s, [idx]: e.target.value }))
+                              }
+                              className="pl-7 h-8 text-sm"
+                              autoComplete="off"
+                            />
+                            {searchVal.length > 0 && filtered.length > 0 && (
+                              <div className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover shadow-md">
+                                {filtered.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
+                                    onClick={() => {
+                                      handleProductSelect(idx, p.id);
+                                      setItemSearches((s) => ({ ...s, [idx]: "" }));
+                                    }}
+                                  >
+                                    <span className="font-mono text-xs text-muted-foreground">{p.sku}</span>
+                                    <span className="truncate">{p.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {searchVal.length > 0 && filtered.length === 0 && (
+                              <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-3 text-sm text-muted-foreground shadow-md">
+                                No products found
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Quantity */}
+                <div className="col-span-2">
+                  <FormField
+                    control={form.control}
+                    name={`items.${idx}.quantity`}
+                    render={({ field: f }) => (
+                      <FormItem className="space-y-0">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder={selectedProduct?.unit_type === "box_sft" ? "Box qty" : "Qty"}
+                            className="h-8 text-sm text-center"
+                            {...f}
+                          />
+                        </FormControl>
+                        {itemSft !== null && (
+                          <p className="text-[10px] text-muted-foreground text-center mt-0.5">
+                            {itemSft.toFixed(2)} Sft
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Unit Price */}
+                <div className="col-span-2">
+                  <FormField
+                    control={form.control}
+                    name={`items.${idx}.sale_rate`}
+                    render={({ field: f }) => (
+                      <FormItem className="space-y-0">
+                        <FormControl>
+                          <Input type="number" step="0.01" placeholder="Rate" className="h-8 text-sm text-right" {...f} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Subtotal */}
+                <div className="col-span-2 text-right text-sm font-semibold text-foreground py-1">
+                  {formatCurrency(itemTotal)}
+                </div>
+
+                {/* Remove */}
+                <div className="col-span-1 flex justify-center">
+                  {fields.length > 1 && (
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove(idx)}>
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Discount, Payment & Notes */}
+        <Card>
+          <CardContent className="pt-5 space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="discount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Order Discount (৳)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="discount_reference"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Discount Reference</FormLabel>
+                    <FormControl><Input placeholder="Reason / approval" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="paid_amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Paid Amount (৳)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
-            {fields.map((field, idx) => {
-              const selectedProduct = getProduct(watchItems[idx]?.product_id);
-              const itemSft = calcItemSft(idx);
-              const itemTotal = calcItemTotal(idx);
-              const filtered = getFilteredProducts(idx);
-              const searchVal = itemSearches[idx] ?? "";
-              const showDropdown = searchVal.length > 0 && !watchItems[idx]?.product_id;
+            <Separator />
 
-              return (
-                <Card key={field.id}>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm">Item {idx + 1}</CardTitle>
-                    {fields.length > 1 && (
-                      <Button type="button" variant="ghost" size="icon" onClick={() => remove(idx)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <FormField
-                      control={form.control}
-                      name={`items.${idx}.product_id`}
-                      render={() => (
-                        <FormItem className="col-span-2 relative">
-                          <FormLabel>Product</FormLabel>
-                          {selectedProduct ? (
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm">
-                                <span className="font-mono text-muted-foreground">{selectedProduct.sku}</span>
-                                {" — "}
-                                <span>{selectedProduct.name}</span>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-9 px-3 text-xs shrink-0"
-                                onClick={() => {
-                                  form.setValue(`items.${idx}.product_id`, "");
-                                  form.setValue(`items.${idx}.sale_rate`, 0);
-                                  setItemSearches((s) => ({ ...s, [idx]: "" }));
-                                }}
-                              >
-                                <Trash2 className="mr-1 h-3 w-3" /> Change
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="relative">
-                              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input
-                                placeholder="Search by SKU or name…"
-                                value={searchVal}
-                                onChange={(e) =>
-                                  setItemSearches((s) => ({ ...s, [idx]: e.target.value }))
-                                }
-                                className="pl-8"
-                                autoComplete="off"
-                              />
-                              {searchVal.length > 0 && filtered.length > 0 && (
-                                <div className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover shadow-md">
-                                  {filtered.map((p) => (
-                                    <button
-                                      key={p.id}
-                                      type="button"
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
-                                      onClick={() => {
-                                        handleProductSelect(idx, p.id);
-                                        setItemSearches((s) => ({ ...s, [idx]: "" }));
-                                      }}
-                                    >
-                                      <span className="font-mono text-xs text-muted-foreground">{p.sku}</span>
-                                      <span className="truncate">{p.name}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              {searchVal.length > 0 && filtered.length === 0 && (
-                                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-3 text-sm text-muted-foreground shadow-md">
-                                  No products found
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`items.${idx}.quantity`}
-                      render={({ field: f }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {selectedProduct?.unit_type === "box_sft" ? "Box Qty" : "Piece Qty"}
-                          </FormLabel>
-                          <FormControl><Input type="number" step="0.01" {...f} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`items.${idx}.sale_rate`}
-                      render={({ field: f }) => (
-                        <FormItem>
-                          <FormLabel>Sale Rate</FormLabel>
-                          <FormControl><Input type="number" step="0.01" {...f} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="col-span-2 flex gap-4 rounded-md bg-muted p-3 text-sm md:col-span-4">
-                      {itemSft !== null && (
-                        <span className="text-muted-foreground">
-                          SFT: <strong className="text-foreground">{itemSft.toFixed(2)}</strong>
-                        </span>
-                      )}
-                      <span className="text-muted-foreground">
-                        Total: <strong className="text-foreground">{formatCurrency(itemTotal)}</strong>
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          {/* Payment */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <FormField
-              control={form.control}
-              name="paid_amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Paid Amount (৳)</FormLabel>
-                  <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <FormField
               control={form.control}
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Notes</FormLabel>
-                  <FormControl><Textarea placeholder="Optional notes" {...field} /></FormControl>
+                  <FormLabel>Sale Note</FormLabel>
+                  <FormControl><Textarea placeholder="Optional notes…" rows={3} {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* Summary */}
-          <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/50 p-4 text-sm md:grid-cols-6">
+        {/* Live Profit Preview — Owner only */}
+        {isDealerAdmin && estimatedCogs > 0 && (
+          <div className="grid grid-cols-3 gap-3 rounded-md border border-primary/20 bg-primary/5 p-4 text-sm">
             <div>
-              <span className="text-muted-foreground">Boxes</span>
-              <p className="font-semibold">{summaryTotals.box}</p>
+              <span className="text-muted-foreground text-xs uppercase font-semibold">Est. COGS</span>
+              <p className="font-semibold text-destructive">{formatCurrency(estimatedCogs)}</p>
             </div>
             <div>
-              <span className="text-muted-foreground">Total SFT</span>
-              <p className="font-semibold">{summaryTotals.sft.toFixed(2)}</p>
+              <span className="text-muted-foreground text-xs uppercase font-semibold">Est. Gross Profit</span>
+              <p className={`font-semibold ${estimatedGrossProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+                {formatCurrency(estimatedGrossProfit)}
+              </p>
             </div>
             <div>
-              <span className="text-muted-foreground">Pieces</span>
-              <p className="font-semibold">{summaryTotals.piece}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Subtotal</span>
-              <p className="font-semibold">{formatCurrency(subtotal)}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">After Discount</span>
-              <p className="font-semibold">{formatCurrency(totalAmount)}</p>
-            </div>
-            <div>
-              <span className={dueAmount > 0 ? "text-destructive" : "text-muted-foreground"}>
-                Due
-              </span>
-              <p className="font-semibold">{formatCurrency(dueAmount)}</p>
+              <span className="text-muted-foreground text-xs uppercase font-semibold">Est. Margin</span>
+              <p className={`font-semibold ${estimatedGrossProfit >= 0 ? "text-primary" : "text-destructive"}`}>
+                {totalAmount > 0 ? `${((estimatedGrossProfit / totalAmount) * 100).toFixed(1)}%` : "—"}
+              </p>
             </div>
           </div>
+        )}
 
-          {/* Live Profit Preview — Owner only */}
-          {isDealerAdmin && estimatedCogs > 0 && (
-            <div className="grid grid-cols-3 gap-3 rounded-md border border-primary/20 bg-primary/5 p-4 text-sm">
-              <div>
-                <span className="text-muted-foreground text-xs uppercase font-semibold">Est. COGS</span>
-                <p className="font-semibold text-destructive">{formatCurrency(estimatedCogs)}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs uppercase font-semibold">Est. Gross Profit</span>
-                <p className={`font-semibold ${estimatedGrossProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                  {formatCurrency(estimatedGrossProfit)}
-                </p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs uppercase font-semibold">Est. Margin</span>
-                <p className={`font-semibold ${estimatedGrossProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                  {totalAmount > 0 ? `${((estimatedGrossProfit / totalAmount) * 100).toFixed(1)}%` : "—"}
-                </p>
-              </div>
-            </div>
-          )}
-
-          <Button type="submit" disabled={isLoading} className="w-full md:w-auto">
-            {isLoading ? "Processing…" : (submitLabel ?? (form.watch("sale_type") === "challan_mode" ? "Create Sale (Challan)" : "Confirm Sale"))}
+        {/* Submit + Reset */}
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={isLoading}>
+            {isLoading ? "Processing…" : (submitLabel ?? (form.watch("sale_type") === "challan_mode" ? "Create Sale (Challan)" : "Submit"))}
           </Button>
-        </form>
-      </Form>
-    </>
+          <Button type="button" variant="destructive" onClick={() => form.reset()}>
+            Reset
+          </Button>
+        </div>
+
+        {/* Sticky bottom summary bar */}
+        <div className="fixed bottom-0 left-0 right-0 z-20 border-t bg-amber-50 dark:bg-amber-950/30 px-4 py-2">
+          <div className="mx-auto max-w-4xl flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs font-medium">
+            <span>Items <strong>{watchItems.filter(i => i.product_id).length}</strong></span>
+            <span>Total <strong>{formatCurrency(subtotal)}</strong></span>
+            <span>Discount <strong>{formatCurrency(watchDiscount)}</strong></span>
+            <span>Paid <strong>{formatCurrency(watchPaid)}</strong></span>
+            <span className={dueAmount > 0 ? "text-destructive font-bold" : ""}>
+              Due <strong>{formatCurrency(dueAmount)}</strong>
+            </span>
+            <span className="font-bold text-sm">
+              Grand Total <strong>{formatCurrency(totalAmount)}</strong>
+            </span>
+          </div>
+        </div>
+      </form>
+    </Form>
   );
 };
 
