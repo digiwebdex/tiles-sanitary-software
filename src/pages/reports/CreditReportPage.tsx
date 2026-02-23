@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getDealerCreditReport, type CustomerCreditInfo } from "@/services/creditService";
 import { useDealerId } from "@/hooks/useDealerId";
@@ -11,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ShieldCheck, AlertTriangle } from "lucide-react";
 
 const CreditReportPage = () => {
+  const navigate = useNavigate();
   const dealerId = useDealerId();
 
   const { data: report = [], isLoading } = useQuery({
@@ -97,11 +99,12 @@ const CreditReportPage = () => {
                 return (
                   <TableRow
                     key={row.customer_id}
-                    className={
+                    className={`cursor-pointer ${
                       row.status === "exceeded" || isOverdueViolated
                         ? "bg-red-50/50 dark:bg-red-950/20"
                         : ""
-                    }
+                    }`}
+                    onClick={() => navigate(`/customers/${row.customer_id}/edit`)}
                   >
                     <TableCell className="font-medium">
                       <span className="flex items-center gap-2">
