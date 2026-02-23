@@ -1193,84 +1193,122 @@ function PurchasesReport({ dealerId }: { dealerId: string }) {
 
 // ─── Payments Report ──────────────────────────────────────
 function PaymentsReport({ dealerId }: { dealerId: string }) {
-  const [year, setYear] = useState(currentYear);
-  const [month, setMonth] = useState(currentMonth);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const PAGE_SIZE = 25;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["report-payments", dealerId, year, month],
+    queryKey: ["report-payments-v2", dealerId, page, search],
     queryFn: async () => {
-      const start = `${year}-${String(month).padStart(2, "0")}-01`;
-      const lastDay = new Date(year, month, 0).getDate();
-      const end = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
-      const { data: sales, error } = await supabase
-        .from("sales")
-        .select("sale_date, invoice_number, paid_amount, payment_mode, customers(name)")
+      // Fetch customer_ledger entries (sale payments, receipts, refunds)
+      let clQuery = supabase
+        .from("customer_ledger")
+        .select("id, created_at, entry_date, type, amount, description, sale_id, sales_return_id, customer_id", { count: "exact" })
         .eq("dealer_id", dealerId)
-        .gt("paid_amount", 0)
-        .gte("sale_date", start)
-        .lte("sale_date", end)
-        .order("sale_date", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (search?.trim()) {
+        clQuery = clQuery.ilike("description", `%${search.trim()}%`);
+      }
+
+      const { data: ledgerRows, error, count } = await clQuery;
       if (error) throw new Error(error.message);
-      return sales ?? [];
+
+      // Gather sale_ids to fetch invoice_numbers
+      const saleIds = (ledgerRows ?? []).map((r: any) => r.sale_id).filter(Boolean);
+      let saleMap: Record<string, string> = {};
+      if (saleIds.length > 0) {
+        const { data: sales } = await supabase
+          .from("sales")
+          .select("id, invoice_number, payment_mode")
+          .in("id", saleIds);
+        for (const s of sales ?? []) {
+          saleMap[s.id] = s.invoice_number ?? "";
+        }
+      }
+
+      // Build payment reference from description or type
+      const rows = (ledgerRows ?? []).map((r: any) => {
+        const isReturn = r.type === "refund" || r.sales_return_id;
+        const saleRef = r.sale_id ? (saleMap[r.sale_id] || r.sale_id.substring(0, 12)) : "";
+        const payRef = r.description || r.type;
+        const paidBy = "Cash"; // default
+        const entryType = r.type === "receipt" || r.type === "payment" ? "Received" : r.type === "refund" ? "Return Paid" : r.type === "sale" ? "Received" : r.type;
+
+        return {
+          id: r.id,
+          created_at: r.created_at,
+          paymentRef: isReturn ? "Return Paid" : (payRef ?? "—"),
+          saleRef: saleRef ? `SALE${saleRef}` : "—",
+          purchaseRef: "",
+          paidBy,
+          amount: Number(r.amount),
+          type: entryType,
+        };
+      });
+
+      return { rows, total: count ?? 0 };
     },
   });
 
-  const totalPaid = (data ?? []).reduce((s, r) => s + Number(r.paid_amount), 0);
+  const rows = data?.rows ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <Card>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-2">
-        <CardTitle className="text-base">Payments Received</CardTitle>
-        <div className="flex gap-2">
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {months.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+      <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
+        <CardTitle className="text-base">Payments Report</CardTitle>
+        <Input
+          placeholder="Search…"
+          className="max-w-xs"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        />
       </CardHeader>
       <CardContent>
         {isLoading ? <p className="text-muted-foreground">Loading…</p> : (
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No payments</TableCell></TableRow>
-                ) : (data ?? []).map((r: any, i: number) => (
-                  <TableRow key={i}>
-                    <TableCell>{r.sale_date}</TableCell>
-                    <TableCell className="font-mono text-sm">{r.invoice_number ?? "—"}</TableCell>
-                    <TableCell>{r.customers?.name ?? "—"}</TableCell>
-                    <TableCell><Badge variant="outline" className="capitalize text-xs">{r.payment_mode ?? "—"}</Badge></TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(r.paid_amount)}</TableCell>
+          <>
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Payment Reference</TableHead>
+                    <TableHead>Sale Reference</TableHead>
+                    <TableHead>Purchase Reference</TableHead>
+                    <TableHead>Paid by</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Type</TableHead>
                   </TableRow>
-                ))}
-                {(data ?? []).length > 0 && (
-                  <TableRow className="bg-muted/50 font-semibold">
-                    <TableCell colSpan={4}>Total</TableCell>
-                    <TableCell className="text-right">{formatCurrency(totalPaid)}</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {rows.length === 0 ? (
+                    <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">No payments found</TableCell></TableRow>
+                  ) : rows.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {new Date(r.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })}{" "}
+                        <span className="text-muted-foreground">{new Date(r.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{r.paymentRef}</TableCell>
+                      <TableCell className="font-mono text-sm">{r.saleRef}</TableCell>
+                      <TableCell className="font-mono text-sm">{r.purchaseRef || "—"}</TableCell>
+                      <TableCell>{r.paidBy}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(r.amount)}</TableCell>
+                      <TableCell>
+                        <Badge className="bg-green-600 text-white hover:bg-green-700 text-xs">{r.type}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <Pagination page={page} totalItems={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+          </>
         )}
       </CardContent>
     </Card>
