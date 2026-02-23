@@ -397,91 +397,95 @@ function BrandStockReport({ dealerId }: { dealerId: string }) {
   );
 }
 
-// ─── Sales Report ─────────────────────────────────────────
+// ─── Monthly Sales Report (Card Grid) ─────────────────────
 function SalesReport({ dealerId }: { dealerId: string }) {
-  const [mode, setMode] = useState<"daily" | "monthly">("monthly");
   const [year, setYear] = useState(currentYear);
-  const [month, setMonth] = useState(currentMonth);
-  const { isDealerAdmin } = useAuth();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["report-sales", dealerId, mode, year, month],
-    queryFn: () => fetchSalesReport(dealerId, mode, year, mode === "daily" ? month : undefined),
+  const { data: salesData, isLoading } = useQuery({
+    queryKey: ["report-monthly-sales-grid", dealerId, year],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sales")
+        .select("sale_date, total_amount, discount")
+        .eq("dealer_id", dealerId)
+        .gte("sale_date", `${year}-01-01`)
+        .lte("sale_date", `${year}-12-31`);
+
+      if (error) throw new Error(error.message);
+
+      const monthMap: Record<number, { discount: number; total: number }> = {};
+      for (const row of data ?? []) {
+        const m = new Date(row.sale_date).getMonth();
+        if (!monthMap[m]) monthMap[m] = { discount: 0, total: 0 };
+        monthMap[m].discount += Number(row.discount);
+        monthMap[m].total += Number(row.total_amount);
+      }
+      return monthMap;
+    },
   });
+
+  const allMonths = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+
+  const prevYear = () => setYear((y) => y - 1);
+  const nextYear = () => setYear((y) => y + 1);
 
   return (
     <Card>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-2">
-        <CardTitle className="text-base">Sales Report</CardTitle>
-        <div className="flex gap-2 flex-wrap">
-          <Select value={mode} onValueChange={(v) => setMode(v as any)}>
-            <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="monthly">Monthly</SelectItem>
-              <SelectItem value="daily">Daily</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {mode === "daily" && (
-            <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {months.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          )}
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">Monthly Sales</CardTitle>
+          <div className="flex items-center gap-3">
+            <button onClick={prevYear} className="text-sm font-medium text-primary hover:underline">&lt;&lt;</button>
+            <span className="text-sm font-semibold text-foreground min-w-[60px] text-center">{year}</span>
+            <button onClick={nextYear} className="text-sm font-medium text-primary hover:underline">&gt;&gt;</button>
+          </div>
         </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Navigate years with &lt;&lt; / &gt;&gt;.
+        </p>
       </CardHeader>
       <CardContent>
-        {isLoading ? <p className="text-muted-foreground">Loading…</p> : (
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{mode === "daily" ? "Date" : "Month"}</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  {isDealerAdmin && <TableHead className="text-right">Profit</TableHead>}
-                  <TableHead className="text-right">Due</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={isDealerAdmin ? 5 : 4} className="text-center text-muted-foreground">No data</TableCell></TableRow>
-                ) : (data ?? []).map((r) => (
-                  <TableRow key={r.date}>
-                    <TableCell className="font-medium">{r.date}</TableCell>
-                    <TableCell className="text-right">{r.count}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(r.totalAmount)}</TableCell>
-                    {isDealerAdmin && (
-                      <TableCell className={`text-right font-semibold ${r.totalProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                        {formatCurrency(r.totalProfit)}
-                      </TableCell>
+        {isLoading ? (
+          <p className="text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="border rounded-lg overflow-hidden">
+            {/* Month headers */}
+            <div className="grid grid-cols-12 bg-muted/50">
+              {allMonths.map((m) => (
+                <div key={m} className="px-1 py-2 text-center text-xs font-semibold text-foreground border-b border-r last:border-r-0 truncate">
+                  {m}
+                </div>
+              ))}
+            </div>
+            {/* Month cells */}
+            <div className="grid grid-cols-12">
+              {allMonths.map((m, i) => {
+                const md = salesData?.[i];
+                return (
+                  <div key={m} className="border-r last:border-r-0 min-h-[120px] p-2 bg-card">
+                    {md && md.total > 0 ? (
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="text-center">
+                          <span className="text-primary font-medium">Discount</span>
+                          <div className="font-medium text-foreground">{md.discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        </div>
+                        <div className="border-t border-border/50 pt-1.5 text-center">
+                          <span className="text-primary font-medium">Total</span>
+                          <div className="font-bold text-foreground">{md.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <span className="text-sm font-semibold text-muted-foreground/40">0</span>
+                      </div>
                     )}
-                    <TableCell className={`text-right ${r.totalDue > 0 ? "text-destructive font-semibold" : ""}`}>
-                      {formatCurrency(r.totalDue)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {/* Totals row */}
-                {(data ?? []).length > 0 && (
-                  <TableRow className="bg-muted/50 font-semibold">
-                    <TableCell>Total</TableCell>
-                    <TableCell className="text-right">{(data ?? []).reduce((s, r) => s + r.count, 0)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalAmount, 0))}</TableCell>
-                    {isDealerAdmin && (
-                      <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalProfit, 0))}</TableCell>
-                    )}
-                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalDue, 0))}</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </CardContent>
