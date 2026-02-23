@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import {
   BarChart3, Package, Layers, Tags, AlertTriangle,
   Receipt, CalendarDays, Calendar, CreditCard,
-  ShoppingCart, DollarSign, Users, History, BookOpen,
+  ShoppingCart, DollarSign, Users, History, BookOpen, Clock,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -59,6 +59,7 @@ const reportNavItems = [
   { key: "payments", label: "Payments Report", icon: CreditCard },
   { key: "product-history", label: "Product History", icon: History },
   { key: "accounting", label: "Expenses Report", icon: DollarSign },
+  { key: "due-aging", label: "Due Aging", icon: Clock },
 ];
 
 const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
@@ -79,6 +80,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "retailer": return <RetailerSalesReport dealerId={dealerId} />;
       case "product-history": return <ProductHistoryReport dealerId={dealerId} />;
       case "accounting": return <AccountingSummaryReport dealerId={dealerId} />;
+      case "due-aging": return <DueAgingReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
@@ -1503,6 +1505,175 @@ function PaymentsReport({ dealerId }: { dealerId: string }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Due Aging Report ─────────────────────────────────────
+function DueAgingReport({ dealerId }: { dealerId: string }) {
+  const [search, setSearch] = useState("");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["report-due-aging", dealerId],
+    queryFn: async () => {
+      // Get all customers
+      const { data: customers, error: cErr } = await supabase
+        .from("customers")
+        .select("id, name, phone, type")
+        .eq("dealer_id", dealerId)
+        .eq("status", "active")
+        .order("name");
+      if (cErr) throw new Error(cErr.message);
+
+      // Get all unpaid sales
+      const { data: sales, error: sErr } = await supabase
+        .from("sales")
+        .select("id, customer_id, sale_date, due_amount, total_amount, invoice_number")
+        .eq("dealer_id", dealerId)
+        .gt("due_amount", 0);
+      if (sErr) throw new Error(sErr.message);
+
+      const today = new Date();
+      const msPerDay = 86_400_000;
+
+      // Build per-customer aging
+      const customerMap = new Map<string, {
+        name: string; phone: string | null; type: string;
+        current: number; d30: number; d60: number; d90: number; d90plus: number;
+        total: number; invoices: { id: string; invoice_number: string | null; sale_date: string; due_amount: number; days: number }[];
+      }>();
+
+      for (const c of customers ?? []) {
+        customerMap.set(c.id, { name: c.name, phone: c.phone, type: c.type, current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0, total: 0, invoices: [] });
+      }
+
+      for (const s of sales ?? []) {
+        const cust = customerMap.get(s.customer_id);
+        if (!cust) continue;
+        const due = Number(s.due_amount);
+        const days = Math.max(0, Math.floor((today.getTime() - new Date(s.sale_date).getTime()) / msPerDay));
+
+        if (days <= 0) cust.current += due;
+        else if (days <= 30) cust.d30 += due;
+        else if (days <= 60) cust.d60 += due;
+        else if (days <= 90) cust.d90 += due;
+        else cust.d90plus += due;
+
+        cust.total += due;
+        cust.invoices.push({ id: s.id, invoice_number: s.invoice_number, sale_date: s.sale_date, due_amount: due, days });
+      }
+
+      // Filter out customers with zero due
+      const results = Array.from(customerMap.entries())
+        .filter(([, v]) => v.total > 0)
+        .map(([id, v]) => ({ id, ...v, invoices: v.invoices.sort((a, b) => b.days - a.days) }))
+        .sort((a, b) => b.total - a.total);
+
+      return results;
+    },
+  });
+
+  const rows = (data ?? []).filter(
+    (c) => c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone && c.phone.includes(search))
+  );
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      current: acc.current + r.current,
+      d30: acc.d30 + r.d30,
+      d60: acc.d60 + r.d60,
+      d90: acc.d90 + r.d90,
+      d90plus: acc.d90plus + r.d90plus,
+      total: acc.total + r.total,
+    }),
+    { current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0, total: 0 }
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+        {[
+          { label: "Current", value: totals.current, color: "text-primary" },
+          { label: "1-30 Days", value: totals.d30, color: "text-foreground" },
+          { label: "31-60 Days", value: totals.d60, color: "text-foreground" },
+          { label: "61-90 Days", value: totals.d90, color: "text-destructive" },
+          { label: "90+ Days", value: totals.d90plus, color: "text-destructive" },
+          { label: "Total Due", value: totals.total, color: "text-foreground" },
+        ].map((c) => (
+          <Card key={c.label}>
+            <CardContent className="p-3 text-center">
+              <p className="text-xs text-muted-foreground">{c.label}</p>
+              <p className={`text-lg font-bold ${c.color}`}>৳{Math.round(c.value).toLocaleString()}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Input
+        placeholder="Search customer..."
+        className="max-w-xs"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Current</TableHead>
+                  <TableHead className="text-right">1-30 Days</TableHead>
+                  <TableHead className="text-right">31-60 Days</TableHead>
+                  <TableHead className="text-right">61-90 Days</TableHead>
+                  <TableHead className="text-right text-destructive">90+ Days</TableHead>
+                  <TableHead className="text-right font-bold">Total Due</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                ) : rows.length === 0 ? (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No overdue invoices found</TableCell></TableRow>
+                ) : (
+                  <>
+                    {rows.map((r) => (
+                      <TableRow key={r.id} className={r.d90plus > 0 ? "bg-destructive/5" : ""}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium text-foreground">{r.name}</p>
+                            {r.phone && <p className="text-xs text-muted-foreground">{r.phone}</p>}
+                          </div>
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className="text-xs capitalize">{r.type}</Badge></TableCell>
+                        <TableCell className="text-right">{r.current > 0 ? `৳${Math.round(r.current).toLocaleString()}` : "—"}</TableCell>
+                        <TableCell className="text-right">{r.d30 > 0 ? `৳${Math.round(r.d30).toLocaleString()}` : "—"}</TableCell>
+                        <TableCell className="text-right">{r.d60 > 0 ? `৳${Math.round(r.d60).toLocaleString()}` : "—"}</TableCell>
+                        <TableCell className="text-right font-medium">{r.d90 > 0 ? `৳${Math.round(r.d90).toLocaleString()}` : "—"}</TableCell>
+                        <TableCell className="text-right font-semibold text-destructive">{r.d90plus > 0 ? `৳${Math.round(r.d90plus).toLocaleString()}` : "—"}</TableCell>
+                        <TableCell className="text-right font-bold">৳{Math.round(r.total).toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                    {/* Totals footer */}
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={2}>Total</TableCell>
+                      <TableCell className="text-right">৳{Math.round(totals.current).toLocaleString()}</TableCell>
+                      <TableCell className="text-right">৳{Math.round(totals.d30).toLocaleString()}</TableCell>
+                      <TableCell className="text-right">৳{Math.round(totals.d60).toLocaleString()}</TableCell>
+                      <TableCell className="text-right">৳{Math.round(totals.d90).toLocaleString()}</TableCell>
+                      <TableCell className="text-right text-destructive">৳{Math.round(totals.d90plus).toLocaleString()}</TableCell>
+                      <TableCell className="text-right">৳{Math.round(totals.total).toLocaleString()}</TableCell>
+                    </TableRow>
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
