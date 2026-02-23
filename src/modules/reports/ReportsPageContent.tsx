@@ -48,9 +48,10 @@ const months = [
 const reportNavItems = [
   { key: "stock", label: "Products Report", icon: Package },
   { key: "brand-stock", label: "Brands Report", icon: Tags },
+  { key: "daily-sales", label: "Daily Sales", icon: CalendarDays },
+  { key: "sales", label: "Monthly Sales", icon: Calendar },
   { key: "inventory", label: "Inventory Report", icon: Layers },
   { key: "low-stock", label: "Low Stock Report", icon: AlertTriangle },
-  { key: "sales", label: "Sales Report", icon: Receipt },
   { key: "retailer", label: "Customers Report", icon: Users },
   { key: "purchases", label: "Purchases Report", icon: ShoppingCart },
   { key: "payments", label: "Payments Report", icon: CreditCard },
@@ -65,6 +66,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
     switch (activeReport) {
       case "stock": return <StockReport dealerId={dealerId} />;
       case "brand-stock": return <BrandStockReport dealerId={dealerId} />;
+      case "daily-sales": return <DailySalesCalendar dealerId={dealerId} />;
       case "inventory": return <InventoryAgingReport dealerId={dealerId} />;
       case "low-stock": return <LowStockReport dealerId={dealerId} />;
       case "sales": return <SalesReport dealerId={dealerId} />;
@@ -130,6 +132,138 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
     </div>
   );
 };
+
+// ─── Daily Sales Calendar ─────────────────────────────────
+function DailySalesCalendar({ dealerId }: { dealerId: string }) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth(); // 0-indexed
+
+  const { data: salesData, isLoading } = useQuery({
+    queryKey: ["report-daily-sales-calendar", dealerId, year, month],
+    queryFn: async () => {
+      const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      const endDate = `${year}-${String(month + 1).padStart(2, "0")}-${lastDay}`;
+
+      const { data, error } = await supabase
+        .from("sales")
+        .select("sale_date, total_amount, discount, paid_amount, due_amount")
+        .eq("dealer_id", dealerId)
+        .gte("sale_date", startDate)
+        .lte("sale_date", endDate);
+
+      if (error) throw new Error(error.message);
+
+      // Aggregate by day
+      const dayMap: Record<number, { discount: number; total: number }> = {};
+      for (const row of data ?? []) {
+        const day = new Date(row.sale_date).getDate();
+        if (!dayMap[day]) dayMap[day] = { discount: 0, total: 0 };
+        dayMap[day].discount += Number(row.discount);
+        dayMap[day].total += Number(row.total_amount);
+      }
+      return dayMap;
+    },
+  });
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+  const monthName = currentDate.toLocaleString("default", { month: "long", year: "numeric" });
+
+  // Build calendar grid
+  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  // Create weeks array
+  const weeks: (number | null)[][] = [];
+  let currentWeek: (number | null)[] = Array(firstDayOfMonth).fill(null);
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    currentWeek.push(d);
+    if (currentWeek.length === 7) {
+      weeks.push(currentWeek);
+      currentWeek = [];
+    }
+  }
+  if (currentWeek.length > 0) {
+    while (currentWeek.length < 7) currentWeek.push(null);
+    weeks.push(currentWeek);
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">Daily Sales</CardTitle>
+          <div className="flex items-center gap-3">
+            <button onClick={prevMonth} className="text-sm font-medium text-primary hover:underline">&lt;&lt;</button>
+            <span className="text-sm font-semibold text-foreground min-w-[140px] text-center">{monthName}</span>
+            <button onClick={nextMonth} className="text-sm font-medium text-primary hover:underline">&gt;&gt;</button>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Click the date to get day's profit and/or loss report. Navigate months with &lt;&lt; / &gt;&gt;.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="border rounded-lg overflow-hidden">
+            {/* Day headers */}
+            <div className="grid grid-cols-7 bg-muted/50">
+              {dayNames.map((name) => (
+                <div key={name} className="px-2 py-2 text-center text-xs font-semibold text-foreground border-b border-r last:border-r-0">
+                  {name}
+                </div>
+              ))}
+            </div>
+            {/* Calendar weeks */}
+            {weeks.map((week, wi) => (
+              <div key={wi} className="grid grid-cols-7">
+                {week.map((day, di) => {
+                  const dayData = day ? salesData?.[day] : null;
+                  return (
+                    <div
+                      key={di}
+                      className={cn(
+                        "border-b border-r last:border-r-0 min-h-[110px] p-1.5",
+                        day ? "bg-card" : "bg-muted/20"
+                      )}
+                    >
+                      {day && (
+                        <>
+                          <div className="text-xs font-bold text-primary mb-1">{day}</div>
+                          {dayData ? (
+                            <div className="space-y-0.5 text-[11px]">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Discount</span>
+                                <span className="font-medium text-foreground">{dayData.discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                              <div className="flex justify-between pt-1 border-t border-border/50">
+                                <span className="text-muted-foreground font-semibold">Total</span>
+                                <span className="font-bold text-foreground">{dayData.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-muted-foreground/50 mt-2">—</div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 // ─── Products Report ──────────────────────────────────────
 function StockReport({ dealerId }: { dealerId: string }) {
