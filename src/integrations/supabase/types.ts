@@ -629,6 +629,7 @@ export type Database = {
       products: {
         Row: {
           active: boolean
+          barcode: string | null
           brand: string | null
           category: Database["public"]["Enums"]["product_category"]
           color: string | null
@@ -645,6 +646,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          barcode?: string | null
           brand?: string | null
           category: Database["public"]["Enums"]["product_category"]
           color?: string | null
@@ -661,6 +663,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          barcode?: string | null
           brand?: string | null
           category?: Database["public"]["Enums"]["product_category"]
           color?: string | null

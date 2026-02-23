@@ -7,13 +7,15 @@ import Pagination from "@/components/Pagination";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, AlertTriangle } from "lucide-react";
+import { Plus, Search, Pencil, AlertTriangle, Barcode, Printer } from "lucide-react";
 import { useQuery as useStockQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import BarcodePrintDialog from "./BarcodePrintDialog";
 
 interface ProductListProps {
   dealerId: string;
@@ -24,6 +26,9 @@ const PAGE_SIZE = 25;
 const ProductList = ({ dealerId }: ProductListProps) => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  const [barcodeSingle, setBarcodeSingle] = useState<{ id: string; sku: string; name: string; default_sale_rate: number } | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -33,7 +38,6 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     enabled: !!dealerId,
   });
 
-  // Fetch stock levels for low-stock badge
   const { data: stockData } = useStockQuery({
     queryKey: ["products-stock-map", dealerId],
     queryFn: async () => {
@@ -64,13 +68,50 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     onError: (e) => toast.error(e.message),
   });
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === products.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(products.map((p) => p.id)));
+    }
+  };
+
+  const selectedProducts = products.filter((p) => selected.has(p.id));
+
+  const openBulkBarcode = () => {
+    setBarcodeSingle(null);
+    setBarcodeOpen(true);
+  };
+
+  const openSingleBarcode = (p: typeof products[0]) => {
+    setBarcodeSingle({ id: p.id, sku: p.sku, name: p.name, default_sale_rate: p.default_sale_rate });
+    setBarcodeOpen(true);
+  };
+
+  const barcodeProducts = barcodeSingle ? [barcodeSingle] : selectedProducts;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">Products</h1>
-        <Button onClick={() => navigate("/products/new")}>
-          <Plus className="mr-2 h-4 w-4" /> Add Product
-        </Button>
+        <div className="flex gap-2">
+          {selected.size > 0 && (
+            <Button variant="outline" onClick={openBulkBarcode}>
+              <Printer className="mr-2 h-4 w-4" /> Print Barcodes ({selected.size})
+            </Button>
+          )}
+          <Button onClick={() => navigate("/products/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Product
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -93,18 +134,30 @@ const ProductList = ({ dealerId }: ProductListProps) => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={products.length > 0 && selected.size === products.length}
+                      onCheckedChange={toggleAll}
+                    />
+                  </TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Rate</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-10" />
+                  <TableHead className="w-20" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {products.map((p) => (
                   <TableRow key={p.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selected.has(p.id)}
+                        onCheckedChange={() => toggleSelect(p.id)}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono text-sm">{p.sku}</TableCell>
                     <TableCell>{p.name}</TableCell>
                     <TableCell className="capitalize">{p.category}</TableCell>
@@ -129,9 +182,14 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Button size="icon" variant="ghost" onClick={() => navigate(`/products/${p.id}/edit`)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => openSingleBarcode(p)} title="Print Barcode">
+                          <Barcode className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => navigate(`/products/${p.id}/edit`)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -143,6 +201,12 @@ const ProductList = ({ dealerId }: ProductListProps) => {
           )}
         </>
       )}
+
+      <BarcodePrintDialog
+        open={barcodeOpen}
+        onOpenChange={setBarcodeOpen}
+        products={barcodeProducts}
+      />
     </div>
   );
 };

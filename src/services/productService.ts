@@ -41,9 +41,11 @@ export const productService = {
 
   async create(product: ProductInsert) {
     validateInput(createProductServiceSchema, product);
+    // Auto-generate barcode from SKU
+    const payload = { ...product, barcode: product.sku };
     const { data, error } = await supabase
       .from("products")
-      .insert(product)
+      .insert(payload)
       .select()
       .single();
     if (error) throw new Error(error.message);
