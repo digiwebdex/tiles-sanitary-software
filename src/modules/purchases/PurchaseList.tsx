@@ -107,7 +107,7 @@ const PurchaseList = ({ dealerId }: PurchaseListProps) => {
                   const balance = total - paid;
 
                   return (
-                    <TableRow key={p.id}>
+                    <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/purchases/${p.id}`)}>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={selected.has(p.id)}
