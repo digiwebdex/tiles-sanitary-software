@@ -176,12 +176,22 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                       <TableCell className="font-mono text-sm">{s.invoice_number ?? "—"}</TableCell>
                       <TableCell>{s.customers?.name ?? "—"}</TableCell>
                       <TableCell>
-                        <Badge
-                          variant={statusColors[s.sale_status] as any ?? "secondary"}
-                          className="capitalize text-xs"
-                        >
-                          {(s.sale_status ?? "invoiced").replace(/_/g, " ")}
-                        </Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge
+                            variant={statusColors[s.sale_status] as any ?? "secondary"}
+                            className={`capitalize text-xs ${s.sale_status === "partially_delivered" ? "border-orange-500 text-orange-600" : s.sale_status === "delivered" ? "bg-green-600 text-white" : ""}`}
+                          >
+                            {s.sale_status === "partially_delivered" 
+                              ? "আংশিক ডেলিভারি" 
+                              : (s.sale_status ?? "invoiced").replace(/_/g, " ")}
+                          </Badge>
+                          {s.sale_status === "partially_delivered" && (
+                            <span className="text-xs text-orange-600 font-medium">
+                              <Truck className="inline h-3 w-3 mr-0.5" />
+                              ডেলিভারি চলমান
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">{formatCurrency(s.total_amount)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(s.paid_amount)}</TableCell>
