@@ -1,150 +1,90 @@
 
 
-# Feature Enhancement Plan - 17 Requests Analysis
+# Partial Delivery Tracking (আংশিক ডেলিভারি ট্র্যাকিং)
 
-## Already Implemented (No Changes Needed)
+## Problem
+Currently, when a delivery is created from a sale, it links to the entire sale without tracking which specific items or quantities were actually delivered. If a customer orders 20 boxes but only 5 are in stock, there's no way to deliver 5 now and track the remaining 15 as pending.
 
-The following features already exist in the system:
+## Solution
+Implement a **partial delivery system** where each delivery tracks exactly which items and quantities are being delivered. Multiple deliveries can be created against the same sale, and the system shows remaining/pending quantities until all items are fully delivered.
 
-- **#9 Client Reference in Memo** -- Already in SaleForm (`client_reference` field)
-- **#10 Fitter Reference ID** -- Already in SaleForm (`fitter_reference` field)
-- **#12 Ledger System** -- Customer ledger, supplier ledger, and cash ledger all exist
-- **#14 Discount with Reference** -- Discount and `discount_reference` fields exist in sale form
-- **#6 Customer Refund System** -- Sales return service already handles refunds with ledger entries (both customer and cash ledger)
-- **#13 Product Search History** -- Product History report exists in Reports page showing purchase/sale history
-- **#17 Challan by Quantity** -- Challan mode already exists with quantity-based delivery tracking
-- **#5 Broken Return Option** -- Sales return form already has "Broken/Damaged" toggle that skips restocking
+## How It Will Work (User Flow)
 
----
+1. A sale is created for 20 boxes of Product A
+2. User clicks "Add Delivery" on the sale -- a dialog opens showing all sale items with ordered quantities and available stock
+3. User enters delivery quantities (e.g., 5 boxes -- limited by available stock)
+4. First delivery is created with 5 boxes; sale shows "Partially Delivered" status
+5. Later, when more stock arrives, user creates another delivery for the remaining 15 boxes
+6. Once total delivered = total ordered, the sale/delivery status shows "Completed"
 
-## Features to Implement
+## Technical Plan
 
-### 1. Purchase Option from Product Page
-Add a "Create Purchase" button/action in the Product list so users can quickly navigate to create a purchase for that product.
+### 1. New Database Table: `delivery_items`
 
-**Changes:**
-- `src/modules/products/ProductList.tsx` -- Add "Purchase" option in the Actions dropdown menu that navigates to `/purchases/new`
-- `src/modules/products/ProductDetailDialog.tsx` -- Add "Purchase" button alongside Edit and Print Barcode
-
-### 2. Separate Box and SFT Totals in Product List
-Show warehouse stock with separate Box count and Square Feet totals at the bottom of the product list.
-
-**Changes:**
-- `src/modules/products/ProductList.tsx` -- Fetch full stock data (box_qty, sft_qty, piece_qty separately), display per-row box/sft breakdown, and add a summary footer row showing total boxes, total SFT, and total pieces
-
-### 3. Broken Product Stock Adjustment
-Add a dedicated "Mark as Broken" option to deduct stock for damaged products without needing a sale return.
-
-**Changes:**
-- `src/modules/products/ProductList.tsx` -- Add "Mark Broken" action in dropdown
-- Create `src/modules/products/BrokenStockDialog.tsx` -- Dialog to enter broken quantity and reason
-- `src/services/stockService.ts` -- Add `deductBrokenStock()` method that deducts stock and logs with "broken" type
-
-### 4. Return Paid Display on Invoice/Memo
-Show return and refund information on the sale invoice document.
-
-**Changes:**
-- `src/components/sale/SaleInvoiceDocument.tsx` -- Fetch and display any sales returns linked to the sale, showing return qty, refund amount, and net balance after refunds
-- `src/pages/sales/InvoicePage.tsx` -- Pass returns data to the invoice component
-
-### 7. Monthly Separate Reports
-Add a monthly breakdown report showing sales, payments received, dues, and square feet for each month.
-
-**Changes:**
-- `src/modules/reports/ReportsPageContent.tsx` -- Add new "Monthly Summary" report tab
-- `src/services/reportService.ts` -- Add `fetchMonthlySummary()` function that aggregates sales, payments (joma), dues (baki), and total SFT by month
-
-### 8. Customer Type Selection in Sale Form
-Allow selecting customer type (Retailer/Customer/Project) when creating a sale memo.
-
-**Changes:**
-- `src/modules/sales/SaleForm.tsx` -- Add customer type dropdown (retailer/customer/project) near the customer name field. When creating a new customer, use this type. Show existing customer's type when selected.
-- `src/modules/sales/saleSchema.ts` -- Add optional `customer_type` field
-
-### 11. Total Box/Piece and SFT on Invoice/Challan
-Display total boxes, pieces, and square feet summary on sale invoice and challan documents.
-
-**Changes:**
-- `src/components/sale/SaleInvoiceDocument.tsx` -- Add summary row below items table showing "Total: X Box, Y Sft, Z Piece"
-- `src/components/challan/ModernChallanDocument.tsx` -- Same summary row addition
-
-### 15. Retailer Campaign Gift Option
-Add a gift/campaign system where retailers can receive gifts, tracked as paid through the system.
-
-**Changes:**
-- Create new database table `campaign_gifts` with columns: id, dealer_id, customer_id, description, gift_value, payment_status, campaign_name, created_at
-- Create `src/services/campaignGiftService.ts` -- CRUD for campaign gifts with ledger integration
-- Create `src/modules/campaigns/CampaignGiftForm.tsx` and `CampaignGiftList.tsx`
-- Add route and navigation for campaign management
-
-### 16. Monthly Customer/Retailer Product Sales Report with SFT
-Show per-customer monthly product sales breakdown including square feet.
-
-**Changes:**
-- `src/modules/reports/ReportsPageContent.tsx` -- Enhance "Customers Report" tab to add monthly filter and show SFT breakdown per customer
-- `src/services/reportService.ts` -- Update `fetchRetailerSalesReport()` to include month filter and SFT aggregation
-
----
-
-## Technical Details
-
-### Database Migration (for Feature #15)
 ```sql
-CREATE TABLE public.campaign_gifts (
+CREATE TABLE public.delivery_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  delivery_id uuid NOT NULL REFERENCES public.deliveries(id),
+  sale_item_id uuid NOT NULL REFERENCES public.sale_items(id),
+  product_id uuid NOT NULL,
   dealer_id uuid NOT NULL,
-  customer_id uuid NOT NULL,
-  campaign_name text NOT NULL,
-  description text,
-  gift_value numeric NOT NULL DEFAULT 0,
-  payment_status text NOT NULL DEFAULT 'pending',
-  paid_amount numeric NOT NULL DEFAULT 0,
-  created_by uuid,
+  quantity numeric NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
-ALTER TABLE public.campaign_gifts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Dealer admins can manage campaign_gifts"
-  ON public.campaign_gifts FOR ALL
-  USING (dealer_id = get_user_dealer_id(auth.uid()) AND has_role(auth.uid(), 'dealer_admin'))
-  WITH CHECK (dealer_id = get_user_dealer_id(auth.uid()) AND has_role(auth.uid(), 'dealer_admin'));
-
-CREATE POLICY "Dealer users can view campaign_gifts"
-  ON public.campaign_gifts FOR SELECT
-  USING (dealer_id = get_user_dealer_id(auth.uid()));
-
-CREATE POLICY "Super admin full access to campaign_gifts"
-  ON public.campaign_gifts FOR ALL
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
 ```
 
-### Implementation Order
-1. Features #1, #2 (Product page enhancements) -- quick wins
-2. Feature #3 (Broken stock adjustment)
-3. Features #11, #4 (Invoice/challan display improvements)
-4. Feature #8 (Customer type in sale form)
-5. Features #7, #16 (Report enhancements)
-6. Feature #15 (Campaign gift system -- largest new feature)
+With RLS policies matching the existing `deliveries` table pattern (dealer admin manage, dealer users view, salesmen create, subscription required, super admin full access).
+
+### 2. Update `deliveries` Table
+
+Add a `delivery_no` text column to auto-generate delivery reference numbers (e.g., `DL-00001`).
+
+### 3. Service Layer Changes (`deliveryService.ts`)
+
+- **`create()`**: Accept an `items` array with `{ sale_item_id, product_id, quantity }`. Insert into `delivery_items` alongside the delivery record. Deduct stock for delivered quantities.
+- **`getDeliveredQtyBySale(saleId)`**: New method to aggregate total delivered quantities per sale_item from `delivery_items`.
+- **`getById()`**: Update query to include `delivery_items(*, products(name, sku, unit_type, per_box_sft))`.
+- **`list()`**: Update query to include delivery_items count for display.
+
+### 4. New "Add Delivery" Dialog (`CreateDeliveryDialog.tsx`)
+
+Replace the current one-click delivery creation with a dialog that:
+- Fetches sale items and their ordered quantities
+- Queries already-delivered quantities (from previous deliveries)
+- Shows remaining quantity per item
+- Checks current stock availability
+- Lets user input how many to deliver per item (capped by min of remaining and available stock)
+- Creates delivery + delivery_items records
+
+### 5. Update `DeliveryDetailDialog.tsx`
+
+- Show delivery-specific items (from `delivery_items`) instead of all sale items
+- Add a "Delivery Progress" section showing: Ordered vs Delivered vs Remaining per item
+- Show overall completion percentage
+
+### 6. Update `DeliveryList.tsx`
+
+- Show item count per delivery
+- Add a progress indicator (e.g., "5/20 boxes delivered")
+
+### 7. Update `SaleList.tsx`
+
+- Replace the simple `addDeliveryMutation` with opening the new `CreateDeliveryDialog`
+- Show delivery progress on sale rows (e.g., badge "Partial Delivery 5/20")
+
+### 8. Update Sale Status Tracking
+
+- Add `partially_delivered` as a recognized sale_status
+- When a partial delivery is made, update sale_status to `partially_delivered`
+- When all items are fully delivered, update to `delivered` or `completed`
 
 ### Files to Create
-- `src/modules/products/BrokenStockDialog.tsx`
-- `src/services/campaignGiftService.ts`
-- `src/modules/campaigns/CampaignGiftForm.tsx`
-- `src/modules/campaigns/CampaignGiftList.tsx`
-- `src/pages/campaigns/CampaignsPage.tsx`
+- `src/modules/deliveries/CreateDeliveryDialog.tsx` -- New dialog with item-level delivery input
 
 ### Files to Modify
-- `src/modules/products/ProductList.tsx`
-- `src/modules/products/ProductDetailDialog.tsx`
-- `src/services/stockService.ts`
-- `src/components/sale/SaleInvoiceDocument.tsx`
-- `src/components/challan/ModernChallanDocument.tsx`
-- `src/pages/sales/InvoicePage.tsx`
-- `src/modules/sales/SaleForm.tsx`
-- `src/modules/sales/saleSchema.ts`
-- `src/modules/reports/ReportsPageContent.tsx`
-- `src/services/reportService.ts`
-- `src/App.tsx` (new routes for campaigns)
+- `src/services/deliveryService.ts` -- Add items support, delivery number generation, delivered qty aggregation
+- `src/modules/deliveries/DeliveryDetailDialog.tsx` -- Show delivery-specific items and progress
+- `src/modules/deliveries/DeliveryList.tsx` -- Show delivery progress info
+- `src/modules/sales/SaleList.tsx` -- Replace one-click delivery with dialog
+- Database migration for `delivery_items` table and `delivery_no` column
 
