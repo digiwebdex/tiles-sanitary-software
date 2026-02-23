@@ -135,7 +135,14 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                   const paid = Number(s.paid_amount) || 0;
 
                   return (
-                    <TableRow key={s.id}>
+                    <TableRow
+                      key={s.id}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        const isChallanStatus = isChallan && ["draft", "challan_created", "delivered"].includes(s.sale_status);
+                        navigate(isChallanStatus ? `/sales/${s.id}/challan` : `/sales/${s.id}/invoice`);
+                      }}
+                    >
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={selected.has(s.id)}
