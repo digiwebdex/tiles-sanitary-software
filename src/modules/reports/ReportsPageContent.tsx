@@ -624,58 +624,118 @@ function SalesReport({ dealerId }: { dealerId: string }) {
   );
 }
 
-// ─── Retailer-wise Sales ──────────────────────────────────
+// ─── Customers Report ─────────────────────────────────────
 function RetailerSalesReport({ dealerId }: { dealerId: string }) {
-  const [year, setYear] = useState(currentYear);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const PAGE_SIZE = 25;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["report-retailer", dealerId, year],
-    queryFn: () => fetchRetailerSalesReport(dealerId, year),
+    queryKey: ["report-customers-v2", dealerId, page, search],
+    queryFn: async () => {
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let query = supabase
+        .from("customers")
+        .select("id, name, phone, email, opening_balance", { count: "exact" })
+        .eq("dealer_id", dealerId)
+        .order("name")
+        .range(from, to);
+
+      if (search?.trim()) {
+        query = query.or(`name.ilike.%${search.trim()}%,phone.ilike.%${search.trim()}%`);
+      }
+
+      const { data: customers, error, count } = await query;
+      if (error) throw new Error(error.message);
+
+      // Fetch sales aggregates for these customers
+      const customerIds = (customers ?? []).map((c: any) => c.id);
+      let salesMap: Record<string, { count: number; totalAmount: number; paidAmount: number }> = {};
+
+      if (customerIds.length > 0) {
+        const { data: sales } = await supabase
+          .from("sales")
+          .select("customer_id, total_amount, paid_amount")
+          .eq("dealer_id", dealerId)
+          .in("customer_id", customerIds);
+
+        for (const s of sales ?? []) {
+          const cid = (s as any).customer_id;
+          if (!salesMap[cid]) salesMap[cid] = { count: 0, totalAmount: 0, paidAmount: 0 };
+          salesMap[cid].count += 1;
+          salesMap[cid].totalAmount += Number((s as any).total_amount);
+          salesMap[cid].paidAmount += Number((s as any).paid_amount);
+        }
+      }
+
+      return { customers: customers ?? [], total: count ?? 0, salesMap };
+    },
   });
+
+  const customers = data?.customers ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-base">Retailer-wise Sales (SFT)</CardTitle>
-        <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-          <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-          </SelectContent>
-        </Select>
+      <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
+        <div>
+          <CardTitle className="text-base">Customers Report</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">Click view report to check the customer report.</p>
+        </div>
+        <Input
+          placeholder="Search by name or phone…"
+          className="max-w-xs"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        />
       </CardHeader>
       <CardContent>
         {isLoading ? <p className="text-muted-foreground">Loading…</p> : (
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
-                  <TableHead className="text-right">Total SFT</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Due</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No data</TableCell></TableRow>
-                ) : (data ?? []).map((r) => (
-                  <TableRow key={r.customerId}>
-                    <TableCell className="font-medium">{r.customerName}</TableCell>
-                    <TableCell><Badge variant="outline" className="capitalize text-xs">{r.customerType}</Badge></TableCell>
-                    <TableCell className="text-right">{r.saleCount}</TableCell>
-                    <TableCell className="text-right">{r.totalSft.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(r.totalAmount)}</TableCell>
-                    <TableCell className={`text-right ${r.totalDue > 0 ? "text-destructive font-semibold" : ""}`}>
-                      {formatCurrency(r.totalDue)}
-                    </TableCell>
+          <>
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Email Address</TableHead>
+                    <TableHead className="text-right">Opening Balance</TableHead>
+                    <TableHead className="text-right">Total Sales</TableHead>
+                    <TableHead className="text-right">Total Amount</TableHead>
+                    <TableHead className="text-right">Paid</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {customers.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">No customers found</TableCell></TableRow>
+                  ) : customers.map((c: any) => {
+                    const sm = data?.salesMap?.[c.id];
+                    const totalAmt = sm?.totalAmount ?? 0;
+                    const paid = sm?.paidAmount ?? 0;
+                    const balance = totalAmt - paid;
+                    return (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">{c.name}</TableCell>
+                        <TableCell className="text-sm">{c.phone ?? "—"}</TableCell>
+                        <TableCell className="text-sm">{c.email ?? "—"}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(c.opening_balance)}</TableCell>
+                        <TableCell className="text-right">{sm?.count ?? 0}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(totalAmt)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(paid)}</TableCell>
+                        <TableCell className={`text-right ${balance > 0 ? "text-destructive font-semibold" : ""}`}>
+                          {formatCurrency(balance)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            <Pagination page={page} totalItems={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+          </>
         )}
       </CardContent>
     </Card>
