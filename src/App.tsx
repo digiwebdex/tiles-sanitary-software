@@ -42,6 +42,7 @@ import PurchaseReturnsPage from "./pages/purchase-returns/PurchaseReturnsPage";
 import CreatePurchaseReturn from "./pages/purchase-returns/CreatePurchaseReturn";
 import DeliveriesPage from "./pages/deliveries/DeliveriesPage";
 import POSSalePage from "./pages/sales/POSSalePage";
+import CampaignsPage from "./pages/campaigns/CampaignsPage";
 
 // Super Admin
 import SuperAdminLayout from "./pages/super-admin/SuperAdminLayout";
@@ -135,6 +136,7 @@ const App = () => (
             <Route path="/purchase-returns/new" element={<ProtectedRoute><AppLayout><CreatePurchaseReturn /></AppLayout></ProtectedRoute>} />
             <Route path="/sales/pos" element={<ProtectedRoute><AppLayout><POSSalePage /></AppLayout></ProtectedRoute>} />
             <Route path="/ledger" element={<ProtectedRoute><AppLayout><LedgerPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/campaigns" element={<ProtectedRoute><AppLayout><CampaignsPage /></AppLayout></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>

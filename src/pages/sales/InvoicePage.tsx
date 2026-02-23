@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { salesService } from "@/services/salesService";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Printer, Download, Pencil, Truck, Mail, CreditCard, Trash2, X, TrendingUp } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
@@ -18,6 +19,18 @@ const InvoicePage = () => {
   const { data: sale, isLoading } = useQuery({
     queryKey: ["sale", id],
     queryFn: () => salesService.getById(id!),
+    enabled: !!id,
+  });
+
+  const { data: salesReturns = [] } = useQuery({
+    queryKey: ["sale-returns-for-invoice", id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("sales_returns")
+        .select("id, qty, refund_amount, return_date, reason, is_broken, product_id, products(name)")
+        .eq("sale_id", id!);
+      return data ?? [];
+    },
     enabled: !!id,
   });
 
@@ -68,23 +81,6 @@ const InvoicePage = () => {
       {/* Invoice paper */}
       <div className="no-print min-h-screen bg-muted/40 py-6 px-4">
         <div id="invoice-print-area" className="mx-auto max-w-3xl bg-background shadow-lg rounded-lg overflow-hidden border">
-          <SaleInvoiceDocument
-            sale={sale}
-            items={items}
-            customer={customer}
-            subtotal={subtotal}
-            totalAmount={totalAmount}
-            discountAmount={discountAmount}
-            paidAmount={paidAmount}
-            dueAmount={dueAmount}
-            isDealerAdmin={isDealerAdmin}
-            dealerInfo={dealerInfo}
-          />
-        </div>
-      </div>
-
-      {/* Print area */}
-      <div id="invoice-print-area" className="hidden print:block">
         <SaleInvoiceDocument
           sale={sale}
           items={items}
@@ -96,7 +92,26 @@ const InvoicePage = () => {
           dueAmount={dueAmount}
           isDealerAdmin={isDealerAdmin}
           dealerInfo={dealerInfo}
+          salesReturns={salesReturns}
         />
+        </div>
+      </div>
+
+      {/* Print area */}
+      <div id="invoice-print-area" className="hidden print:block">
+          <SaleInvoiceDocument
+            sale={sale}
+            items={items}
+            customer={customer}
+            subtotal={subtotal}
+            totalAmount={totalAmount}
+            discountAmount={discountAmount}
+            paidAmount={paidAmount}
+            dueAmount={dueAmount}
+            isDealerAdmin={isDealerAdmin}
+            dealerInfo={dealerInfo}
+            salesReturns={salesReturns}
+          />
       </div>
 
       {/* Bottom action bar */}

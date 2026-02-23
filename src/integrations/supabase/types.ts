@@ -64,6 +64,60 @@ export type Database = {
           },
         ]
       }
+      campaign_gifts: {
+        Row: {
+          campaign_name: string
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          dealer_id: string
+          description: string | null
+          gift_value: number
+          id: string
+          paid_amount: number
+          payment_status: string
+        }
+        Insert: {
+          campaign_name: string
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          dealer_id: string
+          description?: string | null
+          gift_value?: number
+          id?: string
+          paid_amount?: number
+          payment_status?: string
+        }
+        Update: {
+          campaign_name?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          dealer_id?: string
+          description?: string | null
+          gift_value?: number
+          id?: string
+          paid_amount?: number
+          payment_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_gifts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_gifts_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cash_ledger: {
         Row: {
           amount: number

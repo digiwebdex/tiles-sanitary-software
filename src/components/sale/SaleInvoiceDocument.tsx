@@ -14,6 +14,7 @@ interface SaleInvoiceDocumentProps {
   dueAmount: number;
   isDealerAdmin: boolean;
   dealerInfo?: { name: string; phone: string | null; address: string | null } | null;
+  salesReturns?: any[];
 }
 
 const SaleInvoiceDocument = ({
@@ -27,6 +28,7 @@ const SaleInvoiceDocument = ({
   dueAmount,
   isDealerAdmin,
   dealerInfo,
+  salesReturns = [],
 }: SaleInvoiceDocumentProps) => {
   const paymentStatus =
     dueAmount <= 0 ? "Paid" : paidAmount > 0 ? "Partial" : "Pending";
@@ -176,7 +178,39 @@ const SaleInvoiceDocument = ({
         </div>
       </div>
 
-      {/* Creator / Date */}
+      {/* Returns / Refunds */}
+      {salesReturns.length > 0 && (
+        <div className="px-6 mb-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Returns & Refunds</p>
+          <div className="rounded-md border text-xs">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-muted/50">
+                  <th className="px-2 py-1.5 text-left font-semibold">Product</th>
+                  <th className="px-2 py-1.5 text-center font-semibold">Qty</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Refund</th>
+                  <th className="px-2 py-1.5 text-left font-semibold">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesReturns.map((r: any) => (
+                  <tr key={r.id} className="border-t">
+                    <td className="px-2 py-1.5">{r.products?.name ?? "—"}</td>
+                    <td className="px-2 py-1.5 text-center">{r.qty}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold text-destructive">{formatCurrency(r.refund_amount)}</td>
+                    <td className="px-2 py-1.5">{r.is_broken ? "Broken" : "Return"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-right mt-1 text-xs">
+            <span className="text-muted-foreground">Total Refund: </span>
+            <span className="font-bold text-destructive">{formatCurrency(salesReturns.reduce((s: number, r: any) => s + Number(r.refund_amount), 0))}</span>
+          </div>
+        </div>
+      )}
+
       <div className="px-6 pb-4 text-xs text-primary">
         <p>Created by: {sale.created_by ?? "—"}</p>
         <p>Date: {sale.sale_date}</p>
