@@ -1090,101 +1090,140 @@ function LowStockReport({ dealerId }: { dealerId: string }) {
 
 // ─── Purchases Report ─────────────────────────────────────
 function PurchasesReport({ dealerId }: { dealerId: string }) {
-  const [mode, setMode] = useState<"daily" | "monthly">("monthly");
-  const [year, setYear] = useState(currentYear);
-  const [month, setMonth] = useState(currentMonth);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const PAGE_SIZE = 25;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["report-purchases", dealerId, mode, year, month],
+    queryKey: ["report-purchases-v2", dealerId, page, search],
     queryFn: async () => {
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
       let query = supabase
         .from("purchases")
-        .select("purchase_date, total_amount, suppliers(name)")
+        .select("id, created_at, invoice_number, purchase_date, total_amount, supplier_id, suppliers(name)", { count: "exact" })
         .eq("dealer_id", dealerId)
-        .order("purchase_date");
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
-      if (mode === "daily" && month) {
-        const start = `${year}-${String(month).padStart(2, "0")}-01`;
-        const lastDay = new Date(year, month, 0).getDate();
-        const end = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
-        query = query.gte("purchase_date", start).lte("purchase_date", end);
-      } else {
-        query = query.gte("purchase_date", `${year}-01-01`).lte("purchase_date", `${year}-12-31`);
+      if (search?.trim()) {
+        query = query.or(`invoice_number.ilike.%${search.trim()}%,suppliers.name.ilike.%${search.trim()}%`);
       }
 
-      const { data: rows, error } = await query;
+      const { data: purchases, error, count } = await query;
       if (error) throw new Error(error.message);
 
-      const buckets: Record<string, { date: string; count: number; totalAmount: number }> = {};
-      for (const row of rows ?? []) {
-        const key = mode === "daily" ? row.purchase_date : row.purchase_date.substring(0, 7);
-        if (!buckets[key]) buckets[key] = { date: key, count: 0, totalAmount: 0 };
-        buckets[key].count += 1;
-        buckets[key].totalAmount += Number(row.total_amount);
+      // Fetch purchase_items with product info
+      const purchaseIds = (purchases ?? []).map((p: any) => p.id);
+      let itemsMap: Record<string, { name: string; qty: number }[]> = {};
+      if (purchaseIds.length > 0) {
+        const { data: items } = await supabase
+          .from("purchase_items")
+          .select("purchase_id, quantity, products(name, size, unit_type, category)")
+          .in("purchase_id", purchaseIds);
+
+        for (const item of items ?? []) {
+          const pid = (item as any).purchase_id;
+          if (!itemsMap[pid]) itemsMap[pid] = [];
+          const p = (item as any).products;
+          const label = p ? `${p.name}${p.size ? ` (Size: ${p.size})` : ""} (${p.unit_type === "box_sft" ? "Box" : "Pcs"})` : "Product";
+          itemsMap[pid].push({ name: label, qty: Number((item as any).quantity) });
+        }
       }
-      return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date));
+
+      // Fetch supplier_ledger payments for these purchases
+      let paidMap: Record<string, number> = {};
+      if (purchaseIds.length > 0) {
+        const { data: ledger } = await supabase
+          .from("supplier_ledger")
+          .select("purchase_id, amount, type")
+          .in("purchase_id", purchaseIds)
+          .in("type", ["payment"]);
+
+        for (const entry of ledger ?? []) {
+          const pid = (entry as any).purchase_id;
+          if (!paidMap[pid]) paidMap[pid] = 0;
+          paidMap[pid] += Number((entry as any).amount);
+        }
+      }
+
+      return { purchases: purchases ?? [], total: count ?? 0, itemsMap, paidMap };
     },
   });
 
+  const purchases = data?.purchases ?? [];
+  const total = data?.total ?? 0;
+
   return (
     <Card>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-2">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
         <CardTitle className="text-base">Purchases Report</CardTitle>
-        <div className="flex gap-2 flex-wrap">
-          <Select value={mode} onValueChange={(v) => setMode(v as any)}>
-            <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="monthly">Monthly</SelectItem>
-              <SelectItem value="daily">Daily</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {mode === "daily" && (
-            <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {months.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+        <Input
+          placeholder="Search by invoice or supplier…"
+          className="max-w-xs"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        />
       </CardHeader>
       <CardContent>
         {isLoading ? <p className="text-muted-foreground">Loading…</p> : (
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{mode === "daily" ? "Date" : "Month"}</TableHead>
-                  <TableHead className="text-right">Purchases</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No data</TableCell></TableRow>
-                ) : (data ?? []).map((r) => (
-                  <TableRow key={r.date}>
-                    <TableCell className="font-medium">{r.date}</TableCell>
-                    <TableCell className="text-right">{r.count}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(r.totalAmount)}</TableCell>
+          <>
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Reference No</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead>Product (Qty)</TableHead>
+                    <TableHead className="text-right">Grand Total</TableHead>
+                    <TableHead className="text-right">Paid</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-                {(data ?? []).length > 0 && (
-                  <TableRow className="bg-muted/50 font-semibold">
-                    <TableCell>Total</TableCell>
-                    <TableCell className="text-right">{(data ?? []).reduce((s, r) => s + r.count, 0)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalAmount, 0))}</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {purchases.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">No purchases found</TableCell></TableRow>
+                  ) : purchases.map((p: any) => {
+                    const totalAmt = Number(p.total_amount) || 0;
+                    const paid = data?.paidMap?.[p.id] ?? 0;
+                    const balance = totalAmt - paid;
+                    const items = data?.itemsMap?.[p.id] ?? [];
+                    return (
+                      <TableRow key={p.id}>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {new Date(p.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })}{" "}
+                          <span className="text-muted-foreground">{new Date(p.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{p.invoice_number ?? "—"}</TableCell>
+                        <TableCell>{(p.suppliers as any)?.name ?? "—"}</TableCell>
+                        <TableCell className="text-xs max-w-[280px]">
+                          {items.length > 0 ? (
+                            <div className="space-y-0.5">
+                              {items.map((it, idx) => (
+                                <div key={idx} className="text-muted-foreground">
+                                  {it.name} ({it.qty})
+                                </div>
+                              ))}
+                            </div>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(totalAmt)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(paid)}</TableCell>
+                        <TableCell className={`text-right ${balance > 0 ? "text-destructive font-semibold" : ""}`}>{formatCurrency(balance)}</TableCell>
+                        <TableCell>
+                          <Badge className="bg-green-600 text-white hover:bg-green-700 text-xs">Received</Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            <Pagination page={page} totalItems={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+          </>
         )}
       </CardContent>
     </Card>
