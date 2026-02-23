@@ -23,7 +23,7 @@ export const deliveryService = {
 
     let query = supabase
       .from("deliveries")
-      .select("*, challans(challan_no), sales(invoice_number, customers(name))", { count: "exact" })
+      .select("*, challans(challan_no), sales(invoice_number, customers(name, phone, address))", { count: "exact" })
       .eq("dealer_id", dealerId)
       .order("delivery_date", { ascending: false })
       .range(from, to);
