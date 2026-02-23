@@ -132,7 +132,7 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
             {/* Items */}
             <div>
               <p className="font-semibold text-foreground mb-2">
-                {isPartialTracking ? "ডেলিভারি আইটেম" : "Items"}
+                {isPartialTracking ? "Delivery Items" : "Items"}
               </p>
               {displayItems.length === 0 ? (
                 <p className="text-muted-foreground text-xs">No items linked to this delivery.</p>
@@ -177,7 +177,7 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
               <>
                 <Separator />
                 <div>
-                  <p className="font-semibold text-foreground mb-2">ডেলিভারি প্রগ্রেস</p>
+                  <p className="font-semibold text-foreground mb-2">Delivery Progress</p>
                   <div className="space-y-2">
                     {saleItems.map((si: any) => {
                       const product = si.products;
@@ -198,9 +198,9 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
                           </div>
                           <Progress value={Math.min(progress, 100)} className="h-2" />
                           <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>ডেলিভারড: {delivered} {unit}</span>
+                            <span>Delivered: {delivered} {unit}</span>
                             <span className={remaining > 0 ? "text-orange-600 font-medium" : "text-green-600 font-medium"}>
-                              {remaining > 0 ? `বাকী: ${remaining} ${unit}` : "সম্পূর্ণ ✓"}
+                              {remaining > 0 ? `Remaining: ${remaining} ${unit}` : "Complete ✓"}
                             </span>
                           </div>
                         </div>

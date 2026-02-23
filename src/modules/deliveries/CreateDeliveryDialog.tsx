@@ -59,7 +59,7 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
           quantity: quantities[si.id],
         }));
 
-      if (items.length === 0) throw new Error("কোনো আইটেমের পরিমাণ দেওয়া হয়নি");
+      if (items.length === 0) throw new Error("No item quantities specified");
 
       await deliveryService.create({
         dealer_id: dealerId,
@@ -79,7 +79,7 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
       queryClient.invalidateQueries({ queryKey: ["deliveries"] });
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["delivered-qty"] });
-      toast.success("ডেলিভারি সফলভাবে তৈরি হয়েছে");
+      toast.success("Delivery created successfully");
       onClose();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -92,27 +92,27 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Truck className="h-5 w-5" /> ডেলিভারি তৈরি করুন
+            <Truck className="h-5 w-5" /> Create Delivery
           </DialogTitle>
           <DialogDescription>
-            ইনভয়েস: {sale?.invoice_number ?? "—"} | কাস্টমার: {customer?.name ?? "—"}
+            Invoice: {sale?.invoice_number ?? "—"} | Customer: {customer?.name ?? "—"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           {saleItems.length === 0 ? (
-            <p className="text-muted-foreground text-sm">এই সেলে কোনো আইটেম নেই।</p>
+            <p className="text-muted-foreground text-sm">No items in this sale.</p>
           ) : (
             <div className="rounded-md border overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/50">
-                    <th className="text-left px-3 py-2 font-medium">প্রডাক্ট</th>
-                    <th className="text-center px-3 py-2 font-medium">অর্ডার</th>
-                    <th className="text-center px-3 py-2 font-medium">ডেলিভারড</th>
-                    <th className="text-center px-3 py-2 font-medium">বাকী</th>
-                    <th className="text-center px-3 py-2 font-medium">স্টক</th>
-                    <th className="text-center px-3 py-2 font-medium w-28">এবার দিন</th>
+                    <th className="text-left px-3 py-2 font-medium">Product</th>
+                    <th className="text-center px-3 py-2 font-medium">Ordered</th>
+                    <th className="text-center px-3 py-2 font-medium">Delivered</th>
+                    <th className="text-center px-3 py-2 font-medium">Remaining</th>
+                    <th className="text-center px-3 py-2 font-medium">Stock</th>
+                    <th className="text-center px-3 py-2 font-medium w-28">Deliver Now</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -139,7 +139,7 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
                           <td className="text-center px-3 py-2">{ordered} {unit}</td>
                           <td className="text-center px-3 py-2 text-green-600 font-medium">{delivered} {unit}</td>
                           <td className="text-center px-3 py-2">
-                            <Badge className="bg-green-600 text-white text-xs">সম্পূর্ণ</Badge>
+                            <Badge className="bg-green-600 text-white text-xs">Complete</Badge>
                           </td>
                           <td className="text-center px-3 py-2">—</td>
                           <td className="text-center px-3 py-2">—</td>
@@ -162,7 +162,7 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
                         <td className="text-center px-3 py-2">
                           {availableStock <= 0 ? (
                             <span className="text-destructive text-xs flex items-center justify-center gap-1">
-                              <AlertCircle className="h-3 w-3" /> নেই
+                              <AlertCircle className="h-3 w-3" /> None
                             </span>
                           ) : (
                             <span className={availableStock < remaining ? "text-yellow-600" : "text-green-600"}>
@@ -194,13 +194,13 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose}>বাতিল</Button>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={() => createMutation.mutate()}
             disabled={!hasAnyQty || createMutation.isPending}
           >
             <Package className="mr-2 h-4 w-4" />
-            {createMutation.isPending ? "তৈরি হচ্ছে..." : "ডেলিভারি তৈরি করুন"}
+            {createMutation.isPending ? "Creating..." : "Create Delivery"}
           </Button>
         </DialogFooter>
       </DialogContent>

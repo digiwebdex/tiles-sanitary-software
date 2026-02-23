@@ -164,7 +164,7 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
                       <TableCell>{customer?.name ?? d.receiver_name ?? "—"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[200px]">
                         {itemCount > 0 ? (
-                          <span className="font-medium text-foreground">{itemCount} আইটেম, {totalQty} ইউনিট</span>
+                          <span className="font-medium text-foreground">{itemCount} items, {totalQty} units</span>
                         ) : (
                           <>
                             <p>{address}</p>

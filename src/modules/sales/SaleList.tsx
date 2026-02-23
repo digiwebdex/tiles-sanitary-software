@@ -182,13 +182,13 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                             className={`capitalize text-xs ${s.sale_status === "partially_delivered" ? "border-orange-500 text-orange-600" : s.sale_status === "delivered" ? "bg-green-600 text-white" : ""}`}
                           >
                             {s.sale_status === "partially_delivered" 
-                              ? "আংশিক ডেলিভারি" 
+                              ? "Partial Delivery" 
                               : (s.sale_status ?? "invoiced").replace(/_/g, " ")}
                           </Badge>
                           {s.sale_status === "partially_delivered" && (
                             <span className="text-xs text-orange-600 font-medium">
                               <Truck className="inline h-3 w-3 mr-0.5" />
-                              ডেলিভারি চলমান
+                              In Progress
                             </span>
                           )}
                         </div>
