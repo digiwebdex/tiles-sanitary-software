@@ -17,7 +17,12 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { formatCurrency } from "@/lib/utils";
+import { Search, Package } from "lucide-react";
 
 interface SalesReturnFormProps {
   dealerId: string;
@@ -27,6 +32,7 @@ interface SalesReturnFormProps {
 
 const SalesReturnForm = ({ dealerId, onSubmit, isLoading }: SalesReturnFormProps) => {
   const [selectedSaleId, setSelectedSaleId] = useState<string>("");
+  const [productSearch, setProductSearch] = useState("");
 
   const form = useForm<SalesReturnFormValues>({
     resolver: zodResolver(salesReturnSchema),
@@ -41,7 +47,6 @@ const SalesReturnForm = ({ dealerId, onSubmit, isLoading }: SalesReturnFormProps
     },
   });
 
-  // Fetch sales for this dealer
   const { data: sales = [] } = useQuery({
     queryKey: ["sales-for-return", dealerId],
     queryFn: async () => {
@@ -55,7 +60,6 @@ const SalesReturnForm = ({ dealerId, onSubmit, isLoading }: SalesReturnFormProps
     enabled: !!dealerId,
   });
 
-  // Fetch sale items when a sale is selected
   const { data: saleItems = [] } = useQuery({
     queryKey: ["sale-items-return", selectedSaleId],
     queryFn: () => salesReturnService.getSaleItems(selectedSaleId),
@@ -70,168 +74,266 @@ const SalesReturnForm = ({ dealerId, onSubmit, isLoading }: SalesReturnFormProps
     form.setValue("refund_amount", 0);
   };
 
-  const handleProductChange = (productId: string) => {
+  const watchQty = form.watch("qty");
+  const watchProductId = form.watch("product_id");
+  const watchRefund = form.watch("refund_amount");
+  const selectedItem = saleItems.find((i: any) => i.product_id === watchProductId);
+
+  const selectProduct = (productId: string) => {
     form.setValue("product_id", productId);
+    setProductSearch("");
     const item = saleItems.find((i: any) => i.product_id === productId);
     if (item) {
       form.setValue("refund_amount", Number(item.sale_rate) * (form.getValues("qty") || 0));
     }
   };
 
-  const watchQty = form.watch("qty");
-  const watchProductId = form.watch("product_id");
+  const filteredSaleItems = saleItems.filter((item: any) => {
+    if (!productSearch.trim()) return true;
+    const q = productSearch.toLowerCase();
+    return (
+      item.products?.name?.toLowerCase().includes(q) ||
+      item.products?.sku?.toLowerCase().includes(q)
+    );
+  });
 
-  const selectedItem = saleItems.find((i: any) => i.product_id === watchProductId);
+  const selectedSale = sales.find((s: any) => s.id === selectedSaleId);
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <FormField
-            control={form.control}
-            name="sale_id"
-            render={() => (
-              <FormItem>
-                <FormLabel>Sale / Invoice</FormLabel>
-                <Select onValueChange={handleSaleChange} value={selectedSaleId}>
-                  <FormControl><SelectTrigger><SelectValue placeholder="Select sale" /></SelectTrigger></FormControl>
-                  <SelectContent>
-                    {sales.map((s: any) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.invoice_number} — {(s.customers as any)?.name ?? "Unknown"} ({s.sale_date})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="product_id"
-            render={() => (
-              <FormItem>
-                <FormLabel>Product</FormLabel>
-                <Select onValueChange={handleProductChange} value={watchProductId} disabled={!selectedSaleId}>
-                  <FormControl><SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger></FormControl>
-                  <SelectContent>
-                    {saleItems.map((item: any) => (
-                      <SelectItem key={item.product_id} value={item.product_id}>
-                        {item.products?.sku} — {item.products?.name}
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          Sold: {item.quantity}
-                        </Badge>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="qty"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Return Quantity</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    max={selectedItem ? Number(selectedItem.quantity) : undefined}
-                    {...field}
-                    onChange={(e) => {
-                      field.onChange(e);
-                      if (selectedItem) {
-                        const qty = parseFloat(e.target.value) || 0;
-                        form.setValue("refund_amount", qty * Number(selectedItem.sale_rate));
-                      }
-                    }}
-                  />
-                </FormControl>
-                {selectedItem && (
-                  <p className="text-xs text-muted-foreground">
-                    Max: {Number(selectedItem.quantity)} ({selectedItem.products?.unit_type === "box_sft" ? "boxes" : "pieces"})
-                  </p>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+        {/* Top fields */}
+        <Card>
+          <CardContent className="pt-5">
+            <p className="mb-4 text-sm text-muted-foreground">
+              Please fill in the information below. The field labels marked with <span className="text-destructive">*</span> are required input fields.
+            </p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="return_date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Return Date <span className="text-destructive">*</span></FormLabel>
+                    <FormControl><Input type="date" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="return_date"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Return Date</FormLabel>
-                <FormControl><Input type="date" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="refund_amount"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Refund Amount (৳)</FormLabel>
-                <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="is_broken"
-            render={({ field }) => (
-              <FormItem className="flex items-center gap-3 pt-6">
-                <FormControl>
-                  <Switch checked={field.value} onCheckedChange={field.onChange} />
-                </FormControl>
-                <FormLabel className="!mt-0">Broken / Damaged (no restock)</FormLabel>
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <FormField
-          control={form.control}
-          name="reason"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Reason</FormLabel>
-              <FormControl><Textarea placeholder="Reason for return" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {watchQty > 0 && selectedItem && (
-          <Card>
-            <CardContent className="flex items-center gap-6 pt-4 text-sm">
-              <span className="text-muted-foreground">
-                Return: <strong className="text-foreground">{watchQty} {selectedItem.products?.unit_type === "box_sft" ? "boxes" : "pcs"}</strong>
-              </span>
-              <span className="text-muted-foreground">
-                Refund: <strong className="text-foreground">{formatCurrency(form.watch("refund_amount") || 0)}</strong>
-              </span>
-              {form.watch("is_broken") && (
-                <Badge variant="destructive">No restock</Badge>
+              />
+              <FormField
+                control={form.control}
+                name="sale_id"
+                render={() => (
+                  <FormItem>
+                    <FormLabel>Sale / Invoice <span className="text-destructive">*</span></FormLabel>
+                    <Select onValueChange={handleSaleChange} value={selectedSaleId}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select sale" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {sales.map((s: any) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.invoice_number} — {(s.customers as any)?.name ?? "Unknown"} ({s.sale_date})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {selectedSale && (
+                <div className="flex flex-col justify-end">
+                  <p className="text-sm text-muted-foreground">Customer</p>
+                  <p className="font-medium text-foreground">{(selectedSale as any).customers?.name ?? "—"}</p>
+                </div>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Select product prompt */}
+        <Alert className="border-accent bg-accent/50">
+          <AlertDescription className="text-accent-foreground">
+            Please select a sale/invoice before adding a return product
+          </AlertDescription>
+        </Alert>
+
+        {/* Product search */}
+        <Card>
+          <CardContent className="pt-5">
+            <div className="relative">
+              <div className="flex items-center gap-2 rounded-md border bg-background">
+                <Package className="ml-3 h-5 w-5 text-muted-foreground" />
+                <Input
+                  placeholder="Search sold products by name or SKU..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="border-0 shadow-none focus-visible:ring-0"
+                  disabled={!selectedSaleId}
+                />
+                <Search className="mr-3 h-4 w-4 text-muted-foreground" />
+              </div>
+              {productSearch.trim() && selectedSaleId && (
+                <div className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover shadow-lg">
+                  {filteredSaleItems.length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground">No products found</div>
+                  ) : (
+                    filteredSaleItems.map((item: any) => (
+                      <button
+                        key={item.product_id}
+                        type="button"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
+                        onClick={() => selectProduct(item.product_id)}
+                        disabled={watchProductId === item.product_id}
+                      >
+                        <span className="font-medium">{item.products?.sku}</span>
+                        <span className="text-muted-foreground">— {item.products?.name}</span>
+                        <Badge variant="secondary" className="ml-auto text-xs">Sold: {item.quantity}</Badge>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            {!selectedSaleId && (
+              <p className="mt-2 text-xs text-muted-foreground">Select a sale first to search products</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Order Items table */}
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-foreground">Order Items <span className="text-destructive">*</span></h3>
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-primary text-primary-foreground [&>th]:text-primary-foreground">
+                    <TableHead>Product (Code - Name)</TableHead>
+                    <TableHead className="w-28">Net Unit Price</TableHead>
+                    <TableHead className="w-28">Quantity</TableHead>
+                    <TableHead className="w-28 text-right">Subtotal</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedItem ? (
+                    <TableRow>
+                      <TableCell>
+                        <div className="text-sm font-medium">{selectedItem.products?.name}</div>
+                        <div className="text-xs text-muted-foreground">{selectedItem.products?.sku}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">{formatCurrency(Number(selectedItem.sale_rate))}</TableCell>
+                      <TableCell>
+                        <FormField
+                          control={form.control}
+                          name="qty"
+                          render={({ field }) => (
+                            <FormItem className="space-y-0">
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  max={Number(selectedItem.quantity)}
+                                  className="h-8 w-24 text-sm"
+                                  {...field}
+                                  onChange={(e) => {
+                                    field.onChange(e);
+                                    const qty = parseFloat(e.target.value) || 0;
+                                    form.setValue("refund_amount", qty * Number(selectedItem.sale_rate));
+                                  }}
+                                />
+                              </FormControl>
+                              <p className="text-xs text-muted-foreground mt-0.5">Max: {Number(selectedItem.quantity)}</p>
+                            </FormItem>
+                          )}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-sm">
+                        {formatCurrency(watchRefund || 0)}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                        No product selected. Use the search bar above.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
-        )}
+        </div>
 
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? "Processing…" : "Confirm Return"}
-        </Button>
+        {/* Options: Broken toggle + Refund */}
+        <Card>
+          <CardContent className="pt-5">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="is_broken"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-3 pt-2">
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                    <FormLabel className="!mt-0">Broken / Damaged (no restock)</FormLabel>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="refund_amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Refund Amount (৳)</FormLabel>
+                    <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Return Note */}
+        <Card>
+          <CardContent className="pt-5">
+            <FormField
+              control={form.control}
+              name="reason"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Return Note</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Reason for return..." rows={4} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Submit / Reset */}
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={isLoading}>
+            {isLoading ? "Processing…" : "Submit"}
+          </Button>
+          <Button type="button" variant="destructive" onClick={() => { form.reset(); setSelectedSaleId(""); }} disabled={isLoading}>
+            Reset
+          </Button>
+        </div>
+
+        {/* Summary footer */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border bg-accent/30 px-4 py-3 text-sm">
+          <span className="text-muted-foreground">Items <strong className="text-foreground">{selectedItem ? 1 : 0}</strong></span>
+          <span className="text-muted-foreground">Total <strong className="text-foreground">{formatCurrency(watchRefund || 0)}</strong></span>
+          <span className="ml-auto font-semibold text-foreground">Grand Total <strong>{formatCurrency(watchRefund || 0)}</strong></span>
+        </div>
       </form>
     </Form>
   );
