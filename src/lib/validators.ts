@@ -12,7 +12,7 @@ const safeText = (maxLen: number) =>
   );
 
 const optionalSafeText = (maxLen: number) =>
-  safeText(maxLen).optional().or(z.literal(""));
+  safeText(maxLen).optional().or(z.literal("")).or(z.literal(null as any).transform(() => undefined));
 
 // ── Product ──
 export const createProductServiceSchema = z.object({
@@ -21,9 +21,9 @@ export const createProductServiceSchema = z.object({
   sku: safeText(50).pipe(z.string().min(1, "SKU is required")),
   category: z.enum(["tiles", "sanitary"]),
   unit_type: z.enum(["box_sft", "piece"]).default("box_sft"),
-  per_box_sft: z.number().min(0).nullable().optional(),
-  default_sale_rate: z.number().min(0, "Sale rate cannot be negative"),
-  reorder_level: z.number().int().min(0, "Reorder level cannot be negative").default(0),
+  per_box_sft: z.coerce.number().min(0).nullable().optional(),
+  default_sale_rate: z.coerce.number().min(0, "Sale rate cannot be negative"),
+  reorder_level: z.coerce.number().int().min(0, "Reorder level cannot be negative").default(0),
   brand: optionalSafeText(100),
   color: optionalSafeText(50),
   size: optionalSafeText(50),
@@ -104,7 +104,7 @@ export const stockAdjustmentServiceSchema = z.object({
 export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): T {
   const result = schema.safeParse(data);
   if (!result.success) {
-    const msg = result.error.issues.map((i) => i.message).join(", ");
+    const msg = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Validation failed: ${msg}`);
   }
   return result.data;
