@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard, Package, ShoppingCart, Receipt, RotateCcw,
   BookOpen, BarChart3, LogOut, Settings, Clock, Truck, Users, ShieldCheck, FileText,
+  Undo2, MapPin, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,8 +16,11 @@ const navItems = [
   { path: "/purchases", label: "Purchases", icon: ShoppingCart },
   { path: "/customers", label: "Customers", icon: Users },
   { path: "/sales", label: "Sales", icon: Receipt },
+  { path: "/sales/pos", label: "POS", icon: Zap },
   { path: "/challans", label: "Challans", icon: FileText },
-  { path: "/sales-returns", label: "Returns", icon: RotateCcw },
+  { path: "/deliveries", label: "Deliveries", icon: MapPin },
+  { path: "/sales-returns", label: "Sales Returns", icon: RotateCcw },
+  { path: "/purchase-returns", label: "Purchase Returns", icon: Undo2 },
   { path: "/ledger", label: "Ledger", icon: BookOpen },
   { path: "/reports", label: "Reports", icon: BarChart3, readonlyAllowed: true },
   { path: "/reports/credit", label: "Credit Report", icon: ShieldCheck, readonlyAllowed: true },

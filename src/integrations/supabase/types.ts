@@ -419,6 +419,73 @@ export type Database = {
         }
         Relationships: []
       }
+      deliveries: {
+        Row: {
+          challan_id: string | null
+          created_at: string | null
+          created_by: string | null
+          dealer_id: string
+          delivery_address: string | null
+          delivery_date: string
+          id: string
+          notes: string | null
+          receiver_name: string | null
+          receiver_phone: string | null
+          sale_id: string | null
+          status: string | null
+        }
+        Insert: {
+          challan_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          dealer_id: string
+          delivery_address?: string | null
+          delivery_date?: string
+          id?: string
+          notes?: string | null
+          receiver_name?: string | null
+          receiver_phone?: string | null
+          sale_id?: string | null
+          status?: string | null
+        }
+        Update: {
+          challan_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          dealer_id?: string
+          delivery_address?: string | null
+          delivery_date?: string
+          id?: string
+          notes?: string | null
+          receiver_name?: string | null
+          receiver_phone?: string | null
+          sale_id?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deliveries_challan_id_fkey"
+            columns: ["challan_id"]
+            isOneToOne: false
+            referencedRelation: "challans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deliveries_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deliveries_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expense_ledger: {
         Row: {
           amount: number
@@ -792,6 +859,125 @@ export type Database = {
             columns: ["purchase_id"]
             isOneToOne: false
             referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_return_items: {
+        Row: {
+          dealer_id: string
+          id: string
+          product_id: string
+          purchase_return_id: string
+          quantity: number | null
+          reason: string | null
+          total: number
+          unit_price: number
+        }
+        Insert: {
+          dealer_id: string
+          id?: string
+          product_id: string
+          purchase_return_id: string
+          quantity?: number | null
+          reason?: string | null
+          total: number
+          unit_price: number
+        }
+        Update: {
+          dealer_id?: string
+          id?: string
+          product_id?: string
+          purchase_return_id?: string
+          quantity?: number | null
+          reason?: string | null
+          total?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_return_items_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_return_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_return_items_purchase_return_id_fkey"
+            columns: ["purchase_return_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_returns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_returns: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          dealer_id: string
+          id: string
+          notes: string | null
+          purchase_id: string | null
+          return_date: string
+          return_no: string
+          status: string | null
+          supplier_id: string
+          total_amount: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          dealer_id: string
+          id?: string
+          notes?: string | null
+          purchase_id?: string | null
+          return_date?: string
+          return_no: string
+          status?: string | null
+          supplier_id: string
+          total_amount?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          dealer_id?: string
+          id?: string
+          notes?: string | null
+          purchase_id?: string | null
+          return_date?: string
+          return_no?: string
+          status?: string | null
+          supplier_id?: string
+          total_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_returns_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_returns_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_returns_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]

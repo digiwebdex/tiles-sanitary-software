@@ -38,6 +38,10 @@ import CreateCustomer from "./pages/customers/CreateCustomer";
 import EditCustomer from "./pages/customers/EditCustomer";
 import CreditReportPage from "./pages/reports/CreditReportPage";
 import ChallansPage from "./pages/challans/ChallansPage";
+import PurchaseReturnsPage from "./pages/purchase-returns/PurchaseReturnsPage";
+import CreatePurchaseReturn from "./pages/purchase-returns/CreatePurchaseReturn";
+import DeliveriesPage from "./pages/deliveries/DeliveriesPage";
+import POSSalePage from "./pages/sales/POSSalePage";
 
 // Super Admin
 import SuperAdminLayout from "./pages/super-admin/SuperAdminLayout";
@@ -124,8 +128,12 @@ const App = () => (
             <Route path="/sales/:id/edit" element={<ProtectedRoute><AppLayout><EditSale /></AppLayout></ProtectedRoute>} />
             <Route path="/sales/:saleId/challan" element={<ProtectedRoute><AppLayout><ChallanPage /></AppLayout></ProtectedRoute>} />
             <Route path="/challans" element={<ProtectedRoute><AppLayout><ChallansPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/deliveries" element={<ProtectedRoute><AppLayout><DeliveriesPage /></AppLayout></ProtectedRoute>} />
             <Route path="/sales-returns" element={<ProtectedRoute><AppLayout><SalesReturnsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/sales-returns/new" element={<ProtectedRoute><AppLayout><CreateSalesReturn /></AppLayout></ProtectedRoute>} />
+            <Route path="/purchase-returns" element={<ProtectedRoute><AppLayout><PurchaseReturnsPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/purchase-returns/new" element={<ProtectedRoute><AppLayout><CreatePurchaseReturn /></AppLayout></ProtectedRoute>} />
+            <Route path="/sales/pos" element={<ProtectedRoute><AppLayout><POSSalePage /></AppLayout></ProtectedRoute>} />
             <Route path="/ledger" element={<ProtectedRoute><AppLayout><LedgerPage /></AppLayout></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />

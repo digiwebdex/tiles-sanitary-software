@@ -1,7 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { dashboardService } from "@/services/dashboardService";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -14,10 +17,11 @@ import {
 } from "recharts";
 import {
   TrendingUp, Package, AlertTriangle, Receipt, Banknote,
-  ShoppingCart, Wallet, Users, CreditCard, Clock, BarChart2, Layers,
+  ShoppingCart, Wallet, Users, CreditCard, Clock, BarChart2, Layers, Truck,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
 
 interface OwnerDashboardProps {
   dealerId: string;
@@ -75,12 +79,72 @@ const Section = ({ title, children, cols = "grid-cols-2 md:grid-cols-4" }: Secti
 
 const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
   const { isDealerAdmin } = useAuth();
+  const navigate = useNavigate();
+  const [latestTab, setLatestTab] = useState("sales");
+  
   const { data, isLoading, isError } = useQuery({
     queryKey: ["owner-dashboard", dealerId],
     queryFn: () => dashboardService.getData(dealerId),
     enabled: !!dealerId,
     refetchInterval: 60_000,
     retry: 2,
+  });
+
+  // Latest Five queries
+  const { data: latestSales } = useQuery({
+    queryKey: ["latest-sales", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("sales")
+        .select("id, sale_date, invoice_number, total_amount, paid_amount, due_amount, sale_status, customers(name)")
+        .eq("dealer_id", dealerId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      return data ?? [];
+    },
+    enabled: !!dealerId,
+  });
+
+  const { data: latestPurchases } = useQuery({
+    queryKey: ["latest-purchases", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("purchases")
+        .select("id, purchase_date, invoice_number, total_amount, suppliers(name)")
+        .eq("dealer_id", dealerId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      return data ?? [];
+    },
+    enabled: !!dealerId,
+  });
+
+  const { data: latestCustomers } = useQuery({
+    queryKey: ["latest-customers", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("customers")
+        .select("id, name, phone, type, created_at")
+        .eq("dealer_id", dealerId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      return data ?? [];
+    },
+    enabled: !!dealerId,
+  });
+
+  const { data: latestSuppliers } = useQuery({
+    queryKey: ["latest-suppliers", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("suppliers")
+        .select("id, name, phone, status, created_at")
+        .eq("dealer_id", dealerId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      return data ?? [];
+    },
+    enabled: !!dealerId,
   });
 
   if (isLoading) {
@@ -122,6 +186,155 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
           </Badge>
         )}
       </div>
+
+      {/* ── Quick Links ── */}
+      <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+        {[
+          { label: "Products", icon: Package, path: "/products" },
+          { label: "Sales", icon: Receipt, path: "/sales" },
+          { label: "Purchases", icon: ShoppingCart, path: "/purchases" },
+          { label: "Customers", icon: Users, path: "/customers" },
+          { label: "Suppliers", icon: Truck, path: "/suppliers" },
+        ].map((link) => (
+          <Card
+            key={link.path}
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate(link.path)}
+          >
+            <CardContent className="flex flex-col items-center gap-2 py-4 px-2">
+              <link.icon className="h-6 w-6 text-primary" />
+              <span className="text-xs font-medium text-foreground">{link.label}</span>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* ── Latest Five ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Latest Entries</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={latestTab} onValueChange={setLatestTab}>
+            <TabsList className="mb-3">
+              <TabsTrigger value="sales">Sales</TabsTrigger>
+              <TabsTrigger value="purchases">Purchases</TabsTrigger>
+              <TabsTrigger value="customers">Customers</TabsTrigger>
+              <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="sales">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Due</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(latestSales ?? []).length === 0 ? (
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No sales yet</TableCell></TableRow>
+                    ) : (latestSales ?? []).map((s: any) => (
+                      <TableRow key={s.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/sales/${s.id}/invoice`)}>
+                        <TableCell>{s.sale_date}</TableCell>
+                        <TableCell className="font-mono text-sm">{s.invoice_number ?? "—"}</TableCell>
+                        <TableCell>{s.customers?.name ?? "—"}</TableCell>
+                        <TableCell><Badge variant="secondary" className="capitalize text-xs">{s.sale_status}</Badge></TableCell>
+                        <TableCell className="text-right">{formatCurrency(s.total_amount)}</TableCell>
+                        <TableCell className={`text-right ${Number(s.due_amount) > 0 ? "text-destructive font-semibold" : ""}`}>
+                          {formatCurrency(s.due_amount)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="purchases">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Supplier</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(latestPurchases ?? []).length === 0 ? (
+                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">No purchases yet</TableCell></TableRow>
+                    ) : (latestPurchases ?? []).map((p: any) => (
+                      <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/purchases/${p.id}`)}>
+                        <TableCell>{p.purchase_date}</TableCell>
+                        <TableCell className="font-mono text-sm">{p.invoice_number ?? "—"}</TableCell>
+                        <TableCell>{p.suppliers?.name ?? "—"}</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(p.total_amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="customers">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Type</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(latestCustomers ?? []).length === 0 ? (
+                      <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No customers yet</TableCell></TableRow>
+                    ) : (latestCustomers ?? []).map((c: any) => (
+                      <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/customers/${c.id}/edit`)}>
+                        <TableCell className="font-medium">{c.name}</TableCell>
+                        <TableCell>{c.phone ?? "—"}</TableCell>
+                        <TableCell><Badge variant="outline" className="capitalize text-xs">{c.type}</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="suppliers">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(latestSuppliers ?? []).length === 0 ? (
+                      <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No suppliers yet</TableCell></TableRow>
+                    ) : (latestSuppliers ?? []).map((s: any) => (
+                      <TableRow key={s.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/suppliers/${s.id}/edit`)}>
+                        <TableCell className="font-medium">{s.name}</TableCell>
+                        <TableCell>{s.phone ?? "—"}</TableCell>
+                        <TableCell><Badge variant="secondary" className="capitalize text-xs">{s.status}</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
 
       {/* ── Section 1: Today ── */}
       <Section title="Today">

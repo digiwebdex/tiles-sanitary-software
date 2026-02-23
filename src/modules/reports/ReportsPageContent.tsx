@@ -52,6 +52,8 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
           <TabsTrigger value="low-stock">Low Stock</TabsTrigger>
           <TabsTrigger value="sales">Sales</TabsTrigger>
+          <TabsTrigger value="purchases">Purchases</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
           <TabsTrigger value="retailer">Retailer Sales</TabsTrigger>
           <TabsTrigger value="product-history">Product History</TabsTrigger>
           <TabsTrigger value="accounting">Accounting</TabsTrigger>
@@ -62,6 +64,8 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
         <TabsContent value="inventory"><InventoryAgingReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="low-stock"><LowStockReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="sales"><SalesReport dealerId={dealerId} /></TabsContent>
+        <TabsContent value="purchases"><PurchasesReport dealerId={dealerId} /></TabsContent>
+        <TabsContent value="payments"><PaymentsReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="retailer"><RetailerSalesReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="product-history"><ProductHistoryReport dealerId={dealerId} /></TabsContent>
         <TabsContent value="accounting"><AccountingSummaryReport dealerId={dealerId} /></TabsContent>
@@ -743,6 +747,195 @@ function LowStockReport({ dealerId }: { dealerId: string }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ─── Purchases Report ─────────────────────────────────────
+function PurchasesReport({ dealerId }: { dealerId: string }) {
+  const [mode, setMode] = useState<"daily" | "monthly">("monthly");
+  const [year, setYear] = useState(currentYear);
+  const [month, setMonth] = useState(currentMonth);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["report-purchases", dealerId, mode, year, month],
+    queryFn: async () => {
+      let query = supabase
+        .from("purchases")
+        .select("purchase_date, total_amount, suppliers(name)")
+        .eq("dealer_id", dealerId)
+        .order("purchase_date");
+
+      if (mode === "daily" && month) {
+        const start = `${year}-${String(month).padStart(2, "0")}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const end = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+        query = query.gte("purchase_date", start).lte("purchase_date", end);
+      } else {
+        query = query.gte("purchase_date", `${year}-01-01`).lte("purchase_date", `${year}-12-31`);
+      }
+
+      const { data: rows, error } = await query;
+      if (error) throw new Error(error.message);
+
+      const buckets: Record<string, { date: string; count: number; totalAmount: number }> = {};
+      for (const row of rows ?? []) {
+        const key = mode === "daily" ? row.purchase_date : row.purchase_date.substring(0, 7);
+        if (!buckets[key]) buckets[key] = { date: key, count: 0, totalAmount: 0 };
+        buckets[key].count += 1;
+        buckets[key].totalAmount += Number(row.total_amount);
+      }
+      return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date));
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-2">
+        <CardTitle className="text-base">Purchases Report</CardTitle>
+        <div className="flex gap-2 flex-wrap">
+          <Select value={mode} onValueChange={(v) => setMode(v as any)}>
+            <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="daily">Daily</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+            <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {mode === "daily" && (
+            <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {months.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? <p className="text-muted-foreground">Loading…</p> : (
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{mode === "daily" ? "Date" : "Month"}</TableHead>
+                  <TableHead className="text-right">Purchases</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data ?? []).length === 0 ? (
+                  <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No data</TableCell></TableRow>
+                ) : (data ?? []).map((r) => (
+                  <TableRow key={r.date}>
+                    <TableCell className="font-medium">{r.date}</TableCell>
+                    <TableCell className="text-right">{r.count}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.totalAmount)}</TableCell>
+                  </TableRow>
+                ))}
+                {(data ?? []).length > 0 && (
+                  <TableRow className="bg-muted/50 font-semibold">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right">{(data ?? []).reduce((s, r) => s + r.count, 0)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.totalAmount, 0))}</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Payments Report ──────────────────────────────────────
+function PaymentsReport({ dealerId }: { dealerId: string }) {
+  const [year, setYear] = useState(currentYear);
+  const [month, setMonth] = useState(currentMonth);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["report-payments", dealerId, year, month],
+    queryFn: async () => {
+      const start = `${year}-${String(month).padStart(2, "0")}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const end = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+
+      const { data: sales, error } = await supabase
+        .from("sales")
+        .select("sale_date, invoice_number, paid_amount, payment_mode, customers(name)")
+        .eq("dealer_id", dealerId)
+        .gt("paid_amount", 0)
+        .gte("sale_date", start)
+        .lte("sale_date", end)
+        .order("sale_date", { ascending: false });
+      if (error) throw new Error(error.message);
+      return sales ?? [];
+    },
+  });
+
+  const totalPaid = (data ?? []).reduce((s, r) => s + Number(r.paid_amount), 0);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-2">
+        <CardTitle className="text-base">Payments Received</CardTitle>
+        <div className="flex gap-2">
+          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+            <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {months.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? <p className="text-muted-foreground">Loading…</p> : (
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead className="text-right">Paid</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data ?? []).length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No payments</TableCell></TableRow>
+                ) : (data ?? []).map((r: any, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell>{r.sale_date}</TableCell>
+                    <TableCell className="font-mono text-sm">{r.invoice_number ?? "—"}</TableCell>
+                    <TableCell>{r.customers?.name ?? "—"}</TableCell>
+                    <TableCell><Badge variant="outline" className="capitalize text-xs">{r.payment_mode ?? "—"}</Badge></TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(r.paid_amount)}</TableCell>
+                  </TableRow>
+                ))}
+                {(data ?? []).length > 0 && (
+                  <TableRow className="bg-muted/50 font-semibold">
+                    <TableCell colSpan={4}>Total</TableCell>
+                    <TableCell className="text-right">{formatCurrency(totalPaid)}</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
