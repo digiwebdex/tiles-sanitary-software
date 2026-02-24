@@ -14,12 +14,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Search, Wallet, AlertTriangle, CheckCircle, DollarSign, TrendingDown, CalendarIcon, X, Download, Printer } from "lucide-react";
+import { Search, Wallet, AlertTriangle, CheckCircle, DollarSign, TrendingDown, CalendarIcon, X, Download, Printer, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import PaymentReceipt from "./PaymentReceipt";
+import { notificationService } from "@/services/notificationService";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
 
 interface CustomerOutstanding {
@@ -64,6 +65,8 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
     receiptNo: string;
     date: string;
   } | null>(null);
+
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
 
   // Fetch all customers with outstanding balances
   const { data: customers = [], isLoading } = useQuery({
@@ -260,6 +263,32 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
     toast.success("CSV exported successfully");
   };
 
+  const handleSendReminder = async (customer: CustomerOutstanding) => {
+    if (!customer.phone) {
+      toast.error("এই কাস্টমারের ফোন নম্বর নেই");
+      return;
+    }
+    setSendingReminder(customer.id);
+    try {
+      const success = await notificationService.sendPaymentReminder(dealerId, {
+        customer_name: customer.name,
+        customer_phone: customer.phone,
+        outstanding: customer.outstanding,
+        last_payment_date: customer.last_payment_date
+          ? format(new Date(customer.last_payment_date), "dd MMM yyyy")
+          : undefined,
+        dealer_name: dealerInfo?.name,
+        dealer_phone: dealerInfo?.phone ?? undefined,
+      });
+      if (success) toast.success(`${customer.name}-কে SMS রিমাইন্ডার পাঠানো হয়েছে`);
+      else toast.error("SMS পাঠাতে সমস্যা হয়েছে");
+    } catch {
+      toast.error("SMS পাঠাতে ব্যর্থ");
+    } finally {
+      setSendingReminder(null);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -407,17 +436,30 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
                         {c.last_payment_date ? format(new Date(c.last_payment_date), "dd MMM yyyy") : "—"}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Button
-                          size="sm"
-                          variant="default"
-                          onClick={() => {
-                            setPayDialog({ open: true, customer: c });
-                            setPayAmount("");
-                            setPayNote("");
-                          }}
-                        >
-                          <DollarSign className="h-3 w-3 mr-1" /> Collect
-                        </Button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => {
+                              setPayDialog({ open: true, customer: c });
+                              setPayAmount("");
+                              setPayNote("");
+                            }}
+                          >
+                            <DollarSign className="h-3 w-3 mr-1" /> Collect
+                          </Button>
+                          {c.phone && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={sendingReminder === c.id}
+                              onClick={() => handleSendReminder(c)}
+                              title="SMS রিমাইন্ডার পাঠান"
+                            >
+                              <MessageSquare className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
