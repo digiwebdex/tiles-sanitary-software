@@ -56,6 +56,7 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading }: ProductFormProps) =
     },
   });
 
+  const category = form.watch("category");
   const unitType = form.watch("unit_type");
 
   return (
@@ -131,7 +132,15 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading }: ProductFormProps) =
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Category <span className="text-destructive">*</span></FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={(val) => {
+                        field.onChange(val);
+                        if (val === "sanitary") {
+                          form.setValue("unit_type", "piece");
+                          form.setValue("per_box_sft", null);
+                        } else {
+                          form.setValue("unit_type", "box_sft");
+                        }
+                      }} defaultValue={field.value}>
                         <FormControl><SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger></FormControl>
                         <SelectContent>
                           <SelectItem value="tiles">Tiles</SelectItem>
@@ -152,46 +161,56 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading }: ProductFormProps) =
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="unit_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Product Unit <span className="text-destructive">*</span></FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select Unit" /></SelectTrigger></FormControl>
-                        <SelectContent>
-                          <SelectItem value="box_sft">Box / SFT</SelectItem>
-                          <SelectItem value="piece">Piece</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {unitType === "box_sft" && (
+              {category === "tiles" && (
+                <>
                   <FormField
                     control={form.control}
-                    name="per_box_sft"
+                    name="unit_type"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Per Box SFT <span className="text-destructive">*</span></FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="e.g. 12.5"
-                            {...field}
-                            value={field.value ?? ""}
-                          />
-                        </FormControl>
-                        <FormDescription>Square feet per box for SFT calculation</FormDescription>
+                        <FormLabel>Product Unit <span className="text-destructive">*</span></FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl><SelectTrigger><SelectValue placeholder="Select Unit" /></SelectTrigger></FormControl>
+                          <SelectContent>
+                            <SelectItem value="box_sft">Box / SFT</SelectItem>
+                            <SelectItem value="piece">Piece</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                )}
+
+                  {unitType === "box_sft" && (
+                    <FormField
+                      control={form.control}
+                      name="per_box_sft"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Per Box SFT <span className="text-destructive">*</span></FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="e.g. 12.5"
+                              {...field}
+                              value={field.value ?? ""}
+                            />
+                          </FormControl>
+                          <FormDescription>Square feet per box for SFT calculation</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </>
+              )}
+
+              {category === "sanitary" && (
+                <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  Unit: <span className="font-medium text-foreground">Piece</span> (auto-set for sanitary items)
+                </div>
+              )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
@@ -200,7 +219,7 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading }: ProductFormProps) =
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Size</FormLabel>
-                        <FormControl><Input placeholder='e.g. 12x12' {...field} /></FormControl>
+                        <FormControl><Input placeholder={category === "sanitary" ? 'e.g. 20 inch' : 'e.g. 12x12'} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
