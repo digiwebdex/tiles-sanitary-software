@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Trash2, Search, Package } from "lucide-react";
+import { Trash2, Search, Package, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -33,7 +33,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
+
+interface LastPurchaseInfo {
+  purchase_rate: number;
+  landed_cost: number;
+  purchase_date: string;
+  supplier_name: string;
+}
 
 interface PurchaseFormProps {
   dealerId: string;
@@ -86,20 +94,44 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
     enabled: !!dealerId,
   });
 
-  // Fetch last purchase cost per product
-  const { data: lastCostMap = new Map<string, number>() } = useQuery({
-    queryKey: ["products-last-cost-map", dealerId],
+  // Fetch last purchase info per product (upgraded query)
+  const { data: lastPurchaseMap = new Map<string, LastPurchaseInfo>() } = useQuery({
+    queryKey: ["products-last-purchase-info", dealerId],
     queryFn: async () => {
       const { data } = await supabase
         .from("purchase_items")
-        .select("product_id, landed_cost, purchases!inner(purchase_date)")
+        .select("product_id, purchase_rate, landed_cost, purchases!inner(purchase_date, supplier_id, suppliers(name))")
         .eq("dealer_id", dealerId)
         .order("purchases(purchase_date)", { ascending: false });
-      const map = new Map<string, number>();
+      const map = new Map<string, LastPurchaseInfo>();
       for (const item of data ?? []) {
         if (!map.has(item.product_id)) {
-          map.set(item.product_id, Number(item.landed_cost) || 0);
+          const purchase = item.purchases as any;
+          const supplierData = purchase?.suppliers as any;
+          map.set(item.product_id, {
+            purchase_rate: Number(item.purchase_rate) || 0,
+            landed_cost: Number(item.landed_cost) || 0,
+            purchase_date: purchase?.purchase_date ?? "",
+            supplier_name: supplierData?.name ?? "",
+          });
         }
+      }
+      return map;
+    },
+    enabled: !!dealerId,
+  });
+
+  // Fetch average cost from stock table
+  const { data: avgCostMap = new Map<string, number>() } = useQuery({
+    queryKey: ["products-avg-cost", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("stock")
+        .select("product_id, average_cost_per_unit")
+        .eq("dealer_id", dealerId);
+      const map = new Map<string, number>();
+      for (const row of data ?? []) {
+        map.set(row.product_id, Number(row.average_cost_per_unit) || 0);
       }
       return map;
     },
@@ -135,14 +167,18 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
     return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
   });
 
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  };
+
   const addProduct = (productId: string) => {
-    // Don't add duplicates
     if (watchItems.some((item) => item.product_id === productId)) return;
-    const lastCost = lastCostMap.get(productId);
     append({
       product_id: productId,
       quantity: 0,
-      purchase_rate: lastCost ?? 0,
+      purchase_rate: 0, // Do NOT auto-fill
       offer_price: 0,
       transport_cost: 0,
       labor_cost: 0,
@@ -189,7 +225,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
           </CardContent>
         </Card>
 
-        {/* Supplier selection - required before adding products */}
+        {/* Supplier selection */}
         <Alert className="border-accent bg-accent/50">
           <AlertDescription className="text-accent-foreground">
             Please select a supplier before adding any product
@@ -244,7 +280,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                     <div className="p-3 text-sm text-muted-foreground">No products found</div>
                   ) : (
                     filteredProducts.map((p) => {
-                      const lastCost = lastCostMap.get(p.id);
+                      const lastInfo = lastPurchaseMap.get(p.id);
                       return (
                         <button
                           key={p.id}
@@ -255,13 +291,13 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                         >
                           <span className="font-medium">{p.sku}</span>
                           <span className="text-muted-foreground">— {p.name}</span>
-                          {lastCost !== undefined && (
+                          {lastInfo && (
                             <span className="ml-auto text-xs text-primary font-medium">
-                              Last: {formatCurrency(lastCost)}
+                              Last: {formatCurrency(lastInfo.purchase_rate)}
                             </span>
                           )}
                           {watchItems.some((item) => item.product_id === p.id) && (
-                            <span className={`${lastCost !== undefined ? '' : 'ml-auto'} text-xs text-muted-foreground`}>(added)</span>
+                            <span className={`${lastInfo ? '' : 'ml-auto'} text-xs text-muted-foreground`}>(added)</span>
                           )}
                         </button>
                       );
@@ -302,6 +338,10 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                       const product = getItemProduct(watchItems[idx]?.product_id);
                       const totalSft = calcTotalSft(idx);
                       const landedCost = calcLandedCost(idx);
+                      const lastInfo = product ? lastPurchaseMap.get(product.id) : undefined;
+                      const avgCost = product ? avgCostMap.get(product.id) : undefined;
+                      const currentRate = watchItems[idx]?.purchase_rate || 0;
+                      const rateChanged = lastInfo && lastInfo.purchase_rate > 0 && currentRate > 0 && currentRate !== lastInfo.purchase_rate;
 
                       return (
                         <TableRow key={field.id}>
@@ -309,9 +349,14 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                           <TableCell>
                             <div className="text-sm font-medium">{product?.name ?? "—"}</div>
                             <div className="text-xs text-muted-foreground">{product?.sku}</div>
-                            {product && lastCostMap.get(product.id) !== undefined && (
+                            {lastInfo && (
                               <div className="text-xs text-primary font-medium mt-0.5">
-                                Last Cost: {formatCurrency(lastCostMap.get(product.id)!)}
+                                Last Rate: {formatCurrency(lastInfo.purchase_rate)} ({formatDate(lastInfo.purchase_date)}) - {lastInfo.supplier_name}
+                              </div>
+                            )}
+                            {avgCost !== undefined && avgCost > 0 && (
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                Avg Cost: {formatCurrency(avgCost)}
                               </div>
                             )}
                           </TableCell>
@@ -340,6 +385,12 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                                 </FormItem>
                               )}
                             />
+                            {rateChanged && (
+                              <Badge variant="outline" className="mt-1 text-[10px] border-destructive/50 text-destructive gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                Rate changed
+                              </Badge>
+                            )}
                           </TableCell>
                           {showOfferPrice && (
                             <TableCell>
