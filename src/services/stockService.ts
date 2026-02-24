@@ -103,10 +103,18 @@ async function updateAverageCost(
   newCostPerUnit: number
 ) {
   const stock = await getOrCreateStock(productId, dealerId);
-  const currentQty =
-    Number(stock.box_qty) + Number(stock.piece_qty);
-  const currentTotal =
-    currentQty * Number(stock.average_cost_per_unit);
+  const product = await getProduct(productId);
+
+  // For box_sft products, use sft_qty as the base for weighted average
+  // For piece products, use piece_qty
+  let currentQty: number;
+  if (product.unit_type === "box_sft") {
+    currentQty = Number(stock.sft_qty);
+  } else {
+    currentQty = Number(stock.piece_qty);
+  }
+
+  const currentTotal = currentQty * Number(stock.average_cost_per_unit);
   const newTotal = newQty * newCostPerUnit;
   const totalQty = currentQty + newQty;
   const avgCost = totalQty > 0 ? (currentTotal + newTotal) / totalQty : 0;

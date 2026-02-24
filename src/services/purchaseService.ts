@@ -138,9 +138,22 @@ export const purchaseService = {
     if (iErr) throw new Error(iErr.message);
 
     for (const item of itemsWithCalc) {
+      const product = productMap.get(item.product_id);
+      const unitType = product?.unit_type ?? "piece";
+      const perBoxSft = product?.per_box_sft ?? null;
+
       await stockService.addStock(item.product_id, item.quantity, input.dealer_id);
-      const costPerUnit = item.quantity > 0 ? item.landed_cost / item.quantity : 0;
-      await stockService.updateAverageCost(item.product_id, input.dealer_id, item.quantity, costPerUnit);
+
+      // For box_sft: average cost is per SFT (landed_cost / total_sft)
+      // For piece: average cost is per piece (landed_cost / quantity)
+      if (unitType === "box_sft" && perBoxSft && item.total_sft) {
+        const costPerSft = item.total_sft > 0 ? item.landed_cost / item.total_sft : 0;
+        // Pass total_sft as the "quantity" for weighted average calculation
+        await stockService.updateAverageCost(item.product_id, input.dealer_id, item.total_sft, costPerSft);
+      } else {
+        const costPerUnit = item.quantity > 0 ? item.landed_cost / item.quantity : 0;
+        await stockService.updateAverageCost(item.product_id, input.dealer_id, item.quantity, costPerUnit);
+      }
     }
 
     await supplierLedgerService.addEntry({
