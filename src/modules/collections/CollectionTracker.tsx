@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,6 +27,7 @@ interface CustomerOutstanding {
   total_sales: number;
   total_paid: number;
   last_invoice_number: string | null;
+  last_sale_id: string | null;
 }
 
 interface CollectionEntry {
@@ -39,6 +41,7 @@ interface CollectionEntry {
 
 export default function CollectionTracker({ dealerId }: { dealerId: string }) {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [payDialog, setPayDialog] = useState<{ open: boolean; customer?: CustomerOutstanding }>({ open: false });
@@ -66,7 +69,7 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
           .eq("dealer_id", dealerId),
         supabase
           .from("sales")
-          .select("customer_id, invoice_number, sale_date")
+          .select("customer_id, invoice_number, sale_date, id")
           .eq("dealer_id", dealerId)
           .order("sale_date", { ascending: false }),
       ]);
@@ -76,10 +79,10 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
       const sales = salesRes.data ?? [];
 
       // Map latest invoice per customer
-      const invoiceMap = new Map<string, string>();
+      const invoiceMap = new Map<string, { invoice_number: string; sale_id: string }>();
       for (const s of sales) {
         if (s.invoice_number && !invoiceMap.has(s.customer_id)) {
-          invoiceMap.set(s.customer_id, s.invoice_number);
+          invoiceMap.set(s.customer_id, { invoice_number: s.invoice_number, sale_id: s.id });
         }
       }
 
@@ -115,7 +118,8 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
           last_payment_date: agg.last_payment,
           total_sales: Math.round(agg.total_sales * 100) / 100,
           total_paid: Math.round(agg.total_paid * 100) / 100,
-          last_invoice_number: invoiceMap.get(c.id) ?? null,
+          last_invoice_number: invoiceMap.get(c.id)?.invoice_number ?? null,
+          last_sale_id: invoiceMap.get(c.id)?.sale_id ?? null,
         };
       });
 
@@ -281,7 +285,16 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
                         <Badge variant="outline" className="text-xs capitalize">{c.type}</Badge>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs font-mono">{c.last_invoice_number || "—"}</span>
+                        {c.last_invoice_number && c.last_sale_id ? (
+                          <button
+                            onClick={() => navigate(`/sales/${c.last_sale_id}/invoice`)}
+                            className="text-xs font-mono text-primary hover:underline cursor-pointer"
+                          >
+                            {c.last_invoice_number}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">৳{c.total_sales.toLocaleString()}</TableCell>
                       <TableCell className="text-right">৳{c.total_paid.toLocaleString()}</TableCell>
