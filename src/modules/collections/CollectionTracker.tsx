@@ -26,8 +26,7 @@ interface CustomerOutstanding {
   last_payment_date: string | null;
   total_sales: number;
   total_paid: number;
-  last_invoice_number: string | null;
-  last_sale_id: string | null;
+  invoices: { invoice_number: string; sale_id: string }[];
 }
 
 interface CollectionEntry {
@@ -78,11 +77,13 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
       const ledger = ledgerRes.data ?? [];
       const sales = salesRes.data ?? [];
 
-      // Map latest invoice per customer
-      const invoiceMap = new Map<string, { invoice_number: string; sale_id: string }>();
+      // Map all invoices per customer
+      const invoiceMap = new Map<string, { invoice_number: string; sale_id: string }[]>();
       for (const s of sales) {
-        if (s.invoice_number && !invoiceMap.has(s.customer_id)) {
-          invoiceMap.set(s.customer_id, { invoice_number: s.invoice_number, sale_id: s.id });
+        if (s.invoice_number) {
+          const arr = invoiceMap.get(s.customer_id) ?? [];
+          arr.push({ invoice_number: s.invoice_number, sale_id: s.id });
+          invoiceMap.set(s.customer_id, arr);
         }
       }
 
@@ -118,8 +119,7 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
           last_payment_date: agg.last_payment,
           total_sales: Math.round(agg.total_sales * 100) / 100,
           total_paid: Math.round(agg.total_paid * 100) / 100,
-          last_invoice_number: invoiceMap.get(c.id)?.invoice_number ?? null,
-          last_sale_id: invoiceMap.get(c.id)?.sale_id ?? null,
+          invoices: invoiceMap.get(c.id) ?? [],
         };
       });
 
@@ -285,13 +285,18 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
                         <Badge variant="outline" className="text-xs capitalize">{c.type}</Badge>
                       </TableCell>
                       <TableCell>
-                        {c.last_invoice_number && c.last_sale_id ? (
-                          <button
-                            onClick={() => navigate(`/sales/${c.last_sale_id}/invoice`)}
-                            className="text-xs font-mono text-primary hover:underline cursor-pointer"
-                          >
-                            {c.last_invoice_number}
-                          </button>
+                        {c.invoices.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {c.invoices.map((inv) => (
+                              <button
+                                key={inv.sale_id}
+                                onClick={() => navigate(`/sales/${inv.sale_id}/invoice`)}
+                                className="text-xs font-mono text-primary hover:underline cursor-pointer"
+                              >
+                                {inv.invoice_number}
+                              </button>
+                            ))}
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
