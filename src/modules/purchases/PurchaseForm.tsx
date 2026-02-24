@@ -138,10 +138,11 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
   const addProduct = (productId: string) => {
     // Don't add duplicates
     if (watchItems.some((item) => item.product_id === productId)) return;
+    const lastCost = lastCostMap.get(productId);
     append({
       product_id: productId,
       quantity: 0,
-      purchase_rate: 0,
+      purchase_rate: lastCost ?? 0,
       offer_price: 0,
       transport_cost: 0,
       labor_cost: 0,
