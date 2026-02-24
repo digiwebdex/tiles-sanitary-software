@@ -89,9 +89,14 @@ const EditProductPage = () => {
           default_sale_rate: product.default_sale_rate,
           reorder_level: product.reorder_level,
           active: product.active,
+          material: (product as any).material ?? "",
+          weight: (product as any).weight ?? "",
+          warranty: (product as any).warranty ?? "",
         }}
         onSubmit={async (v) => { await mutation.mutateAsync(v); }}
         isLoading={mutation.isPending}
+        productId={id}
+        dealerId={profile?.dealer_id ?? ""}
       />
     </div>
   );
