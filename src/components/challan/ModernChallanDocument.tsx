@@ -1,6 +1,14 @@
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/utils";
 
+interface EditDataType {
+  challan_date: string;
+  driver_name: string;
+  transport_name: string;
+  vehicle_no: string;
+  notes: string;
+}
+
 interface ModernChallanDocumentProps {
   sale: any;
   items: any[];
@@ -8,10 +16,13 @@ interface ModernChallanDocumentProps {
   challan: any;
   showPrices: boolean;
   dealerInfo?: { name: string; phone: string | null; address: string | null } | null;
+  isEditing?: boolean;
+  editData?: EditDataType;
+  onEditChange?: (data: EditDataType) => void;
 }
 
-const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo }: ModernChallanDocumentProps) => {
-  const challanDate = challan ? (challan as any).challan_date : sale.sale_date;
+const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo, isEditing, editData, onEditChange }: ModernChallanDocumentProps) => {
+  const challanDate = isEditing && editData ? editData.challan_date : (challan ? (challan as any).challan_date : sale.sale_date);
   const challanNo = challan ? (challan as any).challan_no : "—";
   const status = challan ? (challan as any).status : null;
 
@@ -38,7 +49,11 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
                 Delivery Challan
               </div>
               <p className="font-mono font-bold text-lg text-foreground">{challanNo}</p>
-              <p className="text-[11px] text-muted-foreground">Date: {challanDate}</p>
+              {isEditing && editData && onEditChange ? (
+                <div className="text-[11px] text-muted-foreground"><span className="mr-1">Date:</span><input type="date" value={editData.challan_date} onChange={(e) => onEditChange({ ...editData, challan_date: e.target.value })} className="bg-transparent border-b border-muted-foreground/30 text-foreground text-[11px] outline-none" /></div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">Date: {challanDate}</p>
+              )}
             </div>
           </div>
         </div>
@@ -97,18 +112,38 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
             <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Transport Details</p>
           </div>
           {challan ? (
-            <div className="space-y-2 text-[12px]">
-              {[
-                { label: "Driver", value: (challan as any).driver_name },
-                { label: "Transport", value: (challan as any).transport_name },
-                { label: "Vehicle", value: (challan as any).vehicle_no },
-              ].map((t) => (
-                <div key={t.label} className="flex items-baseline gap-2">
-                  <span className="text-muted-foreground w-[70px] shrink-0 text-[11px]">{t.label}:</span>
-                  <span className="font-medium text-foreground">{t.value || "—"}</span>
-                </div>
-              ))}
-            </div>
+            isEditing && editData && onEditChange ? (
+              <div className="space-y-2 text-[12px]">
+                {([
+                  { label: "Driver", field: "driver_name" as const },
+                  { label: "Transport", field: "transport_name" as const },
+                  { label: "Vehicle", field: "vehicle_no" as const },
+                ] as const).map((t) => (
+                  <div key={t.label} className="flex items-baseline gap-2">
+                    <span className="text-muted-foreground w-[70px] shrink-0 text-[11px]">{t.label}:</span>
+                    <input
+                      value={editData[t.field]}
+                      onChange={(e) => onEditChange({ ...editData, [t.field]: e.target.value })}
+                      className="flex-1 border border-border rounded px-2 py-1 text-[12px] bg-background text-foreground outline-none focus:ring-1 focus:ring-primary"
+                      placeholder={t.label}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2 text-[12px]">
+                {[
+                  { label: "Driver", value: (challan as any).driver_name },
+                  { label: "Transport", value: (challan as any).transport_name },
+                  { label: "Vehicle", value: (challan as any).vehicle_no },
+                ].map((t) => (
+                  <div key={t.label} className="flex items-baseline gap-2">
+                    <span className="text-muted-foreground w-[70px] shrink-0 text-[11px]">{t.label}:</span>
+                    <span className="font-medium text-foreground">{t.value || "—"}</span>
+                  </div>
+                ))}
+              </div>
+            )
           ) : (
             <p className="text-[11px] text-muted-foreground italic">No challan created yet</p>
           )}
@@ -177,7 +212,20 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
       )}
 
       {/* ═══ NOTES ═══ */}
-      {challan && (challan as any).notes && (
+      {isEditing && editData && onEditChange ? (
+        <div className="rounded-lg border border-border bg-muted/20 p-4 mb-5 print:mb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-1 h-3 bg-primary rounded-full" />
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Notes</p>
+          </div>
+          <textarea
+            value={editData.notes}
+            onChange={(e) => onEditChange({ ...editData, notes: e.target.value })}
+            className="w-full border border-border rounded px-2 py-1 text-[11px] bg-background text-foreground outline-none focus:ring-1 focus:ring-primary min-h-[60px] ml-3"
+            placeholder="Add notes..."
+          />
+        </div>
+      ) : challan && (challan as any).notes ? (
         <div className="rounded-lg border border-border bg-muted/20 p-4 mb-5 print:mb-4">
           <div className="flex items-center gap-2 mb-1">
             <div className="w-1 h-3 bg-primary rounded-full" />
@@ -185,7 +233,7 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
           </div>
           <p className="text-[11px] text-foreground ml-3">{(challan as any).notes}</p>
         </div>
-      )}
+      ) : null}
 
       {/* ═══ TERMS ═══ */}
       <div className="rounded-lg border border-border p-4 mb-8 print:mb-6 bg-muted/10">

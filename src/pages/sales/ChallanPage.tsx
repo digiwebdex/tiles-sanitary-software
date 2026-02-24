@@ -16,7 +16,7 @@ import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import ModernChallanDocument from "@/components/challan/ModernChallanDocument";
-import EditChallanDialog from "@/components/challan/EditChallanDialog";
+
 
 const ChallanPage = () => {
   const { saleId } = useParams<{ saleId: string }>();
@@ -26,7 +26,8 @@ const ChallanPage = () => {
   const { isDealerAdmin } = useAuth();
   const [showPrices, setShowPrices] = useState(false);
   const [template, setTemplate] = useState<string>("classic");
-  const [editOpen, setEditOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({ challan_date: "", driver_name: "", transport_name: "", vehicle_no: "", notes: "" });
   const { data: dealerInfo } = useDealerInfo();
 
   // Sync template from dealer settings
@@ -121,14 +122,28 @@ const ChallanPage = () => {
 
   const updateChallanMutation = useMutation({
     mutationFn: (updates: { challan_date: string; driver_name: string; transport_name: string; vehicle_no: string; notes: string }) =>
-      challanService.update(activeChallan?.id ?? challans.find((c: any) => c.status !== "cancelled")?.id ?? "", dealerId, updates),
+      challanService.update(challans.find((c: any) => c.status !== "cancelled")?.id ?? "", dealerId, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["challans", saleId] });
-      setEditOpen(false);
+      setIsEditing(false);
       toast.success("Challan updated successfully");
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const startEditing = () => {
+    const ac = challans.find((c: any) => c.status !== "cancelled");
+    if (ac) {
+      setEditData({
+        challan_date: (ac as any).challan_date ?? "",
+        driver_name: (ac as any).driver_name ?? "",
+        transport_name: (ac as any).transport_name ?? "",
+        vehicle_no: (ac as any).vehicle_no ?? "",
+        notes: (ac as any).notes ?? "",
+      });
+      setIsEditing(true);
+    }
+  };
 
   const handlePrint = () => window.print();
 
@@ -243,9 +258,9 @@ const ChallanPage = () => {
               <Truck className="mr-1.5 h-4 w-4" /> Create Challan
             </Button>
           )}
-          {activeChallan && (activeChallan as any).status === "pending" && (
+          {activeChallan && (activeChallan as any).status === "pending" && !isEditing && (
             <>
-              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Button variant="outline" size="sm" onClick={startEditing}>
                 <Pencil className="mr-1.5 h-4 w-4" /> Edit
               </Button>
               <Button variant="outline" size="sm" onClick={() => deliverMutation.mutate(activeChallan.id)} disabled={deliverMutation.isPending}>
@@ -256,13 +271,23 @@ const ChallanPage = () => {
               </Button>
             </>
           )}
-          {activeChallan && (activeChallan as any).status === "delivered" && (
+          {activeChallan && (activeChallan as any).status === "delivered" && !isEditing && (
             <>
-              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Button variant="outline" size="sm" onClick={startEditing}>
                 <Pencil className="mr-1.5 h-4 w-4" /> Edit
               </Button>
               <Button variant="destructive" size="sm" onClick={() => cancelMutation.mutate(activeChallan.id)} disabled={cancelMutation.isPending}>
                 <X className="mr-1.5 h-4 w-4" /> Cancel
+              </Button>
+            </>
+          )}
+          {isEditing && (
+            <>
+              <Button size="sm" onClick={() => updateChallanMutation.mutate(editData)} disabled={updateChallanMutation.isPending}>
+                {updateChallanMutation.isPending ? "Saving…" : "Save Changes"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
+                Cancel Edit
               </Button>
             </>
           )}
@@ -288,6 +313,9 @@ const ChallanPage = () => {
               challan={activeChallan}
               showPrices={showPrices}
               dealerInfo={dealerInfo}
+              isEditing={isEditing}
+              editData={editData}
+              onEditChange={setEditData}
             />
           ) : (
             <ChallanDocument
@@ -297,6 +325,9 @@ const ChallanPage = () => {
               challan={activeChallan}
               showPrices={showPrices}
               dealerInfo={dealerInfo}
+              isEditing={isEditing}
+              editData={editData}
+              onEditChange={setEditData}
             />
           )}
         </div>
@@ -324,22 +355,19 @@ const ChallanPage = () => {
           />
         )}
       </div>
-
-      {/* Edit Challan Dialog */}
-      {activeChallan && (
-        <EditChallanDialog
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          challan={activeChallan}
-          onSave={(updates) => updateChallanMutation.mutate(updates)}
-          isPending={updateChallanMutation.isPending}
-        />
-      )}
     </>
   );
 };
 
 /* ── Document Component ── */
+
+interface EditDataType {
+  challan_date: string;
+  driver_name: string;
+  transport_name: string;
+  vehicle_no: string;
+  notes: string;
+}
 
 interface ChallanDocumentProps {
   sale: any;
@@ -348,10 +376,13 @@ interface ChallanDocumentProps {
   challan: any;
   showPrices: boolean;
   dealerInfo?: { name: string; phone: string | null; address: string | null } | null;
+  isEditing?: boolean;
+  editData?: EditDataType;
+  onEditChange?: (data: EditDataType) => void;
 }
 
-const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo }: ChallanDocumentProps) => {
-  const challanDate = challan ? (challan as any).challan_date : sale.sale_date;
+const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo, isEditing, editData, onEditChange }: ChallanDocumentProps) => {
+  const challanDate = isEditing && editData ? editData.challan_date : (challan ? (challan as any).challan_date : sale.sale_date);
   const challanNo = challan ? (challan as any).challan_no : "—";
   const status = challan ? (challan as any).status : null;
 
@@ -375,7 +406,11 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
         <h2 className="text-base font-bold tracking-[0.15em] uppercase">Delivery Challan</h2>
         <div className="text-right text-[11px] space-y-0.5">
           <p className="font-mono font-bold text-sm">{challanNo}</p>
-          <p>Date: {challanDate}</p>
+          {isEditing && editData && onEditChange ? (
+            <div><span className="mr-1">Date:</span><input type="date" value={editData.challan_date} onChange={(e) => onEditChange({ ...editData, challan_date: e.target.value })} className="bg-transparent border-b border-background/50 text-background text-[11px] outline-none" /></div>
+          ) : (
+            <p>Date: {challanDate}</p>
+          )}
         </div>
       </div>
 
@@ -401,20 +436,40 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
             Transport Details
           </p>
           {challan ? (
-            <div className="space-y-1.5 text-[12px]">
-              <div className="grid grid-cols-[80px_1fr] gap-1">
-                <span className="text-muted-foreground">Driver:</span>
-                <span className="font-medium text-foreground">{(challan as any).driver_name || "—"}</span>
+            isEditing && editData && onEditChange ? (
+              <div className="space-y-2 text-[12px]">
+                {[
+                  { label: "Driver", field: "driver_name" as const },
+                  { label: "Transport", field: "transport_name" as const },
+                  { label: "Vehicle", field: "vehicle_no" as const },
+                ].map((t) => (
+                  <div key={t.label} className="grid grid-cols-[80px_1fr] gap-1 items-center">
+                    <span className="text-muted-foreground">{t.label}:</span>
+                    <input
+                      value={editData[t.field]}
+                      onChange={(e) => onEditChange({ ...editData, [t.field]: e.target.value })}
+                      className="border border-border rounded px-2 py-1 text-[12px] bg-background text-foreground outline-none focus:ring-1 focus:ring-primary"
+                      placeholder={t.label}
+                    />
+                  </div>
+                ))}
               </div>
-              <div className="grid grid-cols-[80px_1fr] gap-1">
-                <span className="text-muted-foreground">Transport:</span>
-                <span className="font-medium text-foreground">{(challan as any).transport_name || "—"}</span>
+            ) : (
+              <div className="space-y-1.5 text-[12px]">
+                <div className="grid grid-cols-[80px_1fr] gap-1">
+                  <span className="text-muted-foreground">Driver:</span>
+                  <span className="font-medium text-foreground">{(challan as any).driver_name || "—"}</span>
+                </div>
+                <div className="grid grid-cols-[80px_1fr] gap-1">
+                  <span className="text-muted-foreground">Transport:</span>
+                  <span className="font-medium text-foreground">{(challan as any).transport_name || "—"}</span>
+                </div>
+                <div className="grid grid-cols-[80px_1fr] gap-1">
+                  <span className="text-muted-foreground">Vehicle:</span>
+                  <span className="font-medium text-foreground">{(challan as any).vehicle_no || "—"}</span>
+                </div>
               </div>
-              <div className="grid grid-cols-[80px_1fr] gap-1">
-                <span className="text-muted-foreground">Vehicle:</span>
-                <span className="font-medium text-foreground">{(challan as any).vehicle_no || "—"}</span>
-              </div>
-            </div>
+            )
           ) : (
             <p className="text-[11px] text-muted-foreground italic">No challan created yet</p>
           )}
@@ -516,12 +571,22 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
       </div>
 
       {/* ═══ NOTES ═══ */}
-      {challan && (challan as any).notes && (
+      {isEditing && editData && onEditChange ? (
+        <div className="border border-border p-3 mb-5 print:mb-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground mb-1">Notes</p>
+          <textarea
+            value={editData.notes}
+            onChange={(e) => onEditChange({ ...editData, notes: e.target.value })}
+            className="w-full border border-border rounded px-2 py-1 text-[11px] bg-background text-foreground outline-none focus:ring-1 focus:ring-primary min-h-[60px]"
+            placeholder="Add notes..."
+          />
+        </div>
+      ) : challan && (challan as any).notes ? (
         <div className="border border-border p-3 mb-5 print:mb-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground mb-1">Notes</p>
           <p className="text-[11px] text-foreground">{(challan as any).notes}</p>
         </div>
-      )}
+      ) : null}
 
       {/* ═══ TERMS & CONDITIONS ═══ */}
       <div className="border border-border p-3 mb-8 print:mb-6">
