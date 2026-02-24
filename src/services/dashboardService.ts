@@ -31,6 +31,8 @@ export interface DashboardData {
   // Charts
   monthlySalesChart: { month: string; amount: number }[];
   categorySales: { category: string; amount: number }[];
+  topCustomers: { name: string; amount: number }[];
+  productPerformance: { name: string; amount: number }[];
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -58,6 +60,8 @@ const SAFE_DEFAULTS: DashboardData = {
   deadStockCount: 0,
   monthlySalesChart: MONTHS.map((month) => ({ month, amount: 0 })),
   categorySales: [],
+  topCustomers: [],
+  productPerformance: [],
 };
 
 export const dashboardService = {
@@ -87,6 +91,8 @@ export const dashboardService = {
         categorySalesRes,
         recentSaleProductsRes,
         customersWithDueRes,
+        topCustomersRes,
+        productPerfRes,
       ] = await Promise.all([
         // Today sales: total_amount, paid_amount, profit
         supabase
@@ -176,6 +182,19 @@ export const dashboardService = {
           .select("id, credit_limit, max_overdue_days")
           .eq("dealer_id", dealerId)
           .eq("status", "active"),
+
+        // Top customers by sales amount
+        supabase
+          .from("sales")
+          .select("customer_id, total_amount, customers(name)")
+          .eq("dealer_id", dealerId)
+          .gte("sale_date", yearStart),
+
+        // Product performance (top products by sale amount)
+        supabase
+          .from("sale_items")
+          .select("total, products(name)")
+          .eq("dealer_id", dealerId),
       ]);
 
       // --- Today ---
@@ -336,6 +355,31 @@ export const dashboardService = {
         amount: round2(amount),
       }));
 
+      // --- Top Customers ---
+      const custSalesMap: Record<string, { name: string; amount: number }> = {};
+      for (const row of topCustomersRes.data ?? []) {
+        const name = (row as any).customers?.name ?? "Unknown";
+        const cid = row.customer_id;
+        if (!custSalesMap[cid]) custSalesMap[cid] = { name, amount: 0 };
+        custSalesMap[cid].amount += Number(row.total_amount) || 0;
+      }
+      const topCustomers = Object.values(custSalesMap)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 10)
+        .map((c) => ({ name: c.name, amount: round2(c.amount) }));
+
+      // --- Product Performance ---
+      const prodMap: Record<string, { name: string; amount: number }> = {};
+      for (const item of productPerfRes.data ?? []) {
+        const name = (item as any).products?.name ?? "Unknown";
+        if (!prodMap[name]) prodMap[name] = { name, amount: 0 };
+        prodMap[name].amount += Number(item.total) || 0;
+      }
+      const productPerformance = Object.values(prodMap)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 8)
+        .map((p) => ({ name: p.name, amount: round2(p.amount) }));
+
       return {
         todaySales: round2(todaySales),
         todayCollection: round2(todayCollection),
@@ -355,6 +399,8 @@ export const dashboardService = {
         deadStockCount,
         monthlySalesChart,
         categorySales,
+        topCustomers,
+        productPerformance,
       };
     } catch (err) {
       console.error("[dashboardService] getData failed, returning defaults:", err);

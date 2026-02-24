@@ -12,8 +12,8 @@ import {
   ChartContainer, ChartTooltip, ChartTooltipContent,
 } from "@/components/ui/chart";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  PieChart, Pie, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line,
+  PieChart, Pie, Cell, ResponsiveContainer,
 } from "recharts";
 import {
   TrendingUp, Package, AlertTriangle, Receipt, Banknote,
@@ -37,6 +37,18 @@ const PIE_COLORS = [
 ];
 
 const barChartConfig = {
+  amount: { label: "Sales (৳)", color: "hsl(var(--primary))" },
+};
+
+const topCustomerChartConfig = {
+  amount: { label: "Sales (৳)", color: "hsl(var(--primary))" },
+};
+
+const productChartConfig = {
+  amount: { label: "Sales (৳)", color: "hsl(var(--primary))" },
+};
+
+const trendChartConfig = {
   amount: { label: "Sales (৳)", color: "hsl(var(--primary))" },
 };
 
@@ -544,6 +556,97 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
                       <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
                       <span className="text-muted-foreground">{c.category}</span>
                       <span className="font-medium">{formatCurrency(c.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Sales Trend Line Chart ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Monthly Sales Trend</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer config={trendChartConfig} className="h-[280px] w-full">
+            <LineChart data={data.monthlySalesChart}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="month" className="text-xs" />
+              <YAxis className="text-xs" />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Line type="monotone" dataKey="amount" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 4, fill: "hsl(var(--primary))" }} />
+            </LineChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+
+      {/* ── Top Customers & Product Performance ── */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Top Customers */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Top 10 Customers (This Year)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.topCustomers.length === 0 ? (
+              <p className="text-muted-foreground text-sm text-center py-8">No data</p>
+            ) : (
+              <ChartContainer config={topCustomerChartConfig} className="h-[350px] w-full">
+                <BarChart data={data.topCustomers} layout="vertical" margin={{ left: 80 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis type="number" className="text-xs" />
+                  <YAxis dataKey="name" type="category" className="text-xs" width={75} tick={{ fontSize: 11 }} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Product Performance Pie */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Top Products by Sales</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-center">
+            {data.productPerformance.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No data</p>
+            ) : (
+              <div className="w-full">
+                <ChartContainer
+                  config={Object.fromEntries(
+                    data.productPerformance.map((p, i) => [p.name, { label: p.name, color: PIE_COLORS[i % PIE_COLORS.length] }])
+                  )}
+                  className="h-[280px] w-full"
+                >
+                  <PieChart>
+                    <Pie
+                      data={data.productPerformance}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={90}
+                      dataKey="amount"
+                      nameKey="name"
+                      label={({ name }) => name.length > 12 ? name.slice(0, 12) + "…" : name}
+                    >
+                      {data.productPerformance.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
+                  </PieChart>
+                </ChartContainer>
+                <div className="mt-2 flex flex-wrap gap-3 justify-center">
+                  {data.productPerformance.map((p, i) => (
+                    <div key={p.name} className="flex items-center gap-1.5 text-xs">
+                      <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      <span className="text-muted-foreground truncate max-w-[100px]">{p.name}</span>
+                      <span className="font-medium">{formatCurrency(p.amount)}</span>
                     </div>
                   ))}
                 </div>
