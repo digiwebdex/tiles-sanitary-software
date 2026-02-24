@@ -144,11 +144,29 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
   const getItemProduct = (productId: string) =>
     products.find((p) => p.id === productId);
 
+  const calcBaseCost = (idx: number) => {
+    const item = watchItems[idx];
+    if (!item) return 0;
+    const product = getItemProduct(item.product_id);
+    if (product?.unit_type === "box_sft" && product.per_box_sft) {
+      // box_qty × per_box_sft × rate_per_sft
+      return (item.quantity || 0) * product.per_box_sft * (item.purchase_rate || 0);
+    }
+    // piece: qty × rate
+    return (item.quantity || 0) * (item.purchase_rate || 0);
+  };
+
   const calcLandedCost = (idx: number) => {
     const item = watchItems[idx];
     if (!item) return 0;
-    const itemTotal = (item.quantity || 0) * (item.purchase_rate || 0);
-    return itemTotal + (item.transport_cost || 0) + (item.labor_cost || 0) + (item.other_cost || 0);
+    const baseCost = calcBaseCost(idx);
+    return baseCost + (item.transport_cost || 0) + (item.labor_cost || 0) + (item.other_cost || 0);
+  };
+
+  const calcLandedCostPerSft = (idx: number) => {
+    const totalSft = calcTotalSft(idx);
+    if (!totalSft || totalSft === 0) return null;
+    return calcLandedCost(idx) / totalSft;
   };
 
   const calcTotalSft = (idx: number) => {
@@ -322,8 +340,8 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                     <TableRow className="bg-muted/50">
                       <TableHead className="w-8">#</TableHead>
                       <TableHead>Product</TableHead>
-                      <TableHead className="w-24">Qty</TableHead>
-                      <TableHead className="w-28">Rate</TableHead>
+                      <TableHead className="w-24">Qty (Box/Pc)</TableHead>
+                      <TableHead className="w-28">Rate (/SFT or /Pc)</TableHead>
                       {showOfferPrice && <TableHead className="w-28">Offer Price</TableHead>}
                       <TableHead className="w-24">Transport</TableHead>
                       <TableHead className="w-24">Labor</TableHead>
@@ -447,7 +465,27 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                             />
                           </TableCell>
                           <TableCell className="text-sm">
-                            {totalSft !== null ? totalSft.toFixed(2) : "—"}
+                            {totalSft !== null ? (
+                              <div>
+                                <div>{totalSft.toFixed(2)}</div>
+                                {product?.unit_type === "box_sft" && product.per_box_sft && watchItems[idx] && (
+                                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                                    {watchItems[idx].quantity} × {product.per_box_sft} sft
+                                    {watchItems[idx].purchase_rate > 0 && (
+                                      <> × {formatCurrency(watchItems[idx].purchase_rate)} = {formatCurrency(calcBaseCost(idx))}</>
+                                    )}
+                                  </div>
+                                )}
+                                {(() => {
+                                  const lcPerSft = calcLandedCostPerSft(idx);
+                                  return lcPerSft !== null && lcPerSft > 0 ? (
+                                    <div className="text-[10px] text-primary font-medium mt-0.5">
+                                      Landed/SFT: {formatCurrency(lcPerSft)}
+                                    </div>
+                                  ) : null;
+                                })()}
+                              </div>
+                            ) : "—"}
                           </TableCell>
                           <TableCell className="text-right font-medium text-sm">
                             {formatCurrency(landedCost)}
@@ -512,7 +550,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
         {/* Summary footer */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border bg-accent/30 px-4 py-3 text-sm">
           <span className="text-muted-foreground">Items <strong className="text-foreground">{fields.length}</strong></span>
-          <span className="text-muted-foreground">Total <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, item) => s + (item.quantity || 0) * (item.purchase_rate || 0), 0))}</strong></span>
+          <span className="text-muted-foreground">Total <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, _, i) => s + calcBaseCost(i), 0))}</strong></span>
           <span className="text-muted-foreground">Transport <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, item) => s + (item.transport_cost || 0), 0))}</strong></span>
           <span className="text-muted-foreground">Labor <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, item) => s + (item.labor_cost || 0), 0))}</strong></span>
           <span className="text-muted-foreground">Other <strong className="text-foreground">{formatCurrency(watchItems.reduce((s, item) => s + (item.other_cost || 0), 0))}</strong></span>
