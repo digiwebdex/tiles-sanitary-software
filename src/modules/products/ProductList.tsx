@@ -80,6 +80,27 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     enabled: !!dealerId,
   });
 
+  // Fetch last purchase cost for each product
+  const { data: lastCostData } = useQuery({
+    queryKey: ["products-last-cost-map", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("purchase_items")
+        .select("product_id, landed_cost, purchase_id, purchases!inner(purchase_date)")
+        .eq("dealer_id", dealerId)
+        .order("purchases(purchase_date)", { ascending: false });
+      // Keep only the latest cost per product
+      const map = new Map<string, number>();
+      for (const item of data ?? []) {
+        if (!map.has(item.product_id)) {
+          map.set(item.product_id, Number(item.landed_cost) || 0);
+        }
+      }
+      return map;
+    },
+    enabled: !!dealerId,
+  });
+
   const products = data?.data ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -192,7 +213,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   <TableHead>Name</TableHead>
                   <TableHead>Brand</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Avg Cost</TableHead>
+                  <TableHead className="text-right">Last Cost</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>Unit</TableHead>
@@ -207,6 +229,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   const qty = stockInfo.total;
                   const cost = costData?.get(p.id) ?? 0;
                   const reorder = p.reorder_level ?? 0;
+                  const lastCost = lastCostData?.get(p.id) ?? 0;
 
                   return (
                     <TableRow key={p.id} className="cursor-pointer" onClick={() => setDetailProduct(p)}>
@@ -228,6 +251,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                       <TableCell>{p.brand || "—"}</TableCell>
                       <TableCell className="capitalize">{p.category}</TableCell>
                       <TableCell className="text-right">{formatCurrency(cost)}</TableCell>
+                      <TableCell className="text-right">{lastCost > 0 ? formatCurrency(lastCost) : "—"}</TableCell>
                       <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
                       <TableCell className={`text-right font-medium ${qty < 0 ? "text-destructive" : ""}`}>
                         {p.unit_type === "box_sft" ? (
@@ -313,7 +337,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   );
                   return (
                     <TableRow className="bg-muted/50 font-semibold">
-                      <TableCell colSpan={7} className="text-right">Stock Totals:</TableCell>
+                      <TableCell colSpan={8} className="text-right">Stock Totals:</TableCell>
                       <TableCell className="text-right">
                         <div className="space-y-0.5">
                           {totals.box > 0 && <div>{totals.box} Box ({totals.sft.toFixed(2)} Sft)</div>}
@@ -344,6 +368,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         onOpenChange={(open) => { if (!open) setDetailProduct(null); }}
         product={detailProduct}
         cost={detailProduct ? (costData?.get(detailProduct.id) ?? 0) : 0}
+        lastCost={detailProduct ? (lastCostData?.get(detailProduct.id) ?? 0) : 0}
         quantity={detailProduct ? (stockData?.get(detailProduct.id)?.total ?? 0) : 0}
         onEdit={() => { if (detailProduct) { setDetailProduct(null); navigate(`/products/${detailProduct.id}/edit`); } }}
         onPrintBarcode={() => { if (detailProduct) { setDetailProduct(null); openSingleBarcode(detailProduct); } }}

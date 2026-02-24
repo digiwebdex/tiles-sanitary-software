@@ -29,6 +29,7 @@ interface ProductDetailDialogProps {
     active: boolean;
   } | null;
   cost: number;
+  lastCost?: number;
   quantity: number;
   onEdit: () => void;
   onPrintBarcode: () => void;
@@ -36,7 +37,7 @@ interface ProductDetailDialogProps {
 }
 
 const ProductDetailDialog = ({
-  open, onOpenChange, product, cost, quantity, onEdit, onPrintBarcode, onPurchase,
+  open, onOpenChange, product, cost, lastCost, quantity, onEdit, onPrintBarcode, onPurchase,
 }: ProductDetailDialogProps) => {
   const barcodeSvgRef = useRef<SVGSVGElement>(null);
 
@@ -69,7 +70,8 @@ const ProductDetailDialog = ({
     { label: "Unit", value: unitLabel },
     { label: "Size", value: product.size || "—" },
     { label: "Color", value: product.color || "—" },
-    { label: "Cost", value: formatCurrency(cost) },
+    { label: "Avg Cost", value: formatCurrency(cost) },
+    { label: "Last Cost", value: lastCost && lastCost > 0 ? formatCurrency(lastCost) : "—" },
     { label: "Price", value: formatCurrency(product.default_sale_rate) },
     { label: "Alert Qty", value: product.reorder_level > 0 ? String(product.reorder_level) : "—" },
     { label: "Status", value: product.active ? "Active" : "Inactive" },
