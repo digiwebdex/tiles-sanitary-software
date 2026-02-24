@@ -70,7 +70,7 @@ async function getSettings(dealerId: string): Promise<NotificationSettings | nul
 async function queueAndDispatch(
   dealerId: string,
   channel: "sms" | "email",
-  type: "sale_created" | "daily_summary",
+  type: "sale_created" | "daily_summary" | "payment_reminder",
   payload: Record<string, unknown>,
   recipient: string,
 ): Promise<void> {
@@ -198,6 +198,42 @@ export const notificationService = {
       await Promise.allSettled(tasks);
     } catch (err) {
       log.error("notifyDailySummary error:", err);
+    }
+  },
+
+  /**
+   * Send payment reminder SMS to a customer with outstanding balance.
+   * Non-blocking — collection flow must never fail because of this.
+   */
+  async sendPaymentReminder(
+    dealerId: string,
+    payload: {
+      customer_name: string;
+      customer_phone: string;
+      outstanding: number;
+      last_payment_date?: string | null;
+      dealer_name?: string;
+      dealer_phone?: string;
+    },
+  ): Promise<boolean> {
+    try {
+      const phone = payload.customer_phone;
+      if (!phone) {
+        log.warn("No phone number for payment reminder");
+        return false;
+      }
+
+      await queueAndDispatch(
+        dealerId,
+        "sms",
+        "payment_reminder",
+        payload as unknown as Record<string, unknown>,
+        phone,
+      );
+      return true;
+    } catch (err) {
+      log.error("sendPaymentReminder error:", err);
+      return false;
     }
   },
 };

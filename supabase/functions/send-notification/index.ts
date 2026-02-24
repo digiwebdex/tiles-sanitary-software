@@ -11,7 +11,7 @@ interface NotificationRequest {
   notification_id: string;
   dealer_id: string;
   channel: "sms" | "email";
-  type: "sale_created" | "daily_summary";
+  type: "sale_created" | "daily_summary" | "payment_reminder";
   payload: Record<string, unknown>;
   recipient: string;
 }
@@ -159,6 +159,22 @@ function buildSaleMessage(payload: Record<string, unknown>, recipient: string): 
   return `Sale Alert!\nInvoice: ${inv}\nCustomer: ${customer}${itemsSummary}\n\nAmount: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT${invoiceLink}`;
 }
 
+function buildPaymentReminderMessage(payload: Record<string, unknown>): string {
+  const customer = payload.customer_name ?? "Customer";
+  const outstanding = payload.outstanding ?? 0;
+  const dealerName = payload.dealer_name ?? "";
+  const dealerPhone = payload.dealer_phone ?? "";
+  const lastPayment = payload.last_payment_date ?? "";
+
+  let msg = `${dealerName ? dealerName + "\n" : ""}`;
+  msg += `প্রিয় ${customer},\n`;
+  msg += `আপনার বকেয়া পরিমাণ: ${outstanding} BDT।\n`;
+  if (lastPayment) msg += `সর্বশেষ পেমেন্ট: ${lastPayment}\n`;
+  msg += `অনুগ্রহ করে যত তাড়াতাড়ি সম্ভব পেমেন্ট করুন।\n`;
+  if (dealerPhone) msg += `যোগাযোগ: ${dealerPhone}`;
+  return msg;
+}
+
 function buildDailySummaryMessage(payload: Record<string, unknown>): string {
   const date = payload.date ?? new Date().toISOString().split("T")[0];
   const sales = payload.total_sales ?? 0;
@@ -180,6 +196,10 @@ function buildEmailSubjectAndBody(
   if (type === "daily_summary") {
     const date = payload.date ?? new Date().toISOString().split("T")[0];
     return { subject: `Daily Business Summary - ${date}`, body: buildDailySummaryMessage(payload) };
+  }
+  if (type === "payment_reminder") {
+    const customer = payload.customer_name ?? "Customer";
+    return { subject: `Payment Reminder - ${customer}`, body: buildPaymentReminderMessage(payload) };
   }
   return { subject: "Notification", body: JSON.stringify(payload) };
 }
@@ -249,6 +269,7 @@ Deno.serve(async (req) => {
       let message = "";
       if (type === "sale_created") message = buildSaleMessage(payload, recipient);
       else if (type === "daily_summary") message = buildDailySummaryMessage(payload);
+      else if (type === "payment_reminder") message = buildPaymentReminderMessage(payload);
       else message = JSON.stringify(payload);
 
       const result = await sendSMS(recipient, message);
