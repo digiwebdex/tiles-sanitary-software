@@ -1,6 +1,8 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { productSchema, type ProductFormValues } from "@/modules/products/productSchema";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Form,
   FormControl,
@@ -23,11 +25,14 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Shuffle } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 interface ProductFormProps {
   defaultValues?: Partial<ProductFormValues>;
   onSubmit: (values: ProductFormValues) => Promise<void>;
   isLoading?: boolean;
+  productId?: string;
+  dealerId?: string;
 }
 
 const generateSKU = () => {
@@ -37,7 +42,29 @@ const generateSKU = () => {
   return result;
 };
 
-const ProductForm = ({ defaultValues, onSubmit, isLoading }: ProductFormProps) => {
+const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }: ProductFormProps) => {
+  // Fetch last purchase cost for this product (only in edit mode)
+  const { data: lastPurchaseCost } = useQuery({
+    queryKey: ["product-last-cost", productId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("purchase_items")
+        .select("landed_cost, purchase_rate, purchases!inner(purchase_date)")
+        .eq("product_id", productId!)
+        .eq("dealer_id", dealerId!)
+        .order("purchases(purchase_date)", { ascending: false })
+        .limit(1);
+      if (data && data.length > 0) {
+        return {
+          landed_cost: Number(data[0].landed_cost) || 0,
+          purchase_rate: Number(data[0].purchase_rate) || 0,
+        };
+      }
+      return null;
+    },
+    enabled: !!productId && !!dealerId,
+  });
+
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: {
@@ -305,6 +332,22 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading }: ProductFormProps) =
                     </FormItem>
                   )}
                 />
+
+                {lastPurchaseCost && (
+                  <div className="rounded-md border bg-muted/50 p-3 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase">Last Purchase Cost</p>
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <span className="text-xs text-muted-foreground">Rate: </span>
+                        <span className="text-sm font-semibold text-foreground">{formatCurrency(lastPurchaseCost.purchase_rate)}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-muted-foreground">Landed: </span>
+                        <span className="text-sm font-semibold text-primary">{formatCurrency(lastPurchaseCost.landed_cost)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
