@@ -86,6 +86,26 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
     enabled: !!dealerId,
   });
 
+  // Fetch last purchase cost per product
+  const { data: lastCostMap = new Map<string, number>() } = useQuery({
+    queryKey: ["products-last-cost-map", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("purchase_items")
+        .select("product_id, landed_cost, purchases!inner(purchase_date)")
+        .eq("dealer_id", dealerId)
+        .order("purchases(purchase_date)", { ascending: false });
+      const map = new Map<string, number>();
+      for (const item of data ?? []) {
+        if (!map.has(item.product_id)) {
+          map.set(item.product_id, Number(item.landed_cost) || 0);
+        }
+      }
+      return map;
+    },
+    enabled: !!dealerId,
+  });
+
   const watchItems = form.watch("items");
   const watchSupplierId = form.watch("supplier_id");
 
@@ -222,21 +242,29 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                   {filteredProducts.length === 0 ? (
                     <div className="p-3 text-sm text-muted-foreground">No products found</div>
                   ) : (
-                    filteredProducts.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
-                        onClick={() => addProduct(p.id)}
-                        disabled={watchItems.some((item) => item.product_id === p.id)}
-                      >
-                        <span className="font-medium">{p.sku}</span>
-                        <span className="text-muted-foreground">— {p.name}</span>
-                        {watchItems.some((item) => item.product_id === p.id) && (
-                          <span className="ml-auto text-xs text-muted-foreground">(added)</span>
-                        )}
-                      </button>
-                    ))
+                    filteredProducts.map((p) => {
+                      const lastCost = lastCostMap.get(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
+                          onClick={() => addProduct(p.id)}
+                          disabled={watchItems.some((item) => item.product_id === p.id)}
+                        >
+                          <span className="font-medium">{p.sku}</span>
+                          <span className="text-muted-foreground">— {p.name}</span>
+                          {lastCost !== undefined && (
+                            <span className="ml-auto text-xs text-primary font-medium">
+                              Last: {formatCurrency(lastCost)}
+                            </span>
+                          )}
+                          {watchItems.some((item) => item.product_id === p.id) && (
+                            <span className={`${lastCost !== undefined ? '' : 'ml-auto'} text-xs text-muted-foreground`}>(added)</span>
+                          )}
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -280,6 +308,11 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                           <TableCell>
                             <div className="text-sm font-medium">{product?.name ?? "—"}</div>
                             <div className="text-xs text-muted-foreground">{product?.sku}</div>
+                            {product && lastCostMap.get(product.id) !== undefined && (
+                              <div className="text-xs text-primary font-medium mt-0.5">
+                                Last Cost: {formatCurrency(lastCostMap.get(product.id)!)}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             <FormField
