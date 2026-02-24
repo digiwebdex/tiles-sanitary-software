@@ -25,6 +25,7 @@ interface CustomerOutstanding {
   last_payment_date: string | null;
   total_sales: number;
   total_paid: number;
+  last_invoice_number: string | null;
 }
 
 interface CollectionEntry {
@@ -57,12 +58,30 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
         .order("name");
       if (custErr) throw new Error(custErr.message);
 
-      // Get all customer ledger entries
-      const { data: ledger, error: ledErr } = await supabase
-        .from("customer_ledger")
-        .select("customer_id, amount, type, entry_date")
-        .eq("dealer_id", dealerId);
-      if (ledErr) throw new Error(ledErr.message);
+      // Get all customer ledger entries and latest sales
+      const [ledgerRes, salesRes] = await Promise.all([
+        supabase
+          .from("customer_ledger")
+          .select("customer_id, amount, type, entry_date")
+          .eq("dealer_id", dealerId),
+        supabase
+          .from("sales")
+          .select("customer_id, invoice_number, sale_date")
+          .eq("dealer_id", dealerId)
+          .order("sale_date", { ascending: false }),
+      ]);
+      if (ledgerRes.error) throw new Error(ledgerRes.error.message);
+      if (salesRes.error) throw new Error(salesRes.error.message);
+      const ledger = ledgerRes.data ?? [];
+      const sales = salesRes.data ?? [];
+
+      // Map latest invoice per customer
+      const invoiceMap = new Map<string, string>();
+      for (const s of sales) {
+        if (s.invoice_number && !invoiceMap.has(s.customer_id)) {
+          invoiceMap.set(s.customer_id, s.invoice_number);
+        }
+      }
 
       // Aggregate per customer
       const map = new Map<string, { outstanding: number; total_sales: number; total_paid: number; last_payment: string | null }>();
@@ -96,6 +115,7 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
           last_payment_date: agg.last_payment,
           total_sales: Math.round(agg.total_sales * 100) / 100,
           total_paid: Math.round(agg.total_paid * 100) / 100,
+          last_invoice_number: invoiceMap.get(c.id) ?? null,
         };
       });
 
@@ -235,6 +255,7 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
                 <TableRow>
                   <TableHead>Customer</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Invoice No.</TableHead>
                   <TableHead className="text-right">Total Sales</TableHead>
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Outstanding</TableHead>
@@ -244,9 +265,9 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
                 ) : filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No outstanding balances found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No outstanding balances found</TableCell></TableRow>
                 ) : (
                   filtered.map((c) => (
                     <TableRow key={c.id}>
@@ -258,6 +279,9 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs capitalize">{c.type}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs font-mono">{c.last_invoice_number || "—"}</span>
                       </TableCell>
                       <TableCell className="text-right">৳{c.total_sales.toLocaleString()}</TableCell>
                       <TableCell className="text-right">৳{c.total_paid.toLocaleString()}</TableCell>
