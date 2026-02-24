@@ -226,7 +226,7 @@ export const challanService = {
   },
 
   /**
-   * Update challan details (transport, notes, date)
+   * Update challan details (transport, notes, date) and optionally sale items
    */
   async update(challanId: string, dealerId: string, updates: {
     challan_date?: string;
@@ -234,12 +234,13 @@ export const challanService = {
     transport_name?: string;
     vehicle_no?: string;
     notes?: string;
+    items?: { id: string; product_id: string; quantity: number; sale_rate: number }[];
   }) {
     await assertDealerId(dealerId);
 
     const { data: challan, error: fetchErr } = await supabase
       .from("challans")
-      .select("id, status")
+      .select("id, status, sale_id")
       .eq("id", challanId)
       .eq("dealer_id", dealerId)
       .single();
@@ -257,6 +258,95 @@ export const challanService = {
       } as any)
       .eq("id", challanId);
     if (error) throw new Error(error.message);
+
+    // Update sale items if provided
+    if (updates.items && updates.items.length > 0) {
+      const saleId = (challan as any).sale_id;
+
+      // Fetch product details for SFT calc
+      const productIds = updates.items.map(i => i.product_id);
+      const { data: products } = await supabase
+        .from("products")
+        .select("id, unit_type, per_box_sft")
+        .in("id", productIds);
+      const productMap = new Map((products ?? []).map(p => [p.id, p]));
+
+      // Fetch old items for stock adjustment
+      const { data: oldItems } = await supabase
+        .from("sale_items")
+        .select("product_id, quantity")
+        .eq("sale_id", saleId)
+        .eq("dealer_id", dealerId);
+
+      // Unreserve old stock
+      for (const oi of (oldItems ?? [])) {
+        await stockService.unreserveStock(oi.product_id, Number(oi.quantity), dealerId);
+      }
+
+      let totalBox = 0, totalSft = 0, totalPiece = 0;
+
+      // Update each item
+      for (const item of updates.items) {
+        const product = productMap.get(item.product_id);
+        const unitType = product?.unit_type ?? "piece";
+        const perBoxSft = product?.per_box_sft ?? 0;
+        let itemTotal: number;
+        let itemSft: number | null = null;
+
+        if (unitType === "box_sft") {
+          totalBox += item.quantity;
+          itemSft = item.quantity * perBoxSft;
+          totalSft += itemSft;
+          itemTotal = itemSft * item.sale_rate;
+        } else {
+          totalPiece += item.quantity;
+          itemTotal = item.quantity * item.sale_rate;
+        }
+
+        await supabase
+          .from("sale_items")
+          .update({
+            quantity: item.quantity,
+            sale_rate: item.sale_rate,
+            total: itemTotal,
+            total_sft: itemSft,
+          } as any)
+          .eq("id", item.id);
+      }
+
+      // Reserve new stock
+      for (const item of updates.items) {
+        await stockService.reserveStock(item.product_id, item.quantity, dealerId);
+      }
+
+      // Recalc sale totals
+      const { data: updatedItems } = await supabase
+        .from("sale_items")
+        .select("total")
+        .eq("sale_id", saleId);
+      const subtotal = (updatedItems ?? []).reduce((s, i) => s + Number(i.total), 0);
+
+      const { data: saleData } = await supabase
+        .from("sales")
+        .select("discount, paid_amount")
+        .eq("id", saleId)
+        .single();
+      const discount = Number(saleData?.discount ?? 0);
+      const paidAmount = Number(saleData?.paid_amount ?? 0);
+      const totalAmount = subtotal - discount;
+      const dueAmount = totalAmount - paidAmount;
+
+      await supabase
+        .from("sales")
+        .update({
+          total_amount: totalAmount,
+          due_amount: dueAmount,
+          total_box: totalBox,
+          total_sft: totalSft,
+          total_piece: totalPiece,
+        } as any)
+        .eq("id", saleId);
+    }
 
     await logAudit({
       dealer_id: dealerId,

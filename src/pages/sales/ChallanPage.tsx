@@ -28,6 +28,7 @@ const ChallanPage = () => {
   const [template, setTemplate] = useState<string>("classic");
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ challan_date: "", driver_name: "", transport_name: "", vehicle_no: "", notes: "" });
+  const [editItems, setEditItems] = useState<{ id: string; product_id: string; quantity: number; sale_rate: number; product_name: string; product_sku: string; unit_type: string; per_box_sft: number }[]>([]);
   const { data: dealerInfo } = useDealerInfo();
 
   // Sync template from dealer settings
@@ -121,10 +122,15 @@ const ChallanPage = () => {
   });
 
   const updateChallanMutation = useMutation({
-    mutationFn: (updates: { challan_date: string; driver_name: string; transport_name: string; vehicle_no: string; notes: string }) =>
-      challanService.update(challans.find((c: any) => c.status !== "cancelled")?.id ?? "", dealerId, updates),
+    mutationFn: (params: { editData: typeof editData; editItems: typeof editItems }) =>
+      challanService.update(challans.find((c: any) => c.status !== "cancelled")?.id ?? "", dealerId, {
+        ...params.editData,
+        items: params.editItems.map(i => ({ id: i.id, product_id: i.product_id, quantity: i.quantity, sale_rate: i.sale_rate })),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["challans", saleId] });
+      queryClient.invalidateQueries({ queryKey: ["sale", saleId] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
       setIsEditing(false);
       toast.success("Challan updated successfully");
     },
@@ -141,6 +147,18 @@ const ChallanPage = () => {
         vehicle_no: (ac as any).vehicle_no ?? "",
         notes: (ac as any).notes ?? "",
       });
+      // Initialize editable items from sale items
+      const saleItems = (sale as any)?.sale_items ?? [];
+      setEditItems(saleItems.map((item: any) => ({
+        id: item.id,
+        product_id: item.product_id,
+        quantity: Number(item.quantity),
+        sale_rate: Number(item.sale_rate),
+        product_name: item.products?.name ?? "",
+        product_sku: item.products?.sku ?? "",
+        unit_type: item.products?.unit_type ?? "piece",
+        per_box_sft: Number(item.products?.per_box_sft ?? 0),
+      })));
       setIsEditing(true);
     }
   };
@@ -283,7 +301,7 @@ const ChallanPage = () => {
           )}
           {isEditing && (
             <>
-              <Button size="sm" onClick={() => updateChallanMutation.mutate(editData)} disabled={updateChallanMutation.isPending}>
+              <Button size="sm" onClick={() => updateChallanMutation.mutate({ editData, editItems })} disabled={updateChallanMutation.isPending}>
                 {updateChallanMutation.isPending ? "Saving…" : "Save Changes"}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
@@ -316,6 +334,8 @@ const ChallanPage = () => {
               isEditing={isEditing}
               editData={editData}
               onEditChange={setEditData}
+              editItems={editItems}
+              onEditItemChange={setEditItems}
             />
           ) : (
             <ChallanDocument
@@ -328,6 +348,8 @@ const ChallanPage = () => {
               isEditing={isEditing}
               editData={editData}
               onEditChange={setEditData}
+              editItems={editItems}
+              onEditItemChange={setEditItems}
             />
           )}
         </div>
@@ -369,6 +391,17 @@ interface EditDataType {
   notes: string;
 }
 
+interface EditItemType {
+  id: string;
+  product_id: string;
+  quantity: number;
+  sale_rate: number;
+  product_name: string;
+  product_sku: string;
+  unit_type: string;
+  per_box_sft: number;
+}
+
 interface ChallanDocumentProps {
   sale: any;
   items: any[];
@@ -379,12 +412,38 @@ interface ChallanDocumentProps {
   isEditing?: boolean;
   editData?: EditDataType;
   onEditChange?: (data: EditDataType) => void;
+  editItems?: EditItemType[];
+  onEditItemChange?: (items: EditItemType[]) => void;
 }
 
-const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo, isEditing, editData, onEditChange }: ChallanDocumentProps) => {
+const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo, isEditing, editData, onEditChange, editItems, onEditItemChange }: ChallanDocumentProps) => {
   const challanDate = isEditing && editData ? editData.challan_date : (challan ? (challan as any).challan_date : sale.sale_date);
   const challanNo = challan ? (challan as any).challan_no : "—";
   const status = challan ? (challan as any).status : null;
+
+  const displayItems = isEditing && editItems ? editItems : items;
+
+  const handleItemChange = (idx: number, field: "quantity" | "sale_rate", value: number) => {
+    if (!editItems || !onEditItemChange) return;
+    const updated = [...editItems];
+    updated[idx] = { ...updated[idx], [field]: value };
+    onEditItemChange(updated);
+  };
+
+  const getItemSft = (item: EditItemType) => {
+    if (item.unit_type === "box_sft") return (item.quantity * item.per_box_sft).toFixed(2);
+    return "—";
+  };
+
+  const getItemTotal = (item: EditItemType) => {
+    if (item.unit_type === "box_sft") return item.quantity * item.per_box_sft * item.sale_rate;
+    return item.quantity * item.sale_rate;
+  };
+
+  const editTotalBox = editItems?.reduce((s, i) => s + (i.unit_type === "box_sft" ? i.quantity : 0), 0) ?? 0;
+  const editTotalSft = editItems?.reduce((s, i) => s + (i.unit_type === "box_sft" ? i.quantity * i.per_box_sft : 0), 0) ?? 0;
+  const editTotalPiece = editItems?.reduce((s, i) => s + (i.unit_type === "piece" ? i.quantity : 0), 0) ?? 0;
+  const editTotalAmount = editItems?.reduce((s, i) => s + getItemTotal(i), 0) ?? 0;
 
   return (
     <div className="p-8 sm:p-10 font-sans text-[13px] leading-relaxed text-foreground print:p-6">
@@ -508,30 +567,55 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
             </tr>
           </thead>
           <tbody>
-            {items.map((item: any, idx: number) => (
-              <tr key={item.id} className={idx % 2 === 0 ? "bg-background" : "bg-muted/40"}>
-                <td className="px-3 py-2 border border-border text-muted-foreground text-center">{idx + 1}</td>
-                <td className="px-3 py-2 border border-border">
-                  <p className="font-semibold text-foreground leading-tight">{item.products?.name}</p>
-                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.products?.sku}</p>
-                </td>
-                <td className="px-3 py-2 border border-border text-center font-semibold text-foreground">
-                  {item.quantity}
-                </td>
-                <td className="px-3 py-2 border border-border text-center text-muted-foreground text-[11px]">
-                  {item.products?.unit_type === "box_sft" ? "Box" : "Pc"}
-                </td>
-                <td className="px-3 py-2 border border-border text-center text-foreground">
-                  {item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}
-                </td>
-                {showPrices && (
-                  <td className="px-3 py-2 border border-border text-right text-foreground">{formatCurrency(item.sale_rate)}</td>
-                )}
-                {showPrices && (
-                  <td className="px-3 py-2 border border-border text-right font-bold text-foreground">{formatCurrency(item.total)}</td>
-                )}
-              </tr>
-            ))}
+            {isEditing && editItems ? (
+              editItems.map((item, idx) => (
+                <tr key={item.id} className={idx % 2 === 0 ? "bg-background" : "bg-muted/40"}>
+                  <td className="px-3 py-2 border border-border text-muted-foreground text-center">{idx + 1}</td>
+                  <td className="px-3 py-2 border border-border">
+                    <p className="font-semibold text-foreground leading-tight">{item.product_name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.product_sku}</p>
+                  </td>
+                  <td className="px-3 py-2 border border-border text-center">
+                    <input type="number" min={0.01} step="any" value={item.quantity} onChange={(e) => handleItemChange(idx, "quantity", Number(e.target.value))} className="w-14 text-center border border-border rounded px-1 py-0.5 text-[12px] bg-background text-foreground outline-none focus:ring-1 focus:ring-primary" />
+                  </td>
+                  <td className="px-3 py-2 border border-border text-center text-muted-foreground text-[11px]">
+                    {item.unit_type === "box_sft" ? "Box" : "Pc"}
+                  </td>
+                  <td className="px-3 py-2 border border-border text-center text-foreground">{getItemSft(item)}</td>
+                  {showPrices && (
+                    <td className="px-3 py-2 border border-border text-right">
+                      <input type="number" min={0} step="any" value={item.sale_rate} onChange={(e) => handleItemChange(idx, "sale_rate", Number(e.target.value))} className="w-20 text-right border border-border rounded px-1 py-0.5 text-[12px] bg-background text-foreground outline-none focus:ring-1 focus:ring-primary" />
+                    </td>
+                  )}
+                  {showPrices && (
+                    <td className="px-3 py-2 border border-border text-right font-bold text-foreground">{formatCurrency(getItemTotal(item))}</td>
+                  )}
+                </tr>
+              ))
+            ) : (
+              items.map((item: any, idx: number) => (
+                <tr key={item.id} className={idx % 2 === 0 ? "bg-background" : "bg-muted/40"}>
+                  <td className="px-3 py-2 border border-border text-muted-foreground text-center">{idx + 1}</td>
+                  <td className="px-3 py-2 border border-border">
+                    <p className="font-semibold text-foreground leading-tight">{item.products?.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.products?.sku}</p>
+                  </td>
+                  <td className="px-3 py-2 border border-border text-center font-semibold text-foreground">{item.quantity}</td>
+                  <td className="px-3 py-2 border border-border text-center text-muted-foreground text-[11px]">
+                    {item.products?.unit_type === "box_sft" ? "Box" : "Pc"}
+                  </td>
+                  <td className="px-3 py-2 border border-border text-center text-foreground">
+                    {item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}
+                  </td>
+                  {showPrices && (
+                    <td className="px-3 py-2 border border-border text-right text-foreground">{formatCurrency(item.sale_rate)}</td>
+                  )}
+                  {showPrices && (
+                    <td className="px-3 py-2 border border-border text-right font-bold text-foreground">{formatCurrency(item.total)}</td>
+                  )}
+                </tr>
+              ))
+            )}
             {/* Empty rows for print alignment */}
             {items.length < 5 && Array.from({ length: 5 - items.length }).map((_, i) => (
               <tr key={`empty-${i}`} className="print:table-row hidden">
@@ -552,9 +636,9 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
       <div className="challan-section mb-5 print:mb-4 border border-border">
         <div className="grid grid-cols-3 divide-x divide-border">
           {[
-            { label: "Total Boxes", value: Number(sale.total_box) },
-            { label: "Total SFT", value: Number(sale.total_sft).toFixed(2) },
-            { label: "Total Pieces", value: Number(sale.total_piece) },
+            { label: "Total Boxes", value: isEditing ? editTotalBox : Number(sale.total_box) },
+            { label: "Total SFT", value: isEditing ? editTotalSft.toFixed(2) : Number(sale.total_sft).toFixed(2) },
+            { label: "Total Pieces", value: isEditing ? editTotalPiece : Number(sale.total_piece) },
           ].map((s) => (
             <div key={s.label} className="py-3 px-4 text-center">
               <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-muted-foreground">{s.label}</p>
@@ -565,7 +649,7 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
         {showPrices && (
           <div className="border-t border-border py-3 px-4 text-center bg-muted/40">
             <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-muted-foreground">Total Amount</p>
-            <p className="text-xl font-black text-foreground mt-0.5">{formatCurrency(sale.total_amount)}</p>
+            <p className="text-xl font-black text-foreground mt-0.5">{formatCurrency(isEditing ? editTotalAmount - Number(sale.discount) : sale.total_amount)}</p>
           </div>
         )}
       </div>

@@ -9,6 +9,17 @@ interface EditDataType {
   notes: string;
 }
 
+interface EditItemType {
+  id: string;
+  product_id: string;
+  quantity: number;
+  sale_rate: number;
+  product_name: string;
+  product_sku: string;
+  unit_type: string;
+  per_box_sft: number;
+}
+
 interface ModernChallanDocumentProps {
   sale: any;
   items: any[];
@@ -19,17 +30,41 @@ interface ModernChallanDocumentProps {
   isEditing?: boolean;
   editData?: EditDataType;
   onEditChange?: (data: EditDataType) => void;
+  editItems?: EditItemType[];
+  onEditItemChange?: (items: EditItemType[]) => void;
 }
 
-const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo, isEditing, editData, onEditChange }: ModernChallanDocumentProps) => {
+const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo, isEditing, editData, onEditChange, editItems, onEditItemChange }: ModernChallanDocumentProps) => {
   const challanDate = isEditing && editData ? editData.challan_date : (challan ? (challan as any).challan_date : sale.sale_date);
   const challanNo = challan ? (challan as any).challan_no : "—";
   const status = challan ? (challan as any).status : null;
 
+  const handleItemChange = (idx: number, field: "quantity" | "sale_rate", value: number) => {
+    if (!editItems || !onEditItemChange) return;
+    const updated = [...editItems];
+    updated[idx] = { ...updated[idx], [field]: value };
+    onEditItemChange(updated);
+  };
+
+  const getItemSft = (item: EditItemType) => {
+    if (item.unit_type === "box_sft") return (item.quantity * item.per_box_sft).toFixed(2);
+    return "—";
+  };
+
+  const getItemTotal = (item: EditItemType) => {
+    if (item.unit_type === "box_sft") return item.quantity * item.per_box_sft * item.sale_rate;
+    return item.quantity * item.sale_rate;
+  };
+
+  const editTotalBox = editItems?.reduce((s, i) => s + (i.unit_type === "box_sft" ? i.quantity : 0), 0) ?? 0;
+  const editTotalSft = editItems?.reduce((s, i) => s + (i.unit_type === "box_sft" ? i.quantity * i.per_box_sft : 0), 0) ?? 0;
+  const editTotalPiece = editItems?.reduce((s, i) => s + (i.unit_type === "piece" ? i.quantity : 0), 0) ?? 0;
+  const editTotalAmount = editItems?.reduce((s, i) => s + getItemTotal(i), 0) ?? 0;
+
   return (
     <div className="p-8 sm:p-10 font-sans text-[13px] leading-relaxed text-foreground print:p-6">
 
-      {/* ═══ MODERN HEADER — gradient accent strip ═══ */}
+      {/* ═══ MODERN HEADER ═══ */}
       <div className="challan-header relative mb-6">
         <div className="h-2 bg-gradient-to-r from-primary via-primary/70 to-primary/30 rounded-t-md" />
         <div className="border border-t-0 border-border rounded-b-md px-6 py-5">
@@ -62,34 +97,25 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
       {/* ═══ STATUS + REF PILLS ═══ */}
       <div className="flex flex-wrap gap-2 mb-5">
         {sale.invoice_number && (
-          <span className="text-[10px] bg-muted text-muted-foreground px-2.5 py-1 rounded-full font-medium">
-            Invoice: {sale.invoice_number}
-          </span>
+          <span className="text-[10px] bg-muted text-muted-foreground px-2.5 py-1 rounded-full font-medium">Invoice: {sale.invoice_number}</span>
         )}
         {sale.client_reference && (
-          <span className="text-[10px] bg-muted text-muted-foreground px-2.5 py-1 rounded-full font-medium">
-            Client: {sale.client_reference}
-          </span>
+          <span className="text-[10px] bg-muted text-muted-foreground px-2.5 py-1 rounded-full font-medium">Client: {sale.client_reference}</span>
         )}
         {sale.fitter_reference && (
-          <span className="text-[10px] bg-muted text-muted-foreground px-2.5 py-1 rounded-full font-medium">
-            Fitter: {sale.fitter_reference}
-          </span>
+          <span className="text-[10px] bg-muted text-muted-foreground px-2.5 py-1 rounded-full font-medium">Fitter: {sale.fitter_reference}</span>
         )}
         {status && (
           <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase ${
             status === "delivered" ? "bg-green-100 text-green-800" :
             status === "cancelled" ? "bg-destructive/10 text-destructive" :
             "bg-blue-100 text-blue-800"
-          }`}>
-            {status}
-          </span>
+          }`}>{status}</span>
         )}
       </div>
 
-      {/* ═══ CUSTOMER & TRANSPORT — modern cards ═══ */}
+      {/* ═══ CUSTOMER & TRANSPORT ═══ */}
       <div className="challan-section grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 print:mb-5">
-        {/* Customer card */}
         <div className="rounded-lg border border-border bg-muted/20 p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-1 h-4 bg-primary rounded-full" />
@@ -97,15 +123,12 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
           </div>
           <p className="font-bold text-[15px] text-foreground">{customer?.name ?? "—"}</p>
           {customer?.type && (
-            <span className="inline-block mt-1.5 text-[9px] uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold">
-              {customer.type}
-            </span>
+            <span className="inline-block mt-1.5 text-[9px] uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold">{customer.type}</span>
           )}
           {customer?.phone && <p className="text-[11px] text-muted-foreground mt-2">📞 {customer.phone}</p>}
           {customer?.address && <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{customer.address}</p>}
         </div>
 
-        {/* Transport card */}
         <div className="rounded-lg border border-border bg-muted/20 p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-1 h-4 bg-primary rounded-full" />
@@ -150,7 +173,7 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
         </div>
       </div>
 
-      {/* ═══ ITEMS TABLE — modern rounded ═══ */}
+      {/* ═══ ITEMS TABLE ═══ */}
       <div className="mb-6 print:mb-5 rounded-lg border border-border overflow-hidden">
         <table className="w-full text-[12px] border-collapse">
           <thead>
@@ -165,38 +188,59 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
             </tr>
           </thead>
           <tbody>
-            {items.map((item: any, idx: number) => (
-              <tr key={item.id} className={`border-b border-border last:border-0 ${idx % 2 === 0 ? "bg-background" : "bg-muted/30"}`}>
-                <td className="px-3 py-2.5 text-muted-foreground text-center">{idx + 1}</td>
-                <td className="px-3 py-2.5">
-                  <p className="font-semibold text-foreground leading-tight">{item.products?.name}</p>
-                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.products?.sku}</p>
-                </td>
-                <td className="px-3 py-2.5 text-center font-bold text-foreground">{item.quantity}</td>
-                <td className="px-3 py-2.5 text-center text-muted-foreground text-[11px]">
-                  {item.products?.unit_type === "box_sft" ? "Box" : "Pc"}
-                </td>
-                <td className="px-3 py-2.5 text-center text-foreground">
-                  {item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}
-                </td>
-                {showPrices && (
-                  <td className="px-3 py-2.5 text-right text-foreground">{formatCurrency(item.sale_rate)}</td>
-                )}
-                {showPrices && (
-                  <td className="px-3 py-2.5 text-right font-bold text-foreground">{formatCurrency(item.total)}</td>
-                )}
-              </tr>
-            ))}
+            {isEditing && editItems ? (
+              editItems.map((item, idx) => (
+                <tr key={item.id} className={`border-b border-border last:border-0 ${idx % 2 === 0 ? "bg-background" : "bg-muted/30"}`}>
+                  <td className="px-3 py-2.5 text-muted-foreground text-center">{idx + 1}</td>
+                  <td className="px-3 py-2.5">
+                    <p className="font-semibold text-foreground leading-tight">{item.product_name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.product_sku}</p>
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    <input type="number" min={0.01} step="any" value={item.quantity} onChange={(e) => handleItemChange(idx, "quantity", Number(e.target.value))} className="w-14 text-center border border-border rounded px-1 py-0.5 text-[12px] bg-background text-foreground outline-none focus:ring-1 focus:ring-primary" />
+                  </td>
+                  <td className="px-3 py-2.5 text-center text-muted-foreground text-[11px]">{item.unit_type === "box_sft" ? "Box" : "Pc"}</td>
+                  <td className="px-3 py-2.5 text-center text-foreground">{getItemSft(item)}</td>
+                  {showPrices && (
+                    <td className="px-3 py-2.5 text-right">
+                      <input type="number" min={0} step="any" value={item.sale_rate} onChange={(e) => handleItemChange(idx, "sale_rate", Number(e.target.value))} className="w-20 text-right border border-border rounded px-1 py-0.5 text-[12px] bg-background text-foreground outline-none focus:ring-1 focus:ring-primary" />
+                    </td>
+                  )}
+                  {showPrices && (
+                    <td className="px-3 py-2.5 text-right font-bold text-foreground">{formatCurrency(getItemTotal(item))}</td>
+                  )}
+                </tr>
+              ))
+            ) : (
+              items.map((item: any, idx: number) => (
+                <tr key={item.id} className={`border-b border-border last:border-0 ${idx % 2 === 0 ? "bg-background" : "bg-muted/30"}`}>
+                  <td className="px-3 py-2.5 text-muted-foreground text-center">{idx + 1}</td>
+                  <td className="px-3 py-2.5">
+                    <p className="font-semibold text-foreground leading-tight">{item.products?.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.products?.sku}</p>
+                  </td>
+                  <td className="px-3 py-2.5 text-center font-bold text-foreground">{item.quantity}</td>
+                  <td className="px-3 py-2.5 text-center text-muted-foreground text-[11px]">{item.products?.unit_type === "box_sft" ? "Box" : "Pc"}</td>
+                  <td className="px-3 py-2.5 text-center text-foreground">{item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}</td>
+                  {showPrices && (
+                    <td className="px-3 py-2.5 text-right text-foreground">{formatCurrency(item.sale_rate)}</td>
+                  )}
+                  {showPrices && (
+                    <td className="px-3 py-2.5 text-right font-bold text-foreground">{formatCurrency(item.total)}</td>
+                  )}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* ═══ QUANTITY SUMMARY — modern cards row ═══ */}
+      {/* ═══ QUANTITY SUMMARY ═══ */}
       <div className="challan-section grid grid-cols-3 gap-3 mb-6 print:mb-5">
         {[
-          { label: "Total Boxes", value: Number(sale.total_box), color: "bg-blue-50 border-blue-200 text-blue-900" },
-          { label: "Total SFT", value: Number(sale.total_sft).toFixed(2), color: "bg-green-50 border-green-200 text-green-900" },
-          { label: "Total Pieces", value: Number(sale.total_piece), color: "bg-amber-50 border-amber-200 text-amber-900" },
+          { label: "Total Boxes", value: isEditing ? editTotalBox : Number(sale.total_box), color: "bg-blue-50 border-blue-200 text-blue-900" },
+          { label: "Total SFT", value: isEditing ? editTotalSft.toFixed(2) : Number(sale.total_sft).toFixed(2), color: "bg-green-50 border-green-200 text-green-900" },
+          { label: "Total Pieces", value: isEditing ? editTotalPiece : Number(sale.total_piece), color: "bg-amber-50 border-amber-200 text-amber-900" },
         ].map((s) => (
           <div key={s.label} className={`rounded-lg border px-3 py-3 text-center ${s.color}`}>
             <p className="text-[9px] uppercase tracking-[0.15em] font-bold opacity-70">{s.label}</p>
@@ -207,7 +251,7 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
       {showPrices && (
         <div className="mb-6 print:mb-5 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-center">
           <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-primary/70">Total Amount</p>
-          <p className="text-2xl font-black text-primary mt-0.5">{formatCurrency(sale.total_amount)}</p>
+          <p className="text-2xl font-black text-primary mt-0.5">{formatCurrency(isEditing ? editTotalAmount - Number(sale.discount) : sale.total_amount)}</p>
         </div>
       )}
 
