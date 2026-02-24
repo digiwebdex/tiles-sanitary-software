@@ -141,28 +141,28 @@ const PurchaseList = ({ dealerId }: PurchaseListProps) => {
                             <DropdownMenuItem onClick={() => navigate(`/purchases/${p.id}`)}>
                               <Eye className="mr-2 h-4 w-4" /> Purchase Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => navigate(`/purchases/${p.id}`)}>
                               <CreditCard className="mr-2 h-4 w-4" /> View Payments
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => navigate(`/purchases/${p.id}`)}>
                               <CreditCard className="mr-2 h-4 w-4" /> Add Payment
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => navigate(`/purchases/${p.id}/edit`)}>
                               <Pencil className="mr-2 h-4 w-4" /> Edit Purchase
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => navigate(`/purchases/${p.id}`)}>
                               <Download className="mr-2 h-4 w-4" /> Download as PDF
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => navigate(`/purchases/${p.id}`)}>
                               <Mail className="mr-2 h-4 w-4" /> Email Purchase
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => navigate(`/purchases/${p.id}`)}>
                               <Barcode className="mr-2 h-4 w-4" /> Print Barcodes
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate("/purchase-returns/new")}>
+                            <DropdownMenuItem onClick={() => navigate(`/purchase-returns/new?purchase_id=${p.id}`)}>
                               <RotateCcw className="mr-2 h-4 w-4" /> Return Purchase
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem className="text-destructive" onClick={() => { if (window.confirm("Are you sure you want to delete this purchase?")) { /* Delete not yet implemented */ } }}>
                               <Trash2 className="mr-2 h-4 w-4" /> Delete Purchase
                             </DropdownMenuItem>
                           </DropdownMenuContent>
