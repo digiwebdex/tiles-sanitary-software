@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,11 +14,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Search, Wallet, AlertTriangle, CheckCircle, DollarSign, TrendingDown, CalendarIcon, X, Download } from "lucide-react";
+import { Search, Wallet, AlertTriangle, CheckCircle, DollarSign, TrendingDown, CalendarIcon, X, Download, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import PaymentReceipt from "./PaymentReceipt";
+import { useDealerInfo } from "@/hooks/useDealerInfo";
 
 interface CustomerOutstanding {
   id: string;
@@ -45,12 +47,23 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: dealerInfo } = useDealerInfo();
+  const receiptRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
   const [payDialog, setPayDialog] = useState<{ open: boolean; customer?: CustomerOutstanding }>({ open: false });
   const [payAmount, setPayAmount] = useState("");
   const [payNote, setPayNote] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [receiptData, setReceiptData] = useState<{
+    customerName: string;
+    customerPhone: string | null;
+    amount: number;
+    note: string;
+    remainingDue: number;
+    receiptNo: string;
+    date: string;
+  } | null>(null);
 
   // Fetch all customers with outstanding balances
   const { data: customers = [], isLoading } = useQuery({
@@ -176,8 +189,20 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
         reference_type: "customer_payment",
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("Payment recorded successfully");
+      const customer = payDialog.customer;
+      if (customer) {
+        setReceiptData({
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          amount: variables.amount,
+          note: variables.note,
+          remainingDue: Math.max(0, customer.outstanding - variables.amount),
+          receiptNo: `RCP-${Date.now().toString(36).toUpperCase()}`,
+          date: new Date().toISOString(),
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["collection-tracker"] });
       queryClient.invalidateQueries({ queryKey: ["recent-collections"] });
       setPayDialog({ open: false });
@@ -484,6 +509,56 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
               }}
             >
               {recordPayment.isPending ? "Recording..." : "Record Payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt Dialog */}
+      <Dialog open={!!receiptData} onOpenChange={(o) => !o && setReceiptData(null)}>
+        <DialogContent className="sm:max-w-lg print:shadow-none print:border-none">
+          <DialogHeader>
+            <DialogTitle>Payment Receipt</DialogTitle>
+          </DialogHeader>
+          {receiptData && (
+            <div className="overflow-auto max-h-[70vh]">
+              <PaymentReceipt
+                ref={receiptRef}
+                dealerName={dealerInfo?.name ?? ""}
+                dealerPhone={dealerInfo?.phone ?? null}
+                dealerAddress={dealerInfo?.address ?? null}
+                customerName={receiptData.customerName}
+                customerPhone={receiptData.customerPhone}
+                amount={receiptData.amount}
+                note={receiptData.note}
+                date={receiptData.date}
+                receiptNo={receiptData.receiptNo}
+                remainingDue={receiptData.remainingDue}
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReceiptData(null)}>Close</Button>
+            <Button
+              onClick={() => {
+                const content = receiptRef.current;
+                if (!content) return;
+                const printWindow = window.open("", "_blank");
+                if (!printWindow) return;
+                printWindow.document.write(`
+                  <html><head><title>Payment Receipt</title>
+                  <style>
+                    body { margin: 0; font-family: 'Segoe UI', sans-serif; }
+                    @media print { body { margin: 0; } }
+                  </style>
+                  </head><body>${content.innerHTML}</body></html>
+                `);
+                printWindow.document.close();
+                printWindow.focus();
+                printWindow.print();
+              }}
+            >
+              <Printer className="h-4 w-4 mr-1" /> Print Receipt
             </Button>
           </DialogFooter>
         </DialogContent>
