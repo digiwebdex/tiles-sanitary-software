@@ -138,15 +138,6 @@ const InvoicePage = () => {
         }
       `}</style>
 
-      {/* Top bar */}
-      <div className="no-print flex items-center justify-end gap-2 border-b bg-background px-6 py-2 sticky top-0 z-10">
-        <Button variant="outline" size="icon" className="h-8 w-8" onClick={handlePrint}>
-          <Printer className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8">
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
 
       {/* Invoice paper */}
       <div className="no-print min-h-screen bg-muted/40 py-6 px-4">
