@@ -81,7 +81,7 @@ const InvoicePage = () => {
         .eq("id", id!);
     },
     onSuccess: () => {
-      toast.success("পেমেন্ট সফলভাবে রেকর্ড হয়েছে");
+      toast.success("Payment recorded successfully");
       queryClient.invalidateQueries({ queryKey: ["sale", id] });
       queryClient.invalidateQueries({ queryKey: ["collection-tracker"] });
       setPayOpen(false);
@@ -108,11 +108,11 @@ const InvoicePage = () => {
   const handlePaySubmit = () => {
     const amt = parseFloat(payAmount);
     if (!amt || amt <= 0) {
-      toast.error("সঠিক পরিমাণ লিখুন");
+      toast.error("Please enter a valid amount");
       return;
     }
     if (amt > dueAmount) {
-      toast.error(`বকেয়া ৳${dueAmount.toLocaleString()} এর বেশি দেওয়া যাবে না`);
+      toast.error(`Amount cannot exceed due balance of ৳${dueAmount.toLocaleString()}`);
       return;
     }
     paymentMutation.mutate({ amount: amt, note: payNote });
@@ -217,7 +217,7 @@ const InvoicePage = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CreditCard className="h-5 w-5 text-emerald-600" />
-              পেমেন্ট রেকর্ড করুন
+              Record Payment
             </DialogTitle>
           </DialogHeader>
 
@@ -225,34 +225,34 @@ const InvoicePage = () => {
             {/* Customer & Due info */}
             <div className="rounded-lg border bg-muted/50 p-3 space-y-1">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">কাস্টমার</span>
+                <span className="text-muted-foreground">Customer</span>
                 <span className="font-medium text-foreground">{customer?.name ?? "—"}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">ইনভয়েস</span>
+                <span className="text-muted-foreground">Invoice</span>
                 <span className="font-medium text-foreground">#{sale.invoice_number ?? "—"}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">মোট বিল</span>
+                <span className="text-muted-foreground">Total Bill</span>
                 <span className="font-medium text-foreground">৳{totalAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">পরিশোধিত</span>
+                <span className="text-muted-foreground">Paid</span>
                 <span className="font-medium text-foreground">৳{paidAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-sm font-semibold">
-                <span className="text-destructive">বকেয়া</span>
+                <span className="text-destructive">Due</span>
                 <span className="text-destructive">৳{dueAmount.toLocaleString()}</span>
               </div>
             </div>
 
             {/* Amount */}
             <div className="space-y-2">
-              <Label htmlFor="pay-amount">পরিমাণ (৳)</Label>
+              <Label htmlFor="pay-amount">Amount (৳)</Label>
               <Input
                 id="pay-amount"
                 type="number"
-                placeholder={`সর্বোচ্চ ৳${dueAmount.toLocaleString()}`}
+                placeholder={`Max ৳${dueAmount.toLocaleString()}`}
                 value={payAmount}
                 onChange={(e) => setPayAmount(e.target.value)}
                 min={1}
@@ -277,10 +277,10 @@ const InvoicePage = () => {
 
             {/* Note */}
             <div className="space-y-2">
-              <Label htmlFor="pay-note">নোট (ঐচ্ছিক)</Label>
+              <Label htmlFor="pay-note">Note (Optional)</Label>
               <Textarea
                 id="pay-note"
-                placeholder="পেমেন্ট সম্পর্কে নোট..."
+                placeholder="Add a note about this payment..."
                 value={payNote}
                 onChange={(e) => setPayNote(e.target.value)}
                 rows={2}
@@ -289,13 +289,13 @@ const InvoicePage = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPayOpen(false)}>বাতিল</Button>
+            <Button variant="outline" onClick={() => setPayOpen(false)}>Cancel</Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={handlePaySubmit}
               disabled={paymentMutation.isPending}
             >
-              {paymentMutation.isPending ? "প্রক্রিয়াকরণ..." : "পেমেন্ট নিশ্চিত করুন"}
+              {paymentMutation.isPending ? "Processing..." : "Confirm Payment"}
             </Button>
           </DialogFooter>
         </DialogContent>
