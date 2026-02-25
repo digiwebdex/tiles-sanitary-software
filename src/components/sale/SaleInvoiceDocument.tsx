@@ -50,10 +50,6 @@ const SaleInvoiceDocument = ({
             <p className="text-xs text-muted-foreground">Tile & Sanitary Dealer</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-muted-foreground">🖨 Print</span>
-          <span className="text-xs text-muted-foreground cursor-pointer">✕</span>
-        </div>
       </div>
 
       <Separator />
