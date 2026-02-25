@@ -116,7 +116,7 @@ const InvoicePage = () => {
 
       {/* Bottom action bar */}
       <div className="no-print sticky bottom-0 z-10 flex items-center justify-center gap-2 border-t bg-background px-4 py-3 flex-wrap">
-        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => navigate("/collections")}>
           <CreditCard className="mr-1.5 h-3.5 w-3.5" /> Payment
         </Button>
         <Button size="sm" variant="outline" onClick={() => navigate("/deliveries")}>
