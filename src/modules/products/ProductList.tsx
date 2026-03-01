@@ -12,14 +12,22 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, AlertTriangle, Barcode, Printer, MoreHorizontal, Eye, Copy, Trash2, ShoppingCart, AlertOctagon } from "lucide-react";
+import {
+  Plus, Search, Pencil, AlertTriangle, Barcode, Printer,
+  MoreHorizontal, Eye, Copy, Trash2, ShoppingCart, TrendingUp,
+  Package, ImageIcon, History,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BarcodePrintDialog from "./BarcodePrintDialog";
 import ProductDetailDialog from "./ProductDetailDialog";
 import BrokenStockDialog from "./BrokenStockDialog";
+import PurchaseHistoryDialog from "./PurchaseHistoryDialog";
+import SalesHistoryDialog from "./SalesHistoryDialog";
+import StockAdjustDialog from "./StockAdjustDialog";
+import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 
 interface ProductListProps {
   dealerId: string;
@@ -35,6 +43,10 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const [barcodeSingle, setBarcodeSingle] = useState<{ id: string; sku: string; name: string; default_sale_rate: number } | null>(null);
   const [detailProduct, setDetailProduct] = useState<typeof products[0] | null>(null);
   const [brokenProduct, setBrokenProduct] = useState<typeof products[0] | null>(null);
+  const [purchaseHistoryProduct, setPurchaseHistoryProduct] = useState<typeof products[0] | null>(null);
+  const [salesHistoryProduct, setSalesHistoryProduct] = useState<typeof products[0] | null>(null);
+  const [adjustStockProduct, setAdjustStockProduct] = useState<typeof products[0] | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<typeof products[0] | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -63,7 +75,6 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     enabled: !!dealerId,
   });
 
-  // Fetch average cost for products
   const { data: costData } = useQuery({
     queryKey: ["products-cost-map", dealerId],
     queryFn: async () => {
@@ -80,7 +91,6 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     enabled: !!dealerId,
   });
 
-  // Fetch last purchase cost for each product
   const { data: lastCostData } = useQuery({
     queryKey: ["products-last-cost-map", dealerId],
     queryFn: async () => {
@@ -89,7 +99,6 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         .select("product_id, landed_cost, purchase_id, purchases!inner(purchase_date)")
         .eq("dealer_id", dealerId)
         .order("purchases(purchase_date)", { ascending: false });
-      // Keep only the latest cost per product
       const map = new Map<string, number>();
       for (const item of data ?? []) {
         if (!map.has(item.product_id)) {
@@ -97,6 +106,22 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         }
       }
       return map;
+    },
+    enabled: !!dealerId,
+  });
+
+  // Check which products have transaction history (for delete protection)
+  const { data: txProducts } = useQuery({
+    queryKey: ["products-tx-check", dealerId],
+    queryFn: async () => {
+      const [salesRes, purchasesRes] = await Promise.all([
+        supabase.from("sale_items").select("product_id").eq("dealer_id", dealerId),
+        supabase.from("purchase_items").select("product_id").eq("dealer_id", dealerId),
+      ]);
+      const ids = new Set<string>();
+      for (const s of salesRes.data ?? []) ids.add(s.product_id);
+      for (const p of purchasesRes.data ?? []) ids.add(p.product_id);
+      return ids;
     },
     enabled: !!dealerId,
   });
@@ -111,6 +136,19 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       toast.success("Product updated");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success("Product deleted");
+      setDeleteProduct(null);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -145,10 +183,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
 
   const handleDuplicate = async (p: typeof products[0]) => {
     try {
-      // Generate unique SKU with random suffix
       const suffix = Math.random().toString(36).substring(2, 6).toUpperCase();
       const newSku = `${p.sku}-${suffix}`;
-
       await productService.create({
         dealer_id: dealerId,
         name: `${p.name} (Copy)`,
@@ -220,70 +256,71 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   <TableHead>Name</TableHead>
                   <TableHead>Brand</TableHead>
                   <TableHead>Category</TableHead>
-                   <TableHead className="text-right">Avg Cost</TableHead>
-                   <TableHead className="text-right">Last Cost</TableHead>
+                  <TableHead className="text-right">Avg Cost</TableHead>
+                  <TableHead className="text-right">Last Cost</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Alert Qty</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-20">Actions</TableHead>
+                  <TableHead className="w-12 text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {products.map((p) => {
                   const stockInfo = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0 };
                   const qty = stockInfo.total;
-                   const costPerUnit = Math.max(0, costData?.get(p.id) ?? 0);
-                   const reorder = p.reorder_level ?? 0;
-                   const lastCost = Math.max(0, lastCostData?.get(p.id) ?? 0);
-                   const isBoxSft = p.unit_type === "box_sft";
-                   const perBoxSft = Number(p.per_box_sft) || 0;
-                   const boxCost = isBoxSft && perBoxSft > 0 ? costPerUnit * perBoxSft : 0;
-                   const lastBoxCost = isBoxSft && perBoxSft > 0 ? lastCost * perBoxSft : 0;
+                  const costPerUnit = Math.max(0, costData?.get(p.id) ?? 0);
+                  const reorder = p.reorder_level ?? 0;
+                  const lastCost = Math.max(0, lastCostData?.get(p.id) ?? 0);
+                  const isBoxSft = p.unit_type === "box_sft";
+                  const perBoxSft = Number(p.per_box_sft) || 0;
+                  const boxCost = isBoxSft && perBoxSft > 0 ? costPerUnit * perBoxSft : 0;
+                  const lastBoxCost = isBoxSft && perBoxSft > 0 ? lastCost * perBoxSft : 0;
+                  const hasTx = txProducts?.has(p.id) ?? false;
 
-                   return (
-                     <TableRow key={p.id} className="cursor-pointer" onClick={() => setDetailProduct(p)}>
-                       <TableCell>
-                         <Checkbox
-                           checked={selected.has(p.id)}
-                           onCheckedChange={() => toggleSelect(p.id)}
-                           onClick={(e) => e.stopPropagation()}
-                         />
-                       </TableCell>
-                       <TableCell className="font-mono text-sm">{p.sku}</TableCell>
-                       <TableCell>
-                         <div>
-                           <span>{p.name}</span>
-                           {p.size && <span className="text-xs text-muted-foreground ml-1">(Size: {p.size})</span>}
-                           {isBoxSft && perBoxSft > 0 && <span className="text-xs text-muted-foreground ml-1">(Box: {perBoxSft}sft)</span>}
-                         </div>
-                       </TableCell>
-                       <TableCell>{p.brand || "—"}</TableCell>
-                       <TableCell className="capitalize">{p.category}</TableCell>
-                       <TableCell className="text-right">
-                         {isBoxSft && perBoxSft > 0 ? (
-                           <div>
-                             <div>{formatCurrency(costPerUnit)}<span className="text-xs text-muted-foreground">/sft</span></div>
-                             <div className="text-xs text-muted-foreground">{formatCurrency(boxCost)}/box</div>
-                           </div>
-                         ) : (
-                           <span>{formatCurrency(costPerUnit)}</span>
-                         )}
-                       </TableCell>
-                       <TableCell className="text-right">
-                         {lastCost > 0 ? (
-                           isBoxSft && perBoxSft > 0 ? (
-                             <div>
-                               <div>{formatCurrency(lastCost)}<span className="text-xs text-muted-foreground">/sft</span></div>
-                               <div className="text-xs text-muted-foreground">{formatCurrency(lastBoxCost)}/box</div>
-                             </div>
-                           ) : (
-                             <span>{formatCurrency(lastCost)}</span>
-                           )
-                         ) : "—"}
-                       </TableCell>
-                       <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
+                  return (
+                    <TableRow key={p.id} className="cursor-pointer" onClick={() => setDetailProduct(p)}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selected.has(p.id)}
+                          onCheckedChange={() => toggleSelect(p.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{p.sku}</TableCell>
+                      <TableCell>
+                        <div>
+                          <span>{p.name}</span>
+                          {p.size && <span className="text-xs text-muted-foreground ml-1">(Size: {p.size})</span>}
+                          {isBoxSft && perBoxSft > 0 && <span className="text-xs text-muted-foreground ml-1">(Box: {perBoxSft}sft)</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell>{p.brand || "—"}</TableCell>
+                      <TableCell className="capitalize">{p.category}</TableCell>
+                      <TableCell className="text-right">
+                        {isBoxSft && perBoxSft > 0 ? (
+                          <div>
+                            <div>{formatCurrency(costPerUnit)}<span className="text-xs text-muted-foreground">/sft</span></div>
+                            <div className="text-xs text-muted-foreground">{formatCurrency(boxCost)}/box</div>
+                          </div>
+                        ) : (
+                          <span>{formatCurrency(costPerUnit)}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {lastCost > 0 ? (
+                          isBoxSft && perBoxSft > 0 ? (
+                            <div>
+                              <div>{formatCurrency(lastCost)}<span className="text-xs text-muted-foreground">/sft</span></div>
+                              <div className="text-xs text-muted-foreground">{formatCurrency(lastBoxCost)}/box</div>
+                            </div>
+                          ) : (
+                            <span>{formatCurrency(lastCost)}</span>
+                          )
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
                       <TableCell className={`text-right font-medium ${qty < 0 ? "text-destructive" : ""}`}>
                         {p.unit_type === "box_sft" ? (
                           <div>
@@ -301,7 +338,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                           <Badge
                             variant={p.active ? "default" : "secondary"}
                             className="cursor-pointer text-xs"
-                            onClick={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
+                            onClick={(e) => { e.stopPropagation(); toggleMutation.mutate({ id: p.id, active: !p.active }); }}
                           >
                             {p.active ? "Active" : "Inactive"}
                           </Badge>
@@ -320,13 +357,14 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-8 px-3 text-xs">
-                              Actions
+                            <Button size="icon" variant="ghost" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" className="w-52">
+                            {/* View & Edit */}
                             <DropdownMenuItem onClick={() => setDetailProduct(p)}>
-                              <Eye className="mr-2 h-4 w-4" /> Product Details
+                              <Eye className="mr-2 h-4 w-4" /> View Details
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => navigate(`/products/${p.id}/edit`)}>
                               <Pencil className="mr-2 h-4 w-4" /> Edit Product
@@ -334,19 +372,44 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                             <DropdownMenuItem onClick={() => handleDuplicate(p)}>
                               <Copy className="mr-2 h-4 w-4" /> Duplicate Product
                             </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            {/* Barcode & Image */}
                             <DropdownMenuItem onClick={() => openSingleBarcode(p)}>
-                              <Barcode className="mr-2 h-4 w-4" /> Print Barcode/Label
+                              <Barcode className="mr-2 h-4 w-4" /> Print Barcode / Label
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate(`/purchases/new?product=${p.id}`)}>
-                              <ShoppingCart className="mr-2 h-4 w-4" /> Create Purchase
+
+                            <DropdownMenuSeparator />
+
+                            {/* History */}
+                            <DropdownMenuItem onClick={() => setPurchaseHistoryProduct(p)}>
+                              <ShoppingCart className="mr-2 h-4 w-4" /> Purchase History
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setSalesHistoryProduct(p)}>
+                              <TrendingUp className="mr-2 h-4 w-4" /> Sales History
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            {/* Stock Actions */}
+                            <DropdownMenuItem onClick={() => setAdjustStockProduct(p)}>
+                              <Package className="mr-2 h-4 w-4" /> Adjust Stock
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setBrokenProduct(p)}>
-                              <AlertOctagon className="mr-2 h-4 w-4" /> Mark Broken
+                              <History className="mr-2 h-4 w-4" /> Mark Broken
                             </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            {/* Delete */}
                             <DropdownMenuItem
-                              onClick={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
+                              disabled={hasTx}
+                              className={hasTx ? "opacity-50" : "text-destructive focus:text-destructive"}
+                              onClick={() => { if (!hasTx) setDeleteProduct(p); }}
                             >
-                              <Trash2 className="mr-2 h-4 w-4" /> {p.active ? "Deactivate" : "Activate"}
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {hasTx ? "Cannot Delete (Has Txns)" : "Delete Product"}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -415,6 +478,42 @@ const ProductList = ({ dealerId }: ProductListProps) => {
           setBrokenProduct(null);
           queryClient.invalidateQueries({ queryKey: ["products-stock-map"] });
         }}
+      />
+
+      <PurchaseHistoryDialog
+        open={!!purchaseHistoryProduct}
+        onOpenChange={(open) => { if (!open) setPurchaseHistoryProduct(null); }}
+        productId={purchaseHistoryProduct?.id ?? null}
+        productName={purchaseHistoryProduct?.name ?? ""}
+        dealerId={dealerId}
+      />
+
+      <SalesHistoryDialog
+        open={!!salesHistoryProduct}
+        onOpenChange={(open) => { if (!open) setSalesHistoryProduct(null); }}
+        productId={salesHistoryProduct?.id ?? null}
+        productName={salesHistoryProduct?.name ?? ""}
+        dealerId={dealerId}
+      />
+
+      <StockAdjustDialog
+        open={!!adjustStockProduct}
+        onOpenChange={(open) => { if (!open) setAdjustStockProduct(null); }}
+        product={adjustStockProduct}
+        dealerId={dealerId}
+        onSuccess={() => {
+          setAdjustStockProduct(null);
+          queryClient.invalidateQueries({ queryKey: ["products-stock-map"] });
+          queryClient.invalidateQueries({ queryKey: ["products-cost-map"] });
+        }}
+      />
+
+      <DeleteConfirmDialog
+        open={!!deleteProduct}
+        onOpenChange={(open) => { if (!open) setDeleteProduct(null); }}
+        title="Delete Product"
+        description={`Are you sure you want to permanently delete "${deleteProduct?.name}"? This action cannot be undone.`}
+        onConfirm={() => { if (deleteProduct) deleteMutation.mutate(deleteProduct.id); }}
       />
     </div>
   );
