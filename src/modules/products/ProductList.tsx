@@ -273,7 +273,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Alert Qty</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-12 text-center">Actions</TableHead>
+                  <TableHead className="w-[180px] min-w-[180px] text-center sticky right-0 bg-background z-10">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -364,7 +364,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
+                      <TableCell onClick={(e) => e.stopPropagation()} className="sticky right-0 bg-background z-10">
                         <ProductActionDropdown
                           onViewDetails={() => setDetailProduct(p)}
                           onViewImage={() => toast.info("Product image viewer coming soon")}
