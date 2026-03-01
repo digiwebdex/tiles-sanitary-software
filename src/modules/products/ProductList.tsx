@@ -11,14 +11,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import {
-  Plus, Search, Pencil, AlertTriangle, Barcode, Printer,
-  MoreHorizontal, Eye, Copy, Trash2, ShoppingCart, TrendingUp,
-  Package, History, ArrowLeftRight,
+  Plus, Search, AlertTriangle, Printer,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BarcodePrintDialog from "./BarcodePrintDialog";
@@ -29,6 +24,11 @@ import SalesHistoryDialog from "./SalesHistoryDialog";
 import StockAdjustDialog from "./StockAdjustDialog";
 import StockMovementDialog from "./StockMovementDialog";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
+import ProductActionDropdown from "./ProductActionDropdown";
+import UpdateSalePriceDialog from "./UpdateSalePriceDialog";
+import UpdateCostPriceDialog from "./UpdateCostPriceDialog";
+import ChangeBarcodeDialog from "./ChangeBarcodeDialog";
+import SetReorderLevelDialog from "./SetReorderLevelDialog";
 
 interface ProductListProps {
   dealerId: string;
@@ -49,6 +49,10 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const [adjustStockProduct, setAdjustStockProduct] = useState<typeof products[0] | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<typeof products[0] | null>(null);
   const [movementProduct, setMovementProduct] = useState<typeof products[0] | null>(null);
+  const [salePriceProduct, setSalePriceProduct] = useState<typeof products[0] | null>(null);
+  const [costPriceProduct, setCostPriceProduct] = useState<typeof products[0] | null>(null);
+  const [barcodeChangeProduct, setBarcodeChangeProduct] = useState<typeof products[0] | null>(null);
+  const [reorderProduct, setReorderProduct] = useState<typeof products[0] | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -357,67 +361,25 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                         </div>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52">
-                            {/* View & Edit */}
-                            <DropdownMenuItem onClick={() => setDetailProduct(p)}>
-                              <Eye className="mr-2 h-4 w-4" /> View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate(`/products/${p.id}/edit`)}>
-                              <Pencil className="mr-2 h-4 w-4" /> Edit Product
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDuplicate(p)}>
-                              <Copy className="mr-2 h-4 w-4" /> Duplicate Product
-                            </DropdownMenuItem>
-
-                            <DropdownMenuSeparator />
-
-                            {/* Barcode & Image */}
-                            <DropdownMenuItem onClick={() => openSingleBarcode(p)}>
-                              <Barcode className="mr-2 h-4 w-4" /> Print Barcode / Label
-                            </DropdownMenuItem>
-
-                            <DropdownMenuSeparator />
-
-                            {/* History */}
-                            <DropdownMenuItem onClick={() => setPurchaseHistoryProduct(p)}>
-                              <ShoppingCart className="mr-2 h-4 w-4" /> Purchase History
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setSalesHistoryProduct(p)}>
-                              <TrendingUp className="mr-2 h-4 w-4" /> Sales History
-                            </DropdownMenuItem>
-
-                            <DropdownMenuSeparator />
-
-                            {/* Stock Actions */}
-                            <DropdownMenuItem onClick={() => setMovementProduct(p)}>
-                              <ArrowLeftRight className="mr-2 h-4 w-4" /> Stock Movement
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setAdjustStockProduct(p)}>
-                              <Package className="mr-2 h-4 w-4" /> Adjust Stock
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setBrokenProduct(p)}>
-                              <History className="mr-2 h-4 w-4" /> Mark Broken
-                            </DropdownMenuItem>
-
-                            <DropdownMenuSeparator />
-
-                            {/* Delete */}
-                            <DropdownMenuItem
-                              disabled={hasTx}
-                              className={hasTx ? "opacity-50" : "text-destructive focus:text-destructive"}
-                              onClick={() => { if (!hasTx) setDeleteProduct(p); }}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {hasTx ? "Cannot Delete (Has Txns)" : "Delete Product"}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <ProductActionDropdown
+                          onViewDetails={() => setDetailProduct(p)}
+                          onViewStockMovement={() => setMovementProduct(p)}
+                          onViewPurchaseHistory={() => setPurchaseHistoryProduct(p)}
+                          onViewSalesHistory={() => setSalesHistoryProduct(p)}
+                          onEdit={() => navigate(`/products/${p.id}/edit`)}
+                          onDuplicate={() => handleDuplicate(p)}
+                          onUpdateSalePrice={() => setSalePriceProduct(p)}
+                          onUpdateCostPrice={() => setCostPriceProduct(p)}
+                          onChangeBarcode={() => setBarcodeChangeProduct(p)}
+                          onAdjustStock={() => setAdjustStockProduct(p)}
+                          onMarkBroken={() => setBrokenProduct(p)}
+                          onPrintBarcode={() => openSingleBarcode(p)}
+                          onToggleActive={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
+                          onSetReorderLevel={() => setReorderProduct(p)}
+                          onDelete={() => setDeleteProduct(p)}
+                          isActive={p.active}
+                          hasTx={hasTx}
+                        />
                       </TableCell>
                     </TableRow>
                   );
@@ -528,6 +490,34 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         productName={movementProduct?.name ?? ""}
         dealerId={dealerId}
         unitType={movementProduct?.unit_type ?? "box_sft"}
+      />
+
+      <UpdateSalePriceDialog
+        open={!!salePriceProduct}
+        onOpenChange={(open) => { if (!open) setSalePriceProduct(null); }}
+        product={salePriceProduct}
+        dealerId={dealerId}
+      />
+
+      <UpdateCostPriceDialog
+        open={!!costPriceProduct}
+        onOpenChange={(open) => { if (!open) setCostPriceProduct(null); }}
+        product={costPriceProduct}
+        currentCost={costPriceProduct ? (costData?.get(costPriceProduct.id) ?? 0) : 0}
+        dealerId={dealerId}
+      />
+
+      <ChangeBarcodeDialog
+        open={!!barcodeChangeProduct}
+        onOpenChange={(open) => { if (!open) setBarcodeChangeProduct(null); }}
+        product={barcodeChangeProduct}
+        dealerId={dealerId}
+      />
+
+      <SetReorderLevelDialog
+        open={!!reorderProduct}
+        onOpenChange={(open) => { if (!open) setReorderProduct(null); }}
+        product={reorderProduct}
       />
     </div>
   );
