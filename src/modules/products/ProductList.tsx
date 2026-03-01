@@ -272,8 +272,6 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Alert Qty</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead className="w-[180px] min-w-[180px] text-center sticky right-0 bg-background z-10">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -343,28 +341,6 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                         )}
                       </TableCell>
                       <TableCell>{p.unit_type === "box_sft" ? "Sft" : "Piece"}</TableCell>
-                      <TableCell className="text-right">{reorder > 0 ? reorder : "—"}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1 items-center">
-                          <Badge
-                            variant={p.active ? "default" : "secondary"}
-                            className="cursor-pointer text-xs"
-                            onClick={(e) => { e.stopPropagation(); toggleMutation.mutate({ id: p.id, active: !p.active }); }}
-                          >
-                            {p.active ? "Active" : "Inactive"}
-                          </Badge>
-                          {p.active && qty === 0 && (
-                            <Badge variant="destructive" className="text-xs gap-1">
-                              <AlertTriangle className="h-3 w-3" />Out
-                            </Badge>
-                          )}
-                          {p.active && reorder > 0 && qty > 0 && qty <= reorder && (
-                            <Badge variant="destructive" className="text-xs gap-1 bg-destructive/80">
-                              <AlertTriangle className="h-3 w-3" />Low
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()} className="sticky right-0 bg-background z-10">
                         <ProductActionDropdown
                           onViewDetails={() => setDetailProduct(p)}
@@ -398,7 +374,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                           {totals.piece > 0 && <div>{totals.piece} Pcs</div>}
                         </div>
                       </TableCell>
-                      <TableCell colSpan={4} />
+                      <TableCell colSpan={2} />
                     </TableRow>
                   );
                 })()}
