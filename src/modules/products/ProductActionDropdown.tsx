@@ -12,10 +12,12 @@ import {
 
 export interface ProductActionHandlers {
   onViewDetails: () => void;
+  onViewImage: () => void;
   onViewStockSummary: () => void;
   onViewStockMovement: () => void;
   onViewPurchaseHistory: () => void;
   onViewSalesHistory: () => void;
+  onViewPriceHistory: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onUpdateSalePrice: () => void;
@@ -23,20 +25,22 @@ export interface ProductActionHandlers {
   onChangeBarcode: () => void;
   onAdjustStock: () => void;
   onPrintBarcode: () => void;
+  onPrintPriceLabel: () => void;
+  onPrintProductCard: () => void;
   onToggleActive: () => void;
   onSetReorderLevel: () => void;
-  onMarkBroken: () => void;
   onDelete: () => void;
   isActive: boolean;
-  hasTx: boolean;
+  canDelete: boolean;
 }
 
 const ProductActionDropdown = (props: ProductActionHandlers) => {
   const {
-    onViewDetails, onViewStockSummary, onViewStockMovement, onViewPurchaseHistory, onViewSalesHistory,
+    onViewDetails, onViewImage, onViewStockSummary, onViewStockMovement,
+    onViewPurchaseHistory, onViewSalesHistory, onViewPriceHistory,
     onEdit, onDuplicate, onUpdateSalePrice, onUpdateCostPrice, onChangeBarcode,
-    onAdjustStock, onPrintBarcode, onToggleActive, onSetReorderLevel, onMarkBroken,
-    onDelete, isActive, hasTx,
+    onAdjustStock, onPrintBarcode, onPrintPriceLabel, onPrintProductCard,
+    onToggleActive, onSetReorderLevel, onDelete, isActive, canDelete,
   } = props;
 
   return (
@@ -46,11 +50,14 @@ const ProductActionDropdown = (props: ProductActionHandlers) => {
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end" className="w-56 max-h-[70vh] overflow-y-auto">
         {/* VIEW */}
         <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">🔎 View</DropdownMenuLabel>
         <DropdownMenuItem onClick={onViewDetails}>
           <Eye className="mr-2 h-4 w-4" /> Product Details
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onViewImage}>
+          <Image className="mr-2 h-4 w-4" /> View Image
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onViewStockSummary}>
           <BarChart3 className="mr-2 h-4 w-4" /> View Stock Summary
@@ -63,6 +70,9 @@ const ProductActionDropdown = (props: ProductActionHandlers) => {
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onViewSalesHistory}>
           <TrendingUp className="mr-2 h-4 w-4" /> View Sales History
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onViewPriceHistory}>
+          <History className="mr-2 h-4 w-4" /> View Price History
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
@@ -87,16 +97,19 @@ const ProductActionDropdown = (props: ProductActionHandlers) => {
         <DropdownMenuItem onClick={onAdjustStock}>
           <Package className="mr-2 h-4 w-4" /> Adjust Stock
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onMarkBroken}>
-          <History className="mr-2 h-4 w-4" /> Mark Broken
-        </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
         {/* PRINT */}
         <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">🖨 Print</DropdownMenuLabel>
         <DropdownMenuItem onClick={onPrintBarcode}>
-          <Barcode className="mr-2 h-4 w-4" /> Print Barcode / Label
+          <Barcode className="mr-2 h-4 w-4" /> Print Barcode
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onPrintPriceLabel}>
+          <CreditCard className="mr-2 h-4 w-4" /> Print Price Label
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onPrintProductCard}>
+          <FileText className="mr-2 h-4 w-4" /> Print Product Card
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
@@ -115,12 +128,12 @@ const ProductActionDropdown = (props: ProductActionHandlers) => {
         {/* DANGER */}
         <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">🗑 Danger</DropdownMenuLabel>
         <DropdownMenuItem
-          disabled={hasTx}
-          className={hasTx ? "opacity-50" : "text-destructive focus:text-destructive"}
-          onClick={() => { if (!hasTx) onDelete(); }}
+          disabled={!canDelete}
+          className={!canDelete ? "opacity-50" : "text-destructive focus:text-destructive"}
+          onClick={() => { if (canDelete) onDelete(); }}
         >
           <Trash2 className="mr-2 h-4 w-4" />
-          {hasTx ? "Cannot Delete (Has Txns)" : "Delete Product"}
+          {!canDelete ? "Cannot Delete (Has Txns)" : "Delete Product"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

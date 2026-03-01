@@ -118,17 +118,19 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     enabled: !!dealerId,
   });
 
-  // Check which products have transaction history (for delete protection)
+  // Check which products have transaction history (for delete protection: purchase, sale, return)
   const { data: txProducts } = useQuery({
     queryKey: ["products-tx-check", dealerId],
     queryFn: async () => {
-      const [salesRes, purchasesRes] = await Promise.all([
+      const [salesRes, purchasesRes, returnsRes] = await Promise.all([
         supabase.from("sale_items").select("product_id").eq("dealer_id", dealerId),
         supabase.from("purchase_items").select("product_id").eq("dealer_id", dealerId),
+        supabase.from("sales_returns").select("product_id").eq("dealer_id", dealerId),
       ]);
       const ids = new Set<string>();
       for (const s of salesRes.data ?? []) ids.add(s.product_id);
       for (const p of purchasesRes.data ?? []) ids.add(p.product_id);
+      for (const r of returnsRes.data ?? []) ids.add(r.product_id);
       return ids;
     },
     enabled: !!dealerId,
@@ -365,23 +367,26 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <ProductActionDropdown
                           onViewDetails={() => setDetailProduct(p)}
+                          onViewImage={() => toast.info("Product image viewer coming soon")}
                           onViewStockSummary={() => setStockSummaryProduct(p)}
                           onViewStockMovement={() => setMovementProduct(p)}
                           onViewPurchaseHistory={() => setPurchaseHistoryProduct(p)}
                           onViewSalesHistory={() => setSalesHistoryProduct(p)}
+                          onViewPriceHistory={() => toast.info("Price history coming soon")}
                           onEdit={() => navigate(`/products/${p.id}/edit`)}
                           onDuplicate={() => handleDuplicate(p)}
                           onUpdateSalePrice={() => setSalePriceProduct(p)}
                           onUpdateCostPrice={() => setCostPriceProduct(p)}
                           onChangeBarcode={() => setBarcodeChangeProduct(p)}
                           onAdjustStock={() => setAdjustStockProduct(p)}
-                          onMarkBroken={() => setBrokenProduct(p)}
                           onPrintBarcode={() => openSingleBarcode(p)}
+                          onPrintPriceLabel={() => openSingleBarcode(p)}
+                          onPrintProductCard={() => toast.info("Product card print coming soon")}
                           onToggleActive={() => toggleMutation.mutate({ id: p.id, active: !p.active })}
                           onSetReorderLevel={() => setReorderProduct(p)}
                           onDelete={() => setDeleteProduct(p)}
                           isActive={p.active}
-                          hasTx={hasTx}
+                          canDelete={!hasTx}
                         />
                       </TableCell>
                     </TableRow>
