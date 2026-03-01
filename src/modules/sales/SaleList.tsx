@@ -268,6 +268,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                           saleId={s.id}
                           hasPaid={paid > 0}
                           hasDelivery={deliveryMap?.has(s.id) ?? false}
+                          isDelivered={challanDeliveryMap?.get(s.id) === "delivered"}
                           onViewSale={() => navigate(`/sales/${s.id}/invoice`)}
                           onAddPayment={() => navigate(`/sales/${s.id}/invoice`)}
                           onViewInvoice={() => navigate(`/sales/${s.id}/invoice`)}

@@ -11,6 +11,7 @@ export interface SaleActionHandlers {
   saleId: string;
   hasPaid: boolean;
   hasDelivery: boolean;
+  isDelivered: boolean;
   onViewSale: () => void;
   onAddPayment: () => void;
   onViewInvoice: () => void;
@@ -22,13 +23,13 @@ export interface SaleActionHandlers {
 
 const SaleActionDropdown = (props: SaleActionHandlers) => {
   const {
-    hasPaid, hasDelivery,
+    hasPaid, hasDelivery, isDelivered,
     onViewSale, onAddPayment, onViewInvoice, onViewDeliveryStatus,
     onAddDelivery, onEditSale, onDeleteSale,
   } = props;
 
-  const canEdit = !hasPaid;
-  const canDelete = !hasPaid && !hasDelivery;
+  const canEdit = !hasPaid && !isDelivered;
+  const canDelete = !hasPaid && !hasDelivery && !isDelivered;
 
   return (
     <DropdownMenu>
