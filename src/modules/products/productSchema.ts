@@ -2,15 +2,15 @@ import { z } from "zod";
 
 export const productSchema = z
   .object({
-    sku: z.string().trim().min(1, "SKU is required").max(50, "SKU too long"),
-    name: z.string().trim().min(1, "Name is required").max(100, "Name too long"),
-    brand: z.string().trim().max(50).optional().or(z.literal("")),
+    sku: z.string().trim().min(1, "Product code is required").max(50, "Product code too long"),
+    name: z.string().trim().min(1, "Product name is required").max(100, "Product name too long"),
+    brand: z.string().trim().min(1, "Brand is required").max(50, "Brand too long"),
     category: z.enum(["tiles", "sanitary"], { required_error: "Category is required" }),
     size: z.string().trim().max(30).optional().or(z.literal("")),
     color: z.string().trim().max(30).optional().or(z.literal("")),
     unit_type: z.enum(["box_sft", "piece"], { required_error: "Unit type is required" }),
     per_box_sft: z.coerce.number().min(0).optional().nullable(),
-    default_sale_rate: z.coerce.number().min(0, "Rate must be ≥ 0"),
+    default_sale_rate: z.coerce.number().positive("Product price must be greater than 0"),
     reorder_level: z.coerce.number().int().min(0, "Reorder level must be ≥ 0"),
     active: z.boolean().default(true),
     material: z.string().trim().max(50).optional().or(z.literal("")),

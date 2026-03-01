@@ -22,11 +22,14 @@ export const createProductServiceSchema = z.object({
   category: z.enum(["tiles", "sanitary"]),
   unit_type: z.enum(["box_sft", "piece"]).default("box_sft"),
   per_box_sft: z.coerce.number().min(0).nullable().optional(),
-  default_sale_rate: z.coerce.number().min(0, "Sale rate cannot be negative"),
+  default_sale_rate: z.coerce.number().positive("Sale rate must be greater than 0"),
   reorder_level: z.coerce.number().int().min(0, "Reorder level cannot be negative").default(0),
-  brand: optionalSafeText(100),
+  brand: safeText(100).pipe(z.string().min(1, "Brand is required")),
   color: optionalSafeText(50),
   size: optionalSafeText(50),
+  material: optionalSafeText(100),
+  weight: optionalSafeText(50),
+  warranty: optionalSafeText(100),
   active: z.boolean().default(true),
 });
 

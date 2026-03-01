@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { productSchema, type ProductFormValues } from "@/modules/products/productSchema";
@@ -43,6 +44,8 @@ const generateSKU = () => {
 };
 
 const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }: ProductFormProps) => {
+  const [skuError, setSkuError] = useState<string | null>(null);
+
   // Fetch last purchase cost for this product (only in edit mode)
   const { data: lastPurchaseCost } = useQuery({
     queryKey: ["product-last-cost", productId],
@@ -64,6 +67,19 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
     },
     enabled: !!productId && !!dealerId,
   });
+
+  /** Check SKU uniqueness per dealer */
+  const checkSkuUnique = async (sku: string): Promise<boolean> => {
+    if (!dealerId || !sku.trim()) return true;
+    let query = supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("dealer_id", dealerId)
+      .eq("sku", sku.trim());
+    if (productId) query = query.neq("id", productId);
+    const { count } = await query;
+    return (count ?? 0) === 0;
+  };
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
@@ -89,9 +105,20 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
   const category = form.watch("category");
   const unitType = form.watch("unit_type");
 
+  const handleSubmitWithValidation = async (values: ProductFormValues) => {
+    setSkuError(null);
+    const isUnique = await checkSkuUnique(values.sku);
+    if (!isUnique) {
+      setSkuError("This product code already exists. Please use a unique code.");
+      form.setError("sku", { message: "This product code already exists" });
+      return;
+    }
+    await onSubmit(values);
+  };
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(handleSubmitWithValidation)} className="space-y-6">
         <p className="text-sm text-muted-foreground">
           Please fill in the information below. Fields marked with <span className="text-destructive">*</span> are required.
         </p>
@@ -125,7 +152,25 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
                     <FormItem>
                       <FormLabel>Product Code (SKU) <span className="text-destructive">*</span></FormLabel>
                       <div className="flex gap-2">
-                        <FormControl><Input placeholder="e.g. TIL-001" {...field} /></FormControl>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g. TIL-001"
+                            {...field}
+                            onBlur={async (e) => {
+                              field.onBlur();
+                              setSkuError(null);
+                              const val = e.target.value.trim();
+                              if (val && dealerId) {
+                                const isUnique = await checkSkuUnique(val);
+                                if (!isUnique) {
+                                  const msg = "This product code already exists";
+                                  setSkuError(msg);
+                                  form.setError("sku", { message: msg });
+                                }
+                              }
+                            }}
+                          />
+                        </FormControl>
                         <Button
                           type="button"
                           variant="outline"
@@ -149,7 +194,7 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
                   name="brand"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Brand</FormLabel>
+                      <FormLabel>Brand <span className="text-destructive">*</span></FormLabel>
                       <FormControl><Input placeholder="e.g. DBL Ceramics" {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>

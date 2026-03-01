@@ -30,6 +30,9 @@ const CreateProductPage = ({ dealerId }: CreateProductPageProps) => {
         size: values.size || null,
         color: values.color || null,
         per_box_sft: values.per_box_sft ?? null,
+        material: (values as any).material || null,
+        weight: (values as any).weight || null,
+        warranty: (values as any).warranty || null,
       });
     },
     onSuccess: () => {
@@ -51,6 +54,7 @@ const CreateProductPage = ({ dealerId }: CreateProductPageProps) => {
       <ProductForm
         onSubmit={async (v) => { await mutation.mutateAsync(v); }}
         isLoading={mutation.isPending}
+        dealerId={dealerId}
       />
     </div>
   );
