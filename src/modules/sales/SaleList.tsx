@@ -12,16 +12,15 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Plus, Search, FileText, Truck, Pencil, Eye, RotateCcw,
-  Download, Copy, CreditCard, Package,
+  Plus, Search, Truck,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import CreateDeliveryDialog from "@/modules/deliveries/CreateDeliveryDialog";
+import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
+import SaleActionDropdown from "./SaleActionDropdown";
 
 interface SaleListProps {
   dealerId: string;
@@ -56,8 +55,52 @@ const SaleList = ({ dealerId }: SaleListProps) => {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deliverySale, setDeliverySale] = useState<any>(null);
+  const [deleteSale, setDeleteSale] = useState<any>(null);
   const { isDealerAdmin, profile } = useAuth();
   const queryClient = useQueryClient();
+
+  // Check which sales have deliveries
+  const { data: deliveryMap } = useQuery({
+    queryKey: ["sales-delivery-check", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("deliveries")
+        .select("sale_id")
+        .eq("dealer_id", dealerId);
+      const set = new Set<string>();
+      for (const d of data ?? []) if (d.sale_id) set.add(d.sale_id);
+      return set;
+    },
+    enabled: !!dealerId,
+  });
+
+  // Check which sales have challans
+  const { data: challanMap } = useQuery({
+    queryKey: ["sales-challan-check", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("challans")
+        .select("sale_id")
+        .eq("dealer_id", dealerId);
+      const set = new Set<string>();
+      for (const d of data ?? []) set.add(d.sale_id);
+      return set;
+    },
+    enabled: !!dealerId,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("sales").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      toast.success("Sale deleted");
+      setDeleteSale(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   // Fetch sale items for the delivery dialog
   const { data: deliverySaleData } = useQuery({
@@ -212,37 +255,39 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                         </TableCell>
                       )}
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-8 px-3 text-xs">
-                              Actions
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => navigate(`/sales/${s.id}/invoice`)}>
-                              <Eye className="mr-2 h-4 w-4" /> Sale Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate(`/sales/${s.id}/edit`)}>
-                              <Pencil className="mr-2 h-4 w-4" /> Edit Sale
-                            </DropdownMenuItem>
-                            {isChallan && ["draft", "challan_created", "delivered", "partial_invoiced"].includes(s.sale_status) && (
-                              <DropdownMenuItem onClick={() => navigate(`/sales/${s.id}/challan`)}>
-                                <Package className="mr-2 h-4 w-4" /> Packing List
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => setDeliverySale(s)}>
-                              <Truck className="mr-2 h-4 w-4" /> Add Delivery
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate(`/sales/${s.id}/invoice`)}>
-                              <Download className="mr-2 h-4 w-4" /> Download as PDF
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => navigate(`/sales-returns/new`)}>
-                              <RotateCcw className="mr-2 h-4 w-4" /> Return Sale
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <SaleActionDropdown
+                          saleType={s.sale_type}
+                          saleStatus={s.sale_status}
+                          hasPaid={paid > 0}
+                          hasDelivery={deliveryMap?.has(s.id) ?? false}
+                          hasChallan={challanMap?.has(s.id) ?? false}
+                          onViewDetails={() => navigate(`/sales/${s.id}/invoice`)}
+                          onViewInvoice={() => navigate(`/sales/${s.id}/invoice`)}
+                          onViewChallan={() => navigate(`/sales/${s.id}/challan`)}
+                          onViewPayments={() => navigate(`/sales/${s.id}/invoice`)}
+                          onViewDeliveryStatus={() => navigate(`/deliveries`)}
+                          onAddPayment={() => navigate(`/sales/${s.id}/invoice`)}
+                          onViewPaymentHistory={() => navigate(`/sales/${s.id}/invoice`)}
+                          onPrintReceipt={() => navigate(`/sales/${s.id}/invoice`)}
+                          onSendReminder={() => navigate(`/sales/${s.id}/invoice`)}
+                          onAddDelivery={() => setDeliverySale(s)}
+                          onViewDelivery={() => navigate(`/deliveries`)}
+                          onMarkDelivered={() => {
+                            toast.info("Use delivery management to update status");
+                            navigate(`/deliveries`);
+                          }}
+                          onPrintChallan={() => navigate(`/sales/${s.id}/challan`)}
+                          onDownloadInvoice={() => navigate(`/sales/${s.id}/invoice`)}
+                          onDownloadChallan={() => navigate(`/sales/${s.id}/challan`)}
+                          onEmailInvoice={() => toast.info("Email invoice from the invoice page")}
+                          onEditSale={() => navigate(`/sales/${s.id}/edit`)}
+                          onConvertToInvoice={() => navigate(`/sales/${s.id}/invoice`)}
+                          onDuplicateSale={() => navigate(`/sales/new`)}
+                          onReturnFull={() => navigate(`/sales-returns/new`)}
+                          onReturnPartial={() => navigate(`/sales-returns/new`)}
+                          onCancelSale={() => toast.info("Cancel via edit page")}
+                          onDeleteSale={() => setDeleteSale(s)}
+                        />
                       </TableCell>
                     </TableRow>
                   );
@@ -261,6 +306,14 @@ const SaleList = ({ dealerId }: SaleListProps) => {
         onClose={() => setDeliverySale(null)}
         sale={deliverySaleData ?? deliverySale}
         dealerId={dealerId}
+      />
+
+      <DeleteConfirmDialog
+        open={!!deleteSale}
+        onOpenChange={(open) => { if (!open) setDeleteSale(null); }}
+        title="Delete Sale"
+        description={`Are you sure you want to permanently delete sale "${deleteSale?.invoice_number ?? ""}"? This action cannot be undone.`}
+        onConfirm={() => { if (deleteSale) deleteMutation.mutate(deleteSale.id); }}
       />
     </div>
   );
