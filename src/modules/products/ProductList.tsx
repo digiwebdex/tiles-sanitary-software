@@ -220,8 +220,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   <TableHead>Name</TableHead>
                   <TableHead>Brand</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Avg Cost</TableHead>
-                  <TableHead className="text-right">Last Cost</TableHead>
+                   <TableHead className="text-right">Avg Cost</TableHead>
+                   <TableHead className="text-right">Last Cost</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>Unit</TableHead>
@@ -234,32 +234,56 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                 {products.map((p) => {
                   const stockInfo = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0 };
                   const qty = stockInfo.total;
-                  const cost = costData?.get(p.id) ?? 0;
-                  const reorder = p.reorder_level ?? 0;
-                  const lastCost = lastCostData?.get(p.id) ?? 0;
+                   const costPerUnit = Math.max(0, costData?.get(p.id) ?? 0);
+                   const reorder = p.reorder_level ?? 0;
+                   const lastCost = Math.max(0, lastCostData?.get(p.id) ?? 0);
+                   const isBoxSft = p.unit_type === "box_sft";
+                   const perBoxSft = Number(p.per_box_sft) || 0;
+                   const boxCost = isBoxSft && perBoxSft > 0 ? costPerUnit * perBoxSft : 0;
+                   const lastBoxCost = isBoxSft && perBoxSft > 0 ? lastCost * perBoxSft : 0;
 
-                  return (
-                    <TableRow key={p.id} className="cursor-pointer" onClick={() => setDetailProduct(p)}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selected.has(p.id)}
-                          onCheckedChange={() => toggleSelect(p.id)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{p.sku}</TableCell>
-                      <TableCell>
-                        <div>
-                          <span>{p.name}</span>
-                          {p.size && <span className="text-xs text-muted-foreground ml-1">(Size: {p.size})</span>}
-                          {p.per_box_sft && <span className="text-xs text-muted-foreground ml-1">(Box: {p.per_box_sft}sft)</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell>{p.brand || "—"}</TableCell>
-                      <TableCell className="capitalize">{p.category}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(cost)}</TableCell>
-                      <TableCell className="text-right">{lastCost > 0 ? formatCurrency(lastCost) : "—"}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
+                   return (
+                     <TableRow key={p.id} className="cursor-pointer" onClick={() => setDetailProduct(p)}>
+                       <TableCell>
+                         <Checkbox
+                           checked={selected.has(p.id)}
+                           onCheckedChange={() => toggleSelect(p.id)}
+                           onClick={(e) => e.stopPropagation()}
+                         />
+                       </TableCell>
+                       <TableCell className="font-mono text-sm">{p.sku}</TableCell>
+                       <TableCell>
+                         <div>
+                           <span>{p.name}</span>
+                           {p.size && <span className="text-xs text-muted-foreground ml-1">(Size: {p.size})</span>}
+                           {isBoxSft && perBoxSft > 0 && <span className="text-xs text-muted-foreground ml-1">(Box: {perBoxSft}sft)</span>}
+                         </div>
+                       </TableCell>
+                       <TableCell>{p.brand || "—"}</TableCell>
+                       <TableCell className="capitalize">{p.category}</TableCell>
+                       <TableCell className="text-right">
+                         {isBoxSft && perBoxSft > 0 ? (
+                           <div>
+                             <div>{formatCurrency(costPerUnit)}<span className="text-xs text-muted-foreground">/sft</span></div>
+                             <div className="text-xs text-muted-foreground">{formatCurrency(boxCost)}/box</div>
+                           </div>
+                         ) : (
+                           <span>{formatCurrency(costPerUnit)}</span>
+                         )}
+                       </TableCell>
+                       <TableCell className="text-right">
+                         {lastCost > 0 ? (
+                           isBoxSft && perBoxSft > 0 ? (
+                             <div>
+                               <div>{formatCurrency(lastCost)}<span className="text-xs text-muted-foreground">/sft</span></div>
+                               <div className="text-xs text-muted-foreground">{formatCurrency(lastBoxCost)}/box</div>
+                             </div>
+                           ) : (
+                             <span>{formatCurrency(lastCost)}</span>
+                           )
+                         ) : "—"}
+                       </TableCell>
+                       <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
                       <TableCell className={`text-right font-medium ${qty < 0 ? "text-destructive" : ""}`}>
                         {p.unit_type === "box_sft" ? (
                           <div>
