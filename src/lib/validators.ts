@@ -23,6 +23,7 @@ export const createProductServiceSchema = z.object({
   unit_type: z.enum(["box_sft", "piece"]).default("box_sft"),
   per_box_sft: z.coerce.number().min(0).nullable().optional(),
   default_sale_rate: z.coerce.number().positive("Sale rate must be greater than 0"),
+  cost_price: z.coerce.number().min(0, "Cost price cannot be negative").default(0),
   reorder_level: z.coerce.number().int().min(0, "Reorder level cannot be negative").default(0),
   brand: safeText(100).pipe(z.string().min(1, "Brand is required")),
   color: optionalSafeText(50),

@@ -203,6 +203,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         unit_type: p.unit_type,
         per_box_sft: p.per_box_sft,
         default_sale_rate: p.default_sale_rate,
+        cost_price: p.cost_price,
         reorder_level: p.reorder_level,
         brand: p.brand,
         size: p.size,

@@ -816,6 +816,7 @@ export type Database = {
           brand: string | null
           category: Database["public"]["Enums"]["product_category"]
           color: string | null
+          cost_price: number
           created_at: string
           dealer_id: string
           default_sale_rate: number
@@ -836,6 +837,7 @@ export type Database = {
           brand?: string | null
           category: Database["public"]["Enums"]["product_category"]
           color?: string | null
+          cost_price?: number
           created_at?: string
           dealer_id: string
           default_sale_rate?: number
@@ -856,6 +858,7 @@ export type Database = {
           brand?: string | null
           category?: Database["public"]["Enums"]["product_category"]
           color?: string | null
+          cost_price?: number
           created_at?: string
           dealer_id?: string
           default_sale_rate?: number

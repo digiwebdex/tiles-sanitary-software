@@ -92,6 +92,7 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
       color: "",
       unit_type: "box_sft",
       per_box_sft: null,
+      cost_price: 0,
       default_sale_rate: 0,
       reorder_level: 0,
       active: true,
@@ -365,6 +366,19 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="cost_price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product Cost Price</FormLabel>
+                      <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} /></FormControl>
+                      <FormDescription>Purchase/cost price per unit</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="default_sale_rate"
