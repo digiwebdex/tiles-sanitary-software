@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import {
   Plus, Search, Pencil, AlertTriangle, Barcode, Printer,
   MoreHorizontal, Eye, Copy, Trash2, ShoppingCart, TrendingUp,
-  Package, ImageIcon, History,
+  Package, History, ArrowLeftRight,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BarcodePrintDialog from "./BarcodePrintDialog";
@@ -27,6 +27,7 @@ import BrokenStockDialog from "./BrokenStockDialog";
 import PurchaseHistoryDialog from "./PurchaseHistoryDialog";
 import SalesHistoryDialog from "./SalesHistoryDialog";
 import StockAdjustDialog from "./StockAdjustDialog";
+import StockMovementDialog from "./StockMovementDialog";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 
 interface ProductListProps {
@@ -47,6 +48,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const [salesHistoryProduct, setSalesHistoryProduct] = useState<typeof products[0] | null>(null);
   const [adjustStockProduct, setAdjustStockProduct] = useState<typeof products[0] | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<typeof products[0] | null>(null);
+  const [movementProduct, setMovementProduct] = useState<typeof products[0] | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -393,6 +395,9 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                             <DropdownMenuSeparator />
 
                             {/* Stock Actions */}
+                            <DropdownMenuItem onClick={() => setMovementProduct(p)}>
+                              <ArrowLeftRight className="mr-2 h-4 w-4" /> Stock Movement
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setAdjustStockProduct(p)}>
                               <Package className="mr-2 h-4 w-4" /> Adjust Stock
                             </DropdownMenuItem>
@@ -514,6 +519,15 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         title="Delete Product"
         description={`Are you sure you want to permanently delete "${deleteProduct?.name}"? This action cannot be undone.`}
         onConfirm={() => { if (deleteProduct) deleteMutation.mutate(deleteProduct.id); }}
+      />
+
+      <StockMovementDialog
+        open={!!movementProduct}
+        onOpenChange={(open) => { if (!open) setMovementProduct(null); }}
+        productId={movementProduct?.id ?? null}
+        productName={movementProduct?.name ?? ""}
+        dealerId={dealerId}
+        unitType={movementProduct?.unit_type ?? "box_sft"}
       />
     </div>
   );
