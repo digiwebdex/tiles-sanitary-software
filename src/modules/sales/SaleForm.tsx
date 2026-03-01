@@ -25,9 +25,10 @@ interface SaleFormProps {
   isLoading?: boolean;
   defaultValues?: Partial<SaleFormValues>;
   submitLabel?: string;
+  priceLocked?: boolean;
 }
 
-const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabel }: SaleFormProps) => {
+const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabel, priceLocked }: SaleFormProps) => {
   const { user, isDealerAdmin } = useAuth();
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
 
@@ -269,6 +270,13 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
           </CardContent>
         </Card>
 
+        {/* Payment Lock Warning */}
+        {priceLocked && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive font-medium">
+            🔒 Price editing is locked because a payment has been recorded against this sale. Only notes and non-financial fields can be changed.
+          </div>
+        )}
+
         {/* Order Items */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -278,6 +286,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
               variant="outline"
               size="sm"
               onClick={() => append({ product_id: "", quantity: 0, sale_rate: 0 })}
+              disabled={priceLocked}
             >
               <Plus className="mr-1 h-3.5 w-3.5" /> Add Item
             </Button>
@@ -388,6 +397,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
                             step="0.01"
                             placeholder={selectedProduct?.unit_type === "box_sft" ? "Box qty" : "Qty"}
                             className="h-8 text-sm text-center"
+                            disabled={priceLocked}
                             {...f}
                           />
                         </FormControl>
@@ -410,7 +420,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
                     render={({ field: f }) => (
                       <FormItem className="space-y-0">
                         <FormControl>
-                          <Input type="number" step="0.01" placeholder="Rate" className="h-8 text-sm text-right" {...f} />
+                          <Input type="number" step="0.01" placeholder="Rate" className="h-8 text-sm text-right" disabled={priceLocked} {...f} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -425,7 +435,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
 
                 {/* Remove */}
                 <div className="col-span-1 flex justify-center">
-                  {fields.length > 1 && (
+                  {fields.length > 1 && !priceLocked && (
                     <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove(idx)}>
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </Button>
@@ -446,7 +456,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Order Discount (৳)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                    <FormControl><Input type="number" step="0.01" disabled={priceLocked} {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

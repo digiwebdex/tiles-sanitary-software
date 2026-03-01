@@ -84,6 +84,7 @@ const EditSalePage = () => {
         isLoading={mutation.isPending}
         defaultValues={defaultValues}
         submitLabel="Update Invoice"
+        priceLocked={Number(sale.paid_amount) > 0}
       />
     </div>
   );
