@@ -46,8 +46,9 @@ const ProductActionDropdown = (props: ProductActionHandlers) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="icon" variant="ghost" className="h-8 w-8">
+        <Button variant="outline" size="sm" className="h-8 gap-1.5">
           <MoreHorizontal className="h-4 w-4" />
+          <span>Actions</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56 max-h-[70vh] overflow-y-auto">
