@@ -271,8 +271,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   <TableHead className="text-right">Last Cost</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead className="w-[180px] min-w-[180px] text-center sticky right-0 bg-background z-10">Actions</TableHead>
+                  <TableHead className="min-w-[60px]">Unit</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] text-center sticky right-0 bg-background z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -340,8 +340,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                           <span>{stockInfo.piece} Pcs</span>
                         )}
                       </TableCell>
-                      <TableCell>{p.unit_type === "box_sft" ? "Sft" : "Piece"}</TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()} className="sticky right-0 bg-background z-10">
+                      <TableCell className="min-w-[60px]">{p.unit_type === "box_sft" ? "Sft" : "Piece"}</TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()} className="sticky right-0 bg-background z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">
                         <ProductActionDropdown
                           onViewDetails={() => setDetailProduct(p)}
                           onEdit={() => navigate(`/products/${p.id}/edit`)}
