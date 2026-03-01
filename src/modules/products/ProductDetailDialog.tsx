@@ -61,8 +61,14 @@ const ProductDetailDialog = ({
   if (!product) return null;
 
   const unitLabel = product.unit_type === "box_sft" ? "Square Feet (Sft)" : "Piece";
+  const isBoxSft = product.unit_type === "box_sft";
+  const perBoxSft = Number(product.per_box_sft) || 0;
+  const safeCost = Math.max(0, cost);
+  const safeLast = Math.max(0, lastCost ?? 0);
+  const boxCost = isBoxSft && perBoxSft > 0 ? safeCost * perBoxSft : 0;
+  const lastBoxCost = isBoxSft && perBoxSft > 0 ? safeLast * perBoxSft : 0;
 
-  const details = [
+  const details: { label: string; value: string }[] = [
     { label: "Name", value: product.name },
     { label: "Code", value: product.sku },
     { label: "Brand", value: product.brand || "—" },
@@ -70,16 +76,28 @@ const ProductDetailDialog = ({
     { label: "Unit", value: unitLabel },
     { label: "Size", value: product.size || "—" },
     { label: "Color", value: product.color || "—" },
-    { label: "Avg Cost", value: formatCurrency(cost) },
-    { label: "Last Cost", value: lastCost && lastCost > 0 ? formatCurrency(lastCost) : "—" },
+  ];
+
+  if (isBoxSft && perBoxSft > 0) {
+    details.push({ label: "Per Box (Sft)", value: String(perBoxSft) });
+    details.push({ label: "Avg Cost/Sft", value: formatCurrency(safeCost) });
+    details.push({ label: "Avg Cost/Box", value: formatCurrency(boxCost) });
+    if (safeLast > 0) {
+      details.push({ label: "Last Cost/Sft", value: formatCurrency(safeLast) });
+      details.push({ label: "Last Cost/Box", value: formatCurrency(lastBoxCost) });
+    }
+  } else {
+    details.push({ label: "Avg Cost", value: formatCurrency(safeCost) });
+    if (safeLast > 0) {
+      details.push({ label: "Last Cost", value: formatCurrency(safeLast) });
+    }
+  }
+
+  details.push(
     { label: "Price", value: formatCurrency(product.default_sale_rate) },
     { label: "Alert Qty", value: product.reorder_level > 0 ? String(product.reorder_level) : "—" },
     { label: "Status", value: product.active ? "Active" : "Inactive" },
-  ];
-
-  if (product.unit_type === "box_sft" && product.per_box_sft) {
-    details.splice(5, 0, { label: "Per Box (Sft)", value: String(product.per_box_sft) });
-  }
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -111,28 +129,29 @@ const ProductDetailDialog = ({
           </Table>
         </div>
 
-        {/* Stock Info */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-muted-foreground uppercase">Stock</h4>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Average Cost</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className={`font-medium ${quantity < 0 ? "text-destructive" : ""}`}>
-                    {quantity.toFixed(2)}
-                  </TableCell>
-                  <TableCell>{formatCurrency(cost)}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </div>
+         <div className="space-y-2">
+           <h4 className="text-sm font-semibold text-muted-foreground uppercase">Stock</h4>
+           <div className="rounded-md border">
+             <Table>
+               <TableHeader>
+                 <TableRow>
+                   <TableHead>Quantity</TableHead>
+                   <TableHead>{isBoxSft ? "Avg Cost/Sft" : "Avg Cost"}</TableHead>
+                   {isBoxSft && perBoxSft > 0 && <TableHead>Avg Cost/Box</TableHead>}
+                 </TableRow>
+               </TableHeader>
+               <TableBody>
+                 <TableRow>
+                   <TableCell className={`font-medium ${quantity < 0 ? "text-destructive" : ""}`}>
+                     {quantity.toFixed(2)}
+                   </TableCell>
+                   <TableCell>{formatCurrency(safeCost)}</TableCell>
+                   {isBoxSft && perBoxSft > 0 && <TableCell>{formatCurrency(boxCost)}</TableCell>}
+                 </TableRow>
+               </TableBody>
+             </Table>
+           </div>
+         </div>
 
         {/* Action Buttons */}
         <div className="flex gap-2 pt-2">

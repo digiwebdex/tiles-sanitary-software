@@ -378,21 +378,33 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
                   )}
                 />
 
-                {lastPurchaseCost && (
-                  <div className="rounded-md border bg-muted/50 p-3 space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">Last Purchase Cost</p>
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <span className="text-xs text-muted-foreground">Rate: </span>
-                        <span className="text-sm font-semibold text-foreground">{formatCurrency(lastPurchaseCost.purchase_rate)}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs text-muted-foreground">Landed: </span>
-                        <span className="text-sm font-semibold text-primary">{formatCurrency(lastPurchaseCost.landed_cost)}</span>
+                {lastPurchaseCost && (() => {
+                  const isBoxSft = unitType === "box_sft";
+                  const perBoxSft = Number(form.getValues("per_box_sft")) || 0;
+                  const landedPerBox = isBoxSft && perBoxSft > 0 ? lastPurchaseCost.landed_cost * perBoxSft : 0;
+
+                  return (
+                    <div className="rounded-md border bg-muted/50 p-3 space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase">Last Purchase Cost</p>
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <div>
+                          <span className="text-xs text-muted-foreground">Rate: </span>
+                          <span className="text-sm font-semibold text-foreground">{formatCurrency(Math.max(0, lastPurchaseCost.purchase_rate))}</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-muted-foreground">Landed{isBoxSft ? "/Sft" : ""}: </span>
+                          <span className="text-sm font-semibold text-primary">{formatCurrency(Math.max(0, lastPurchaseCost.landed_cost))}</span>
+                        </div>
+                        {isBoxSft && perBoxSft > 0 && (
+                          <div>
+                            <span className="text-xs text-muted-foreground">Landed/Box: </span>
+                            <span className="text-sm font-semibold text-primary">{formatCurrency(Math.max(0, landedPerBox))}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </CardContent>
             </Card>
 
