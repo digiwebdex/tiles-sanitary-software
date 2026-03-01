@@ -29,6 +29,7 @@ import UpdateSalePriceDialog from "./UpdateSalePriceDialog";
 import UpdateCostPriceDialog from "./UpdateCostPriceDialog";
 import ChangeBarcodeDialog from "./ChangeBarcodeDialog";
 import SetReorderLevelDialog from "./SetReorderLevelDialog";
+import StockSummaryDialog from "./StockSummaryDialog";
 
 interface ProductListProps {
   dealerId: string;
@@ -53,6 +54,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const [costPriceProduct, setCostPriceProduct] = useState<typeof products[0] | null>(null);
   const [barcodeChangeProduct, setBarcodeChangeProduct] = useState<typeof products[0] | null>(null);
   const [reorderProduct, setReorderProduct] = useState<typeof products[0] | null>(null);
+  const [stockSummaryProduct, setStockSummaryProduct] = useState<typeof products[0] | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -363,6 +365,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <ProductActionDropdown
                           onViewDetails={() => setDetailProduct(p)}
+                          onViewStockSummary={() => setStockSummaryProduct(p)}
                           onViewStockMovement={() => setMovementProduct(p)}
                           onViewPurchaseHistory={() => setPurchaseHistoryProduct(p)}
                           onViewSalesHistory={() => setSalesHistoryProduct(p)}
@@ -518,6 +521,13 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         open={!!reorderProduct}
         onOpenChange={(open) => { if (!open) setReorderProduct(null); }}
         product={reorderProduct}
+      />
+
+      <StockSummaryDialog
+        open={!!stockSummaryProduct}
+        onOpenChange={(open) => { if (!open) setStockSummaryProduct(null); }}
+        product={stockSummaryProduct}
+        dealerId={dealerId}
       />
     </div>
   );

@@ -12,6 +12,7 @@ import {
 
 export interface ProductActionHandlers {
   onViewDetails: () => void;
+  onViewStockSummary: () => void;
   onViewStockMovement: () => void;
   onViewPurchaseHistory: () => void;
   onViewSalesHistory: () => void;
@@ -32,7 +33,7 @@ export interface ProductActionHandlers {
 
 const ProductActionDropdown = (props: ProductActionHandlers) => {
   const {
-    onViewDetails, onViewStockMovement, onViewPurchaseHistory, onViewSalesHistory,
+    onViewDetails, onViewStockSummary, onViewStockMovement, onViewPurchaseHistory, onViewSalesHistory,
     onEdit, onDuplicate, onUpdateSalePrice, onUpdateCostPrice, onChangeBarcode,
     onAdjustStock, onPrintBarcode, onToggleActive, onSetReorderLevel, onMarkBroken,
     onDelete, isActive, hasTx,
@@ -50,6 +51,9 @@ const ProductActionDropdown = (props: ProductActionHandlers) => {
         <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">🔎 View</DropdownMenuLabel>
         <DropdownMenuItem onClick={onViewDetails}>
           <Eye className="mr-2 h-4 w-4" /> Product Details
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onViewStockSummary}>
+          <BarChart3 className="mr-2 h-4 w-4" /> View Stock Summary
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onViewStockMovement}>
           <ArrowLeftRight className="mr-2 h-4 w-4" /> View Stock Movement
