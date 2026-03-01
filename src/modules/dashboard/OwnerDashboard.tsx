@@ -18,6 +18,7 @@ import {
 import {
   TrendingUp, Package, AlertTriangle, Receipt, Banknote,
   ShoppingCart, Wallet, Users, CreditCard, Clock, BarChart2, Layers, Truck,
+  Send, PackageCheck,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -141,6 +142,30 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         .order("created_at", { ascending: false })
         .limit(5);
       return data ?? [];
+    },
+    enabled: !!dealerId,
+  });
+
+  // Delivery summary from challans
+  const { data: deliverySummary } = useQuery({
+    queryKey: ["dashboard-delivery-summary", dealerId],
+    queryFn: async () => {
+      const today = new Date().toISOString().split("T")[0];
+      const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split("T")[0];
+
+      const { data: challans } = await supabase
+        .from("challans")
+        .select("id, delivery_status, challan_date, status")
+        .eq("dealer_id", dealerId)
+        .neq("status", "cancelled");
+
+      const all = challans ?? [];
+      const pending = all.filter((c: any) => c.delivery_status === "pending").length;
+      const dispatchedToday = all.filter((c: any) => c.delivery_status === "dispatched" && c.challan_date === today).length;
+      const deliveredToday = all.filter((c: any) => c.delivery_status === "delivered" && c.challan_date === today).length;
+      const late = all.filter((c: any) => c.delivery_status === "pending" && c.challan_date <= twoDaysAgo).length;
+
+      return { pending, dispatchedToday, deliveredToday, late };
     },
     enabled: !!dealerId,
   });
@@ -442,6 +467,50 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
           iconClass="text-primary"
           sub="At avg purchase rate"
         />
+      </Section>
+
+      {/* ── Section: Delivery Summary ── */}
+      <Section title="Delivery Summary">
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate("/challans")}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Pending Deliveries</CardTitle>
+            <Truck className="h-4 w-4 text-yellow-600" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-lg font-bold text-foreground">{deliverySummary?.pending ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Awaiting dispatch</p>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate("/challans")}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Dispatched Today</CardTitle>
+            <Send className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-lg font-bold text-foreground">{deliverySummary?.dispatchedToday ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Sent out today</p>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate("/challans")}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Delivered Today</CardTitle>
+            <PackageCheck className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-lg font-bold text-foreground">{deliverySummary?.deliveredToday ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Completed today</p>
+          </CardContent>
+        </Card>
+        <Card className={`cursor-pointer hover:border-primary/50 transition-colors ${(deliverySummary?.late ?? 0) > 0 ? "border-destructive/40 bg-destructive/5" : ""}`} onClick={() => navigate("/challans")}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Late Deliveries</CardTitle>
+            <Clock className={`h-4 w-4 ${(deliverySummary?.late ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}`} />
+          </CardHeader>
+          <CardContent>
+            <p className={`text-lg font-bold ${(deliverySummary?.late ?? 0) > 0 ? "text-destructive" : "text-foreground"}`}>{deliverySummary?.late ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Pending &gt; 2 days</p>
+          </CardContent>
+        </Card>
       </Section>
 
       {/* ── Section 4: Alerts ── */}
