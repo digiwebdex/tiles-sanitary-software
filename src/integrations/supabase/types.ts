@@ -169,6 +169,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           dealer_id: string
+          delivery_status: string
           driver_name: string | null
           id: string
           notes: string | null
@@ -184,6 +185,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           dealer_id: string
+          delivery_status?: string
           driver_name?: string | null
           id?: string
           notes?: string | null
@@ -199,6 +201,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           dealer_id?: string
+          delivery_status?: string
           driver_name?: string | null
           id?: string
           notes?: string | null

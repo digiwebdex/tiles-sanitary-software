@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Search, Eye, EyeOff, FileText } from "lucide-react";
+import { Search, Eye, EyeOff, FileText, Truck, Send, PackageCheck } from "lucide-react";
 import { format } from "date-fns";
 
 const statusStyles: Record<string, string> = {
@@ -77,6 +77,7 @@ const ChallansPage = () => {
                 <TableHead>Invoice Ref</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Price</TableHead>
+                <TableHead>Delivery</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -102,6 +103,14 @@ const ChallansPage = () => {
                         : <><EyeOff className="h-3 w-3 mr-1 inline" />Hidden</>
                       }
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const ds = (c as any).delivery_status ?? "pending";
+                      const icon = ds === "delivered" ? <PackageCheck className="h-3 w-3 mr-1 inline" /> : ds === "dispatched" ? <Send className="h-3 w-3 mr-1 inline" /> : <Truck className="h-3 w-3 mr-1 inline" />;
+                      const cls = ds === "delivered" ? "bg-green-100 text-green-800 border-green-300" : ds === "dispatched" ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-yellow-100 text-yellow-800 border-yellow-300";
+                      return <Badge variant="outline" className={`text-xs ${cls}`}>{icon}{ds.charAt(0).toUpperCase() + ds.slice(1)}</Badge>;
+                    })()}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

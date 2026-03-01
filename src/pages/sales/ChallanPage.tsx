@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Printer, Truck, FileCheck, X, Layout, Eye, EyeOff, Pencil } from "lucide-react";
+import { ArrowLeft, Printer, Truck, FileCheck, X, Layout, Eye, EyeOff, Pencil, PackageCheck, Send } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -104,6 +104,18 @@ const ChallanPage = () => {
     onError: (e) => toast.error(e.message),
   });
 
+  const deliveryStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      challanService.updateDeliveryStatus(id, dealerId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["challan", challanId] });
+      queryClient.invalidateQueries({ queryKey: ["sale", saleId] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      toast.success("Delivery status updated");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const convertMutation = useMutation({
     mutationFn: () => challanService.convertToInvoice(saleId!, dealerId),
     onSuccess: () => {
@@ -178,6 +190,14 @@ const ChallanPage = () => {
   const customer = (sale as any).customers;
   const saleStatus = (sale as any).sale_status;
   const activeChallan = challans.find((c: any) => c.status !== "cancelled");
+  const deliveryStatus = (activeChallan as any)?.delivery_status ?? "pending";
+
+  const deliveryStatusColor: Record<string, string> = {
+    pending: "bg-yellow-100 text-yellow-800 border-yellow-300",
+    dispatched: "bg-blue-100 text-blue-800 border-blue-300",
+    delivered: "bg-green-100 text-green-800 border-green-300",
+    cancelled: "bg-red-100 text-red-800 border-red-300",
+  };
 
   const statusColor: Record<string, string> = {
     draft: "bg-yellow-100 text-yellow-800 border-yellow-300",
@@ -246,6 +266,13 @@ const ChallanPage = () => {
               {showPrices ? <><Eye className="h-3 w-3 mr-1" /> Price Visible</> : <><EyeOff className="h-3 w-3 mr-1" /> Price Hidden</>}
             </Badge>
           )}
+          {/* Delivery status badge */}
+          {activeChallan && (
+            <Badge variant="outline" className={deliveryStatusColor[deliveryStatus] ?? ""}>
+              <Truck className="h-3 w-3 mr-1" />
+              {deliveryStatus.charAt(0).toUpperCase() + deliveryStatus.slice(1)}
+            </Badge>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -287,12 +314,24 @@ const ChallanPage = () => {
               <Button variant="outline" size="sm" onClick={startEditing}>
                 <Pencil className="mr-1.5 h-4 w-4" /> Edit
               </Button>
+              {deliveryStatus === "pending" && (
+                <Button variant="outline" size="sm" onClick={() => deliveryStatusMutation.mutate({ id: activeChallan.id, status: "dispatched" })} disabled={deliveryStatusMutation.isPending}>
+                  <Send className="mr-1.5 h-4 w-4" /> Mark Dispatched
+                </Button>
+              )}
+              {(deliveryStatus === "pending" || deliveryStatus === "dispatched") && (
+                <Button variant="outline" size="sm" onClick={() => deliveryStatusMutation.mutate({ id: activeChallan.id, status: "delivered" })} disabled={deliveryStatusMutation.isPending}>
+                  <PackageCheck className="mr-1.5 h-4 w-4" /> Mark Delivered
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => deliverMutation.mutate(activeChallan.id)} disabled={deliverMutation.isPending}>
-                <Truck className="mr-1.5 h-4 w-4" /> Mark Delivered
+                <Truck className="mr-1.5 h-4 w-4" /> Mark Delivered (Legacy)
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => cancelMutation.mutate(activeChallan.id)} disabled={cancelMutation.isPending}>
-                <X className="mr-1.5 h-4 w-4" /> Cancel
-              </Button>
+              {deliveryStatus !== "delivered" && (
+                <Button variant="destructive" size="sm" onClick={() => cancelMutation.mutate(activeChallan.id)} disabled={cancelMutation.isPending}>
+                  <X className="mr-1.5 h-4 w-4" /> Cancel
+                </Button>
+              )}
             </>
           )}
           {activeChallan && (activeChallan as any).status === "delivered" && !isEditing && (
@@ -300,9 +339,11 @@ const ChallanPage = () => {
               <Button variant="outline" size="sm" onClick={startEditing}>
                 <Pencil className="mr-1.5 h-4 w-4" /> Edit
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => cancelMutation.mutate(activeChallan.id)} disabled={cancelMutation.isPending}>
-                <X className="mr-1.5 h-4 w-4" /> Cancel
-              </Button>
+              {deliveryStatus !== "delivered" && (
+                <Button variant="destructive" size="sm" onClick={() => cancelMutation.mutate(activeChallan.id)} disabled={cancelMutation.isPending}>
+                  <X className="mr-1.5 h-4 w-4" /> Cancel
+                </Button>
+              )}
             </>
           )}
           {isEditing && (

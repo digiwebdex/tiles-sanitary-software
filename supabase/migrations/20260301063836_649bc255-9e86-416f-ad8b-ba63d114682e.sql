@@ -1,0 +1,1 @@
+ALTER TABLE public.challans ADD COLUMN IF NOT EXISTS delivery_status text NOT NULL DEFAULT 'pending';

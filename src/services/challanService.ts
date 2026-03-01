@@ -96,6 +96,7 @@ export const challanService = {
         vehicle_no: input.vehicle_no || null,
         notes: input.notes || null,
         status: "pending",
+        delivery_status: "pending",
         created_by: input.created_by || null,
         show_price: input.show_price ?? false,
       } as any)
@@ -375,6 +376,10 @@ export const challanService = {
     if (!sale) throw new Error("Associated sale not found");
 
     const status = (challan as any).status;
+    const deliveryStatus = (challan as any).delivery_status;
+    if (deliveryStatus === "delivered") {
+      throw new Error("Cannot cancel a challan that has been delivered");
+    }
     if (status !== "pending" && status !== "delivered") {
       throw new Error("Cannot cancel this challan");
     }
@@ -403,6 +408,43 @@ export const challanService = {
       action: "challan_cancel",
       table_name: "challans",
       record_id: challanId,
+    });
+  },
+
+  /**
+   * Update delivery status on a challan
+   */
+  async updateDeliveryStatus(challanId: string, dealerId: string, newStatus: string) {
+    await assertDealerId(dealerId);
+
+    const { data: challan, error } = await supabase
+      .from("challans")
+      .select("*, sales(id, sale_status)")
+      .eq("id", challanId)
+      .eq("dealer_id", dealerId)
+      .single();
+    if (error || !challan) throw new Error("Challan not found");
+    if ((challan as any).status === "cancelled") throw new Error("Cannot update a cancelled challan");
+
+    await supabase
+      .from("challans")
+      .update({ delivery_status: newStatus } as any)
+      .eq("id", challanId);
+
+    // When delivered, also update sale_status
+    if (newStatus === "delivered") {
+      await supabase
+        .from("sales")
+        .update({ sale_status: "delivered" } as any)
+        .eq("id", (challan as any).sale_id);
+    }
+
+    await logAudit({
+      dealer_id: dealerId,
+      action: "challan_delivery_status_update",
+      table_name: "challans",
+      record_id: challanId,
+      new_data: { delivery_status: newStatus },
     });
   },
 };

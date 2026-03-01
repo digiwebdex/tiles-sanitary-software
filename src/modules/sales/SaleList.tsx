@@ -12,7 +12,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Plus, Search, Truck,
+  Plus, Search, Truck, Send, PackageCheck,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -70,6 +70,22 @@ const SaleList = ({ dealerId }: SaleListProps) => {
       const set = new Set<string>();
       for (const d of data ?? []) if (d.sale_id) set.add(d.sale_id);
       return set;
+    },
+    enabled: !!dealerId,
+  });
+
+  // Fetch challan delivery_status for each sale
+  const { data: challanDeliveryMap } = useQuery({
+    queryKey: ["sales-challan-delivery-status", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("challans")
+        .select("sale_id, delivery_status")
+        .eq("dealer_id", dealerId)
+        .neq("status", "cancelled");
+      const map = new Map<string, string>();
+      for (const c of data ?? []) map.set(c.sale_id, (c as any).delivery_status ?? "pending");
+      return map;
     },
     enabled: !!dealerId,
   });
@@ -174,6 +190,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead>Payment Status</TableHead>
+                  <TableHead>Delivery</TableHead>
                   {isDealerAdmin && (
                     <TableHead className="text-right">Profit</TableHead>
                   )}
@@ -231,6 +248,15 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                         >
                           {paymentStatusLabel(due, paid)}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const ds = challanDeliveryMap?.get(s.id);
+                          if (!ds) return <span className="text-muted-foreground text-xs">—</span>;
+                          const icon = ds === "delivered" ? <PackageCheck className="h-3 w-3 mr-1 inline" /> : ds === "dispatched" ? <Send className="h-3 w-3 mr-1 inline" /> : <Truck className="h-3 w-3 mr-1 inline" />;
+                          const cls = ds === "delivered" ? "bg-green-100 text-green-800 border-green-300" : ds === "dispatched" ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-yellow-100 text-yellow-800 border-yellow-300";
+                          return <Badge variant="outline" className={`text-xs ${cls}`}>{icon}{ds.charAt(0).toUpperCase() + ds.slice(1)}</Badge>;
+                        })()}
                       </TableCell>
                       {isDealerAdmin && (
                         <TableCell className={`text-right font-semibold ${Number(s.profit) >= 0 ? "text-primary" : "text-destructive"}`}>

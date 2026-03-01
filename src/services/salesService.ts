@@ -273,6 +273,7 @@ export const salesService = {
         challan_no: challanNo,
         challan_date: input.sale_date,
         status: "pending",
+        delivery_status: "pending",
         created_by: input.created_by || null,
         show_price: false,
       } as any);
