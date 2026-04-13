@@ -1,4 +1,6 @@
 import { useState } from "react";
+import BulkImportDialog from "@/modules/import/BulkImportDialog";
+import { supplierColumns, supplierSampleData, importSuppliers } from "@/modules/import/useImportConfigs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supplierService } from "@/services/supplierService";
@@ -14,7 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Pagination from "@/components/Pagination";
 import { toast } from "sonner";
-import { Plus, Search, Eye, Pencil, Copy, ToggleLeft, ToggleRight, ShoppingCart, BookOpen, Download } from "lucide-react";
+import { Plus, Search, Eye, Pencil, Copy, ToggleLeft, ToggleRight, ShoppingCart, BookOpen, Download, Upload } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";

@@ -348,6 +348,18 @@ const CustomerList = () => {
           )}
         </>
       )}
+      <BulkImportDialog
+        open={showImport}
+        onOpenChange={setShowImport}
+        title="Customers"
+        columns={customerColumns}
+        sampleData={customerSampleData}
+        onImport={async (rows, mode) => {
+          const result = await importCustomers(rows, mode, dealerId);
+          queryClient.invalidateQueries({ queryKey: ["customers"] });
+          return result;
+        }}
+      />
     </div>
   );
 };
