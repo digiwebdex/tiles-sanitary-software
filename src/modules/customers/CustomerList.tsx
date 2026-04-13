@@ -38,6 +38,20 @@ const TYPE_COLORS: Record<string, string> = {
   project: "outline",
 };
 
+function getAgingBucket(daysOverdue: number): string {
+  if (daysOverdue <= 30) return "current";
+  if (daysOverdue <= 60) return "30+";
+  if (daysOverdue <= 90) return "60+";
+  return "90+";
+}
+
+const AGING_BADGE: Record<string, { label: string; variant: string }> = {
+  current: { label: "Current", variant: "secondary" },
+  "30+": { label: "30+", variant: "outline" },
+  "60+": { label: "60+", variant: "default" },
+  "90+": { label: "90+", variant: "destructive" },
+};
+
 const CustomerList = () => {
   const dealerId = useDealerId();
   const navigate = useNavigate();
@@ -57,30 +71,42 @@ const CustomerList = () => {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const { data: ledgerSums = {} } = useQuery({
+  const { data: ledgerInfo = {} } = useQuery({
     queryKey: ["customer-due-balances", dealerId, customers.map((c) => c.id)],
     queryFn: async () => {
       if (!customers.length) return {};
       const ids = customers.map((c) => c.id);
-      const { data, error } = await supabase
-        .from("customer_ledger")
-        .select("customer_id, amount, type")
-        .eq("dealer_id", dealerId)
-        .in("customer_id", ids);
-      if (error) throw new Error(error.message);
+      const [ledgerRes, salesRes] = await Promise.all([
+        supabase.from("customer_ledger").select("customer_id, amount, type").eq("dealer_id", dealerId).in("customer_id", ids),
+        supabase.from("sales").select("customer_id, sale_date, due_amount").eq("dealer_id", dealerId).in("customer_id", ids).gt("due_amount", 0).order("sale_date", { ascending: true }),
+      ]);
+      if (ledgerRes.error) throw new Error(ledgerRes.error.message);
 
-      const sums: Record<string, number> = {};
-      for (const row of data ?? []) {
+      const sums: Record<string, { due: number; daysOverdue: number }> = {};
+      for (const row of ledgerRes.data ?? []) {
         const amt = Number(row.amount);
-        if (!sums[row.customer_id]) sums[row.customer_id] = 0;
-        if (row.type === "sale") sums[row.customer_id] += amt;
-        else if (row.type === "payment" || row.type === "refund") sums[row.customer_id] -= amt;
-        else if (row.type === "adjustment") sums[row.customer_id] += amt;
+        if (!sums[row.customer_id]) sums[row.customer_id] = { due: 0, daysOverdue: 0 };
+        if (row.type === "sale") sums[row.customer_id].due += amt;
+        else if (row.type === "payment" || row.type === "refund") sums[row.customer_id].due -= amt;
+        else if (row.type === "adjustment") sums[row.customer_id].due += amt;
+      }
+
+      const today = new Date();
+      const oldestMap = new Map<string, string>();
+      for (const s of salesRes.data ?? []) {
+        if (!oldestMap.has(s.customer_id)) oldestMap.set(s.customer_id, s.sale_date);
+      }
+      for (const [cid, date] of oldestMap) {
+        if (sums[cid]) {
+          sums[cid].daysOverdue = Math.max(0, Math.floor((today.getTime() - new Date(date).getTime()) / 86400000));
+        }
       }
       return sums;
     },
     enabled: customers.length > 0,
   });
+  const ledgerSums: Record<string, number> = {};
+  for (const [k, v] of Object.entries(ledgerInfo)) { ledgerSums[k] = (v as any).due; }
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: "active" | "inactive" }) =>
@@ -192,8 +218,9 @@ const CustomerList = () => {
                   <TableHead>Reference</TableHead>
                   <TableHead className="text-right">Opening Bal.</TableHead>
                   <TableHead className="text-right">Due Balance</TableHead>
-                  <TableHead>Credit</TableHead>
-                  <TableHead>Status</TableHead>
+                      <TableHead>Aging</TableHead>
+                      <TableHead>Credit</TableHead>
+                      <TableHead>Status</TableHead>
                   <TableHead className="w-24">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -224,6 +251,16 @@ const CustomerList = () => {
                         <span className={due > 0 ? "text-destructive font-semibold" : "text-muted-foreground"}>
                           {formatCurrency(due)}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const info = ledgerInfo[c.id] as any;
+                          const days = info?.daysOverdue ?? 0;
+                          const bucket = getAgingBucket(days);
+                          const badge = AGING_BADGE[bucket];
+                          if (due <= 0) return <span className="text-xs text-muted-foreground">—</span>;
+                          return <Badge variant={badge.variant as any} className="text-xs">{badge.label}</Badge>;
+                        })()}
                       </TableCell>
                       <TableCell>
                         {(c.credit_limit > 0 || c.max_overdue_days > 0) ? (
