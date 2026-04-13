@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
-  Plus, Search, AlertTriangle, Printer,
+  Plus, Search, AlertTriangle, Printer, Download,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BarcodePrintDialog from "./BarcodePrintDialog";
@@ -30,6 +30,8 @@ import UpdateCostPriceDialog from "./UpdateCostPriceDialog";
 import ChangeBarcodeDialog from "./ChangeBarcodeDialog";
 import SetReorderLevelDialog from "./SetReorderLevelDialog";
 import StockSummaryDialog from "./StockSummaryDialog";
+import { usePermissions } from "@/hooks/usePermissions";
+import { exportToExcel } from "@/lib/exportUtils";
 
 interface ProductListProps {
   dealerId: string;
@@ -38,6 +40,7 @@ interface ProductListProps {
 const PAGE_SIZE = 25;
 
 const ProductList = ({ dealerId }: ProductListProps) => {
+  const permissions = usePermissions();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -96,7 +99,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
       }
       return map;
     },
-    enabled: !!dealerId,
+    enabled: !!dealerId && permissions.canViewCostPrice,
   });
 
   const { data: lastCostData } = useQuery({
@@ -115,10 +118,9 @@ const ProductList = ({ dealerId }: ProductListProps) => {
       }
       return map;
     },
-    enabled: !!dealerId,
+    enabled: !!dealerId && permissions.canViewCostPrice,
   });
 
-  // Check which products have transaction history (for delete protection: purchase, sale, return)
   const { data: txProducts } = useQuery({
     queryKey: ["products-tx-check", dealerId],
     queryFn: async () => {
@@ -219,6 +221,48 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     }
   };
 
+  const handleExport = () => {
+    if (!permissions.canExportReports) {
+      toast.error("You don't have permission to export.");
+      return;
+    }
+    const exportData = products.map((p) => {
+      const si = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0 };
+      const avgCost = costData?.get(p.id) ?? 0;
+      return {
+        sku: p.sku,
+        name: p.name,
+        brand: p.brand || "",
+        category: p.category,
+        unitType: p.unit_type === "box_sft" ? "Box/Sft" : "Piece",
+        boxQty: si.box,
+        sftQty: si.sft,
+        pieceQty: si.piece,
+        saleRate: p.default_sale_rate,
+        ...(permissions.canViewCostPrice ? { avgCost, stockValue: avgCost * si.total } : {}),
+        reorderLevel: p.reorder_level,
+      };
+    });
+    const cols = [
+      { header: "SKU", key: "sku" },
+      { header: "Name", key: "name" },
+      { header: "Brand", key: "brand" },
+      { header: "Category", key: "category" },
+      { header: "Unit Type", key: "unitType" },
+      { header: "Box Qty", key: "boxQty", format: "number" as const },
+      { header: "SFT Qty", key: "sftQty", format: "number" as const },
+      { header: "Piece Qty", key: "pieceQty", format: "number" as const },
+      { header: "Sale Rate", key: "saleRate", format: "currency" as const },
+      ...(permissions.canViewCostPrice ? [
+        { header: "Avg Cost", key: "avgCost", format: "currency" as const },
+        { header: "Stock Value", key: "stockValue", format: "currency" as const },
+      ] : []),
+      { header: "Reorder Level", key: "reorderLevel", format: "number" as const },
+    ];
+    exportToExcel(exportData, cols, `products-${new Date().toISOString().split("T")[0]}`);
+    toast.success("Products exported");
+  };
+
   const barcodeProducts = barcodeSingle ? [barcodeSingle] : selectedProducts;
 
   return (
@@ -226,6 +270,11 @@ const ProductList = ({ dealerId }: ProductListProps) => {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">Products</h1>
         <div className="flex gap-2">
+          {permissions.canExportReports && (
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" /> Export
+            </Button>
+          )}
           {selected.size > 0 && (
             <Button variant="outline" onClick={openBulkBarcode}>
               <Printer className="mr-2 h-4 w-4" /> Print Barcodes ({selected.size})
@@ -250,7 +299,12 @@ const ProductList = ({ dealerId }: ProductListProps) => {
       {isLoading ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : products.length === 0 ? (
-        <p className="text-muted-foreground">No products found.</p>
+        <div className="text-center py-12 space-y-3">
+          <p className="text-muted-foreground">No products found.</p>
+          <Button onClick={() => navigate("/products/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Your First Product
+          </Button>
+        </div>
       ) : (
         <>
           <div className="rounded-md border overflow-x-auto">
@@ -267,8 +321,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   <TableHead>Name</TableHead>
                   <TableHead>Brand</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Avg Cost</TableHead>
-                  <TableHead className="text-right">Last Cost</TableHead>
+                  {permissions.canViewCostPrice && <TableHead className="text-right">Avg Cost</TableHead>}
+                  {permissions.canViewCostPrice && <TableHead className="text-right">Last Cost</TableHead>}
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="min-w-[60px]">Unit</TableHead>
@@ -307,28 +361,32 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                       </TableCell>
                       <TableCell>{p.brand || "—"}</TableCell>
                       <TableCell className="capitalize">{p.category}</TableCell>
-                      <TableCell className="text-right">
-                        {isBoxSft && perBoxSft > 0 ? (
-                          <div>
-                            <div>{formatCurrency(costPerUnit)}<span className="text-xs text-muted-foreground">/sft</span></div>
-                            <div className="text-xs text-muted-foreground">{formatCurrency(boxCost)}/box</div>
-                          </div>
-                        ) : (
-                          <span>{formatCurrency(costPerUnit)}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {lastCost > 0 ? (
-                          isBoxSft && perBoxSft > 0 ? (
+                      {permissions.canViewCostPrice && (
+                        <TableCell className="text-right">
+                          {isBoxSft && perBoxSft > 0 ? (
                             <div>
-                              <div>{formatCurrency(lastCost)}<span className="text-xs text-muted-foreground">/sft</span></div>
-                              <div className="text-xs text-muted-foreground">{formatCurrency(lastBoxCost)}/box</div>
+                              <div>{formatCurrency(costPerUnit)}<span className="text-xs text-muted-foreground">/sft</span></div>
+                              <div className="text-xs text-muted-foreground">{formatCurrency(boxCost)}/box</div>
                             </div>
                           ) : (
-                            <span>{formatCurrency(lastCost)}</span>
-                          )
-                        ) : "—"}
-                      </TableCell>
+                            <span>{formatCurrency(costPerUnit)}</span>
+                          )}
+                        </TableCell>
+                      )}
+                      {permissions.canViewCostPrice && (
+                        <TableCell className="text-right">
+                          {lastCost > 0 ? (
+                            isBoxSft && perBoxSft > 0 ? (
+                              <div>
+                                <div>{formatCurrency(lastCost)}<span className="text-xs text-muted-foreground">/sft</span></div>
+                                <div className="text-xs text-muted-foreground">{formatCurrency(lastBoxCost)}/box</div>
+                              </div>
+                            ) : (
+                              <span>{formatCurrency(lastCost)}</span>
+                            )
+                          ) : "—"}
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">{formatCurrency(p.default_sale_rate)}</TableCell>
                       <TableCell className={`text-right font-medium ${qty < 0 ? "text-destructive" : ""}`}>
                         {p.unit_type === "box_sft" ? (
@@ -347,7 +405,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                           onEdit={() => navigate(`/products/${p.id}/edit`)}
                           onDuplicate={() => handleDuplicate(p)}
                           onDelete={() => setDeleteProduct(p)}
-                          canDelete={!hasTx}
+                          canDelete={!hasTx && permissions.canDeleteRecords}
                         />
                       </TableCell>
                     </TableRow>
@@ -367,7 +425,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   );
                   return (
                     <TableRow className="bg-muted/50 font-semibold">
-                      <TableCell colSpan={8} className="text-right">Stock Totals:</TableCell>
+                      <TableCell colSpan={permissions.canViewCostPrice ? 8 : 6} className="text-right">Stock Totals:</TableCell>
                       <TableCell className="text-right">
                         <div className="space-y-0.5">
                           {totals.box > 0 && <div>{totals.box} Box ({totals.sft.toFixed(2)} Sft)</div>}
@@ -397,9 +455,10 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         open={!!detailProduct}
         onOpenChange={(open) => { if (!open) setDetailProduct(null); }}
         product={detailProduct}
-        cost={detailProduct ? (costData?.get(detailProduct.id) ?? 0) : 0}
-        lastCost={detailProduct ? (lastCostData?.get(detailProduct.id) ?? 0) : 0}
+        cost={detailProduct && permissions.canViewCostPrice ? (costData?.get(detailProduct.id) ?? 0) : 0}
+        lastCost={detailProduct && permissions.canViewCostPrice ? (lastCostData?.get(detailProduct.id) ?? 0) : 0}
         quantity={detailProduct ? (stockData?.get(detailProduct.id)?.total ?? 0) : 0}
+        showCost={permissions.canViewCostPrice}
         onEdit={() => { if (detailProduct) { setDetailProduct(null); navigate(`/products/${detailProduct.id}/edit`); } }}
         onPrintBarcode={() => { if (detailProduct) { setDetailProduct(null); openSingleBarcode(detailProduct); } }}
         onPurchase={() => { if (detailProduct) { setDetailProduct(null); navigate(`/purchases/new?product=${detailProduct.id}`); } }}
@@ -432,25 +491,29 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         dealerId={dealerId}
       />
 
-      <StockAdjustDialog
-        open={!!adjustStockProduct}
-        onOpenChange={(open) => { if (!open) setAdjustStockProduct(null); }}
-        product={adjustStockProduct}
-        dealerId={dealerId}
-        onSuccess={() => {
-          setAdjustStockProduct(null);
-          queryClient.invalidateQueries({ queryKey: ["products-stock-map"] });
-          queryClient.invalidateQueries({ queryKey: ["products-cost-map"] });
-        }}
-      />
+      {permissions.canAdjustStock && (
+        <StockAdjustDialog
+          open={!!adjustStockProduct}
+          onOpenChange={(open) => { if (!open) setAdjustStockProduct(null); }}
+          product={adjustStockProduct}
+          dealerId={dealerId}
+          onSuccess={() => {
+            setAdjustStockProduct(null);
+            queryClient.invalidateQueries({ queryKey: ["products-stock-map"] });
+            queryClient.invalidateQueries({ queryKey: ["products-cost-map"] });
+          }}
+        />
+      )}
 
-      <DeleteConfirmDialog
-        open={!!deleteProduct}
-        onOpenChange={(open) => { if (!open) setDeleteProduct(null); }}
-        title="Delete Product"
-        description={`Are you sure you want to permanently delete "${deleteProduct?.name}"? This action cannot be undone.`}
-        onConfirm={() => { if (deleteProduct) deleteMutation.mutate(deleteProduct.id); }}
-      />
+      {permissions.canDeleteRecords && (
+        <DeleteConfirmDialog
+          open={!!deleteProduct}
+          onOpenChange={(open) => { if (!open) setDeleteProduct(null); }}
+          title="Delete Product"
+          description={`Are you sure you want to permanently delete "${deleteProduct?.name}"? This action cannot be undone.`}
+          onConfirm={() => { if (deleteProduct) deleteMutation.mutate(deleteProduct.id); }}
+        />
+      )}
 
       <StockMovementDialog
         open={!!movementProduct}
@@ -461,20 +524,24 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         unitType={movementProduct?.unit_type ?? "box_sft"}
       />
 
-      <UpdateSalePriceDialog
-        open={!!salePriceProduct}
-        onOpenChange={(open) => { if (!open) setSalePriceProduct(null); }}
-        product={salePriceProduct}
-        dealerId={dealerId}
-      />
+      {permissions.canEditPrices && (
+        <UpdateSalePriceDialog
+          open={!!salePriceProduct}
+          onOpenChange={(open) => { if (!open) setSalePriceProduct(null); }}
+          product={salePriceProduct}
+          dealerId={dealerId}
+        />
+      )}
 
-      <UpdateCostPriceDialog
-        open={!!costPriceProduct}
-        onOpenChange={(open) => { if (!open) setCostPriceProduct(null); }}
-        product={costPriceProduct}
-        currentCost={costPriceProduct ? (costData?.get(costPriceProduct.id) ?? 0) : 0}
-        dealerId={dealerId}
-      />
+      {permissions.canEditPrices && (
+        <UpdateCostPriceDialog
+          open={!!costPriceProduct}
+          onOpenChange={(open) => { if (!open) setCostPriceProduct(null); }}
+          product={costPriceProduct}
+          currentCost={costPriceProduct ? (costData?.get(costPriceProduct.id) ?? 0) : 0}
+          dealerId={dealerId}
+        />
+      )}
 
       <ChangeBarcodeDialog
         open={!!barcodeChangeProduct}

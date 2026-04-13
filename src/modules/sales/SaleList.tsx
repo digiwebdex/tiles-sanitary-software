@@ -12,15 +12,16 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Plus, Search, Truck, Send, PackageCheck,
+  Plus, Search, Truck, Send, PackageCheck, Download,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import CreateDeliveryDialog from "@/modules/deliveries/CreateDeliveryDialog";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 import SaleActionDropdown from "./SaleActionDropdown";
+import { usePermissions } from "@/hooks/usePermissions";
+import { exportToExcel } from "@/lib/exportUtils";
 
 interface SaleListProps {
   dealerId: string;
@@ -56,10 +57,9 @@ const SaleList = ({ dealerId }: SaleListProps) => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deliverySale, setDeliverySale] = useState<any>(null);
   const [deleteSale, setDeleteSale] = useState<any>(null);
-  const { isDealerAdmin, profile } = useAuth();
+  const permissions = usePermissions();
   const queryClient = useQueryClient();
 
-  // Check which sales have deliveries
   const { data: deliveryMap } = useQuery({
     queryKey: ["sales-delivery-check", dealerId],
     queryFn: async () => {
@@ -74,7 +74,6 @@ const SaleList = ({ dealerId }: SaleListProps) => {
     enabled: !!dealerId,
   });
 
-  // Fetch challan delivery_status for each sale
   const { data: challanDeliveryMap } = useQuery({
     queryKey: ["sales-challan-delivery-status", dealerId],
     queryFn: async () => {
@@ -90,7 +89,6 @@ const SaleList = ({ dealerId }: SaleListProps) => {
     enabled: !!dealerId,
   });
 
-
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("sales").delete().eq("id", id);
@@ -104,12 +102,10 @@ const SaleList = ({ dealerId }: SaleListProps) => {
     onError: (e) => toast.error(e.message),
   });
 
-  // Fetch sale items for the delivery dialog
   const { data: deliverySaleData } = useQuery({
     queryKey: ["sale-for-delivery", deliverySale?.id],
     queryFn: async () => {
       if (!deliverySale?.id) return null;
-      const { supabase } = await import("@/integrations/supabase/client");
       const { data: sData, error } = await supabase
         .from("sales")
         .select("*, sale_items(*, products(name, sku, unit_type, per_box_sft)), customers(name, phone, address)")
@@ -147,13 +143,49 @@ const SaleList = ({ dealerId }: SaleListProps) => {
     }
   };
 
+  const handleExport = () => {
+    if (!permissions.canExportReports) {
+      toast.error("You don't have permission to export.");
+      return;
+    }
+    const exportData = sales.map((s: any) => ({
+      date: s.sale_date,
+      invoice: s.invoice_number ?? "",
+      customer: s.customers?.name ?? "",
+      status: s.sale_status,
+      total: Number(s.total_amount),
+      paid: Number(s.paid_amount),
+      due: Number(s.due_amount),
+      ...(permissions.canViewProfit ? { profit: Number(s.profit) } : {}),
+    }));
+    const cols = [
+      { header: "Date", key: "date" },
+      { header: "Invoice", key: "invoice" },
+      { header: "Customer", key: "customer" },
+      { header: "Status", key: "status" },
+      { header: "Total", key: "total", format: "currency" as const },
+      { header: "Paid", key: "paid", format: "currency" as const },
+      { header: "Due", key: "due", format: "currency" as const },
+      ...(permissions.canViewProfit ? [{ header: "Profit", key: "profit", format: "currency" as const }] : []),
+    ];
+    exportToExcel(exportData, cols, `sales-${new Date().toISOString().split("T")[0]}`);
+    toast.success("Sales exported");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">Sales</h1>
-        <Button onClick={() => navigate("/sales/new")}>
-          <Plus className="mr-2 h-4 w-4" /> Add Sale
-        </Button>
+        <div className="flex gap-2">
+          {permissions.canExportReports && (
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" /> Export
+            </Button>
+          )}
+          <Button onClick={() => navigate("/sales/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Sale
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -169,7 +201,12 @@ const SaleList = ({ dealerId }: SaleListProps) => {
       {isLoading ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : sales.length === 0 ? (
-        <p className="text-muted-foreground">No sales found.</p>
+        <div className="text-center py-12 space-y-3">
+          <p className="text-muted-foreground">No sales found.</p>
+          <Button onClick={() => navigate("/sales/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Create Your First Sale
+          </Button>
+        </div>
       ) : (
         <>
           <div className="rounded-md border overflow-x-auto">
@@ -191,7 +228,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead>Payment Status</TableHead>
                   <TableHead>Delivery</TableHead>
-                  {isDealerAdmin && (
+                  {permissions.canViewProfit && (
                     <TableHead className="text-right">Profit</TableHead>
                   )}
                   <TableHead className="w-24">Actions</TableHead>
@@ -258,7 +295,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                           return <Badge variant="outline" className={`text-xs ${cls}`}>{icon}{ds.charAt(0).toUpperCase() + ds.slice(1)}</Badge>;
                         })()}
                       </TableCell>
-                      {isDealerAdmin && (
+                      {permissions.canViewProfit && (
                         <TableCell className={`text-right font-semibold ${Number(s.profit) >= 0 ? "text-primary" : "text-destructive"}`}>
                           {formatCurrency(s.profit)}
                         </TableCell>
@@ -275,7 +312,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                           onViewDeliveryStatus={() => navigate(`/deliveries`)}
                           onAddDelivery={() => setDeliverySale(s)}
                           onEditSale={() => navigate(`/sales/${s.id}/edit`)}
-                          onDeleteSale={() => setDeleteSale(s)}
+                          onDeleteSale={permissions.canDeleteRecords ? () => setDeleteSale(s) : undefined}
                         />
                       </TableCell>
                     </TableRow>
@@ -297,13 +334,15 @@ const SaleList = ({ dealerId }: SaleListProps) => {
         dealerId={dealerId}
       />
 
-      <DeleteConfirmDialog
-        open={!!deleteSale}
-        onOpenChange={(open) => { if (!open) setDeleteSale(null); }}
-        title="Delete Sale"
-        description={`Are you sure you want to permanently delete sale "${deleteSale?.invoice_number ?? ""}"? This action cannot be undone.`}
-        onConfirm={() => { if (deleteSale) deleteMutation.mutate(deleteSale.id); }}
-      />
+      {permissions.canDeleteRecords && (
+        <DeleteConfirmDialog
+          open={!!deleteSale}
+          onOpenChange={(open) => { if (!open) setDeleteSale(null); }}
+          title="Delete Sale"
+          description={`Are you sure you want to permanently delete sale "${deleteSale?.invoice_number ?? ""}"? This action cannot be undone.`}
+          onConfirm={() => { if (deleteSale) deleteMutation.mutate(deleteSale.id); }}
+        />
+      )}
     </div>
   );
 };

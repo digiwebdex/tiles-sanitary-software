@@ -14,9 +14,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Pagination from "@/components/Pagination";
 import { toast } from "sonner";
-import { Plus, Search, Eye, Pencil, Copy, ToggleLeft, ToggleRight, ShoppingCart, BookOpen } from "lucide-react";
+import { Plus, Search, Eye, Pencil, Copy, ToggleLeft, ToggleRight, ShoppingCart, BookOpen, Download } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { usePermissions } from "@/hooks/usePermissions";
+import { exportToExcel, commonColumns } from "@/lib/exportUtils";
 
 const PAGE_SIZE = 25;
 
@@ -24,6 +26,7 @@ const SupplierList = () => {
   const dealerId = useDealerId();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const permissions = usePermissions();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -62,13 +65,41 @@ const SupplierList = () => {
     }
   };
 
+  const handleExport = () => {
+    if (!permissions.canExportReports) {
+      toast.error("You don't have permission to export.");
+      return;
+    }
+    exportToExcel(
+      suppliers.map((s) => ({
+        name: s.name,
+        phone: s.phone ?? "",
+        email: s.email ?? "",
+        contact_person: s.contact_person ?? "",
+        gstin: s.gstin ?? "",
+        address: s.address ?? "",
+        opening_balance: s.opening_balance,
+      })),
+      commonColumns.suppliers,
+      `suppliers-${new Date().toISOString().split("T")[0]}`
+    );
+    toast.success("Suppliers exported");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">Suppliers</h1>
-        <Button onClick={() => navigate("/suppliers/new")}>
-          <Plus className="mr-2 h-4 w-4" /> Add Supplier
-        </Button>
+        <div className="flex gap-2">
+          {permissions.canExportReports && (
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" /> Export
+            </Button>
+          )}
+          <Button onClick={() => navigate("/suppliers/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Supplier
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -84,7 +115,12 @@ const SupplierList = () => {
       {isLoading ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : suppliers.length === 0 ? (
-        <p className="text-muted-foreground">No suppliers found.</p>
+        <div className="text-center py-12 space-y-3">
+          <p className="text-muted-foreground">No suppliers found.</p>
+          <Button onClick={() => navigate("/suppliers/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Your First Supplier
+          </Button>
+        </div>
       ) : (
         <>
           <div className="rounded-md border overflow-x-auto">
@@ -147,9 +183,11 @@ const SupplierList = () => {
                           <DropdownMenuItem onClick={() => navigate(`/purchases/new`)}>
                             <ShoppingCart className="mr-2 h-4 w-4" /> Add Purchase
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => navigate(`/ledger?tab=supplier&supplier=${s.id}`)}>
-                            <BookOpen className="mr-2 h-4 w-4" /> View Ledger
-                          </DropdownMenuItem>
+                          {permissions.canViewSupplierLedger && (
+                            <DropdownMenuItem onClick={() => navigate(`/ledger?tab=supplier&supplier=${s.id}`)}>
+                              <BookOpen className="mr-2 h-4 w-4" /> View Ledger
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() =>

@@ -21,7 +21,7 @@ import {
   Send, PackageCheck,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useState } from "react";
 
 interface OwnerDashboardProps {
@@ -91,7 +91,7 @@ const Section = ({ title, children, cols = "grid-cols-2 md:grid-cols-4" }: Secti
 );
 
 const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
-  const { isDealerAdmin } = useAuth();
+  const permissions = usePermissions();
   const navigate = useNavigate();
   const [latestTab, setLatestTab] = useState("sales");
   
@@ -103,7 +103,6 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
     retry: 2,
   });
 
-  // Latest Five queries
   const { data: latestSales } = useQuery({
     queryKey: ["latest-sales", dealerId],
     queryFn: async () => {
@@ -146,7 +145,6 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
     enabled: !!dealerId,
   });
 
-  // Delivery summary from challans
   const { data: deliverySummary } = useQuery({
     queryKey: ["dashboard-delivery-summary", dealerId],
     queryFn: async () => {
@@ -166,6 +164,49 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
       const late = all.filter((c: any) => c.delivery_status === "pending" && c.challan_date <= twoDaysAgo).length;
 
       return { pending, dispatchedToday, deliveredToday, late };
+    },
+    enabled: !!dealerId,
+  });
+
+  // Top overdue customers for dashboard widget
+  const { data: topOverdue = [] } = useQuery({
+    queryKey: ["dashboard-top-overdue", dealerId],
+    queryFn: async () => {
+      const [custRes, ledgerRes] = await Promise.all([
+        supabase.from("customers").select("id, name, phone, max_overdue_days").eq("dealer_id", dealerId).eq("status", "active"),
+        supabase.from("customer_ledger").select("customer_id, amount, type, entry_date").eq("dealer_id", dealerId),
+      ]);
+      const custs = custRes.data ?? [];
+      const ledger = ledgerRes.data ?? [];
+      
+      const dueMap = new Map<string, { outstanding: number; oldestSaleDate: string | null }>();
+      for (const entry of ledger) {
+        const cur = dueMap.get(entry.customer_id) ?? { outstanding: 0, oldestSaleDate: null };
+        const amt = Number(entry.amount);
+        if (entry.type === "sale") {
+          cur.outstanding += amt;
+          if (!cur.oldestSaleDate || entry.entry_date < cur.oldestSaleDate) cur.oldestSaleDate = entry.entry_date;
+        } else if (entry.type === "payment" || entry.type === "refund") {
+          cur.outstanding -= amt;
+        } else if (entry.type === "adjustment") {
+          cur.outstanding += amt;
+        }
+        dueMap.set(entry.customer_id, cur);
+      }
+
+      const today = new Date();
+      return custs
+        .map((c) => {
+          const info = dueMap.get(c.id);
+          const outstanding = Math.round((info?.outstanding ?? 0) * 100) / 100;
+          const daysOverdue = info?.oldestSaleDate 
+            ? Math.floor((today.getTime() - new Date(info.oldestSaleDate).getTime()) / 86400000)
+            : 0;
+          return { id: c.id, name: c.name, phone: c.phone, outstanding, daysOverdue };
+        })
+        .filter((c) => c.outstanding > 0)
+        .sort((a, b) => b.outstanding - a.outstanding)
+        .slice(0, 5);
     },
     enabled: !!dealerId,
   });
@@ -224,7 +265,7 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         )}
       </div>
 
-      {/* ── Quick Links ── */}
+      {/* Quick Links */}
       <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
         {[
           { label: "Products", icon: Package, path: "/products" },
@@ -246,7 +287,7 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         ))}
       </div>
 
-      {/* ── Latest Five ── */}
+      {/* Latest Five */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Latest Entries</CardTitle>
@@ -373,21 +414,11 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         </CardContent>
       </Card>
 
-      {/* ── Section 1: Today ── */}
+      {/* Today */}
       <Section title="Today">
-        <KpiCard
-          title="Sales"
-          value={formatCurrency(data.todaySales)}
-          icon={Banknote}
-          iconClass="text-primary"
-        />
-        <KpiCard
-          title="Collection"
-          value={formatCurrency(data.todayCollection)}
-          icon={Wallet}
-          iconClass="text-primary"
-        />
-        {isDealerAdmin && (
+        <KpiCard title="Sales" value={formatCurrency(data.todaySales)} icon={Banknote} iconClass="text-primary" />
+        <KpiCard title="Collection" value={formatCurrency(data.todayCollection)} icon={Wallet} iconClass="text-primary" />
+        {permissions.canViewProfit && (
           <KpiCard
             title="Profit"
             value={formatCurrency(data.todayProfit)}
@@ -396,29 +427,14 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
             valueClass={data.todayProfit >= 0 ? "text-foreground" : "text-destructive"}
           />
         )}
-        <KpiCard
-          title="SFT Sold"
-          value={`${data.todaySftSold.toLocaleString()} sft`}
-          icon={BarChart2}
-          iconClass="text-primary"
-        />
+        <KpiCard title="SFT Sold" value={`${data.todaySftSold.toLocaleString()} sft`} icon={BarChart2} iconClass="text-primary" />
       </Section>
 
-      {/* ── Section 2: This Month ── */}
+      {/* This Month */}
       <Section title="This Month">
-        <KpiCard
-          title="Total Sales"
-          value={formatCurrency(data.monthlySales)}
-          icon={ShoppingCart}
-          iconClass="text-primary"
-        />
-        <KpiCard
-          title="Total Collection"
-          value={formatCurrency(data.monthlyCollection)}
-          icon={Wallet}
-          iconClass="text-primary"
-        />
-        {isDealerAdmin && (
+        <KpiCard title="Total Sales" value={formatCurrency(data.monthlySales)} icon={ShoppingCart} iconClass="text-primary" />
+        <KpiCard title="Total Collection" value={formatCurrency(data.monthlyCollection)} icon={Wallet} iconClass="text-primary" />
+        {permissions.canViewProfit && (
           <KpiCard
             title="Total Profit"
             value={formatCurrency(data.monthlyProfit)}
@@ -427,49 +443,36 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
             valueClass={data.monthlyProfit >= 0 ? "text-foreground" : "text-destructive"}
           />
         )}
-        <KpiCard
-          title="Total Purchase"
-          value={formatCurrency(data.monthlyPurchase)}
-          icon={Package}
-          iconClass="text-muted-foreground"
-        />
+        {permissions.canViewCostPrice && (
+          <KpiCard title="Total Purchase" value={formatCurrency(data.monthlyPurchase)} icon={Package} iconClass="text-muted-foreground" />
+        )}
       </Section>
 
-      {/* ── Section 3: Financial Summary ── */}
-      <Section title="Financial Summary">
-        <KpiCard
-          title="Total Receivable"
-          value={formatCurrency(data.totalCustomerDue)}
-          icon={Receipt}
-          iconClass={data.totalCustomerDue > 0 ? "text-destructive" : "text-primary"}
-          valueClass={data.totalCustomerDue > 0 ? "text-destructive" : "text-foreground"}
-          sub="Customer outstanding"
-        />
-        <KpiCard
-          title="Total Payable"
-          value={formatCurrency(data.totalSupplierPayable)}
-          icon={CreditCard}
-          iconClass={data.totalSupplierPayable > 0 ? "text-destructive" : "text-primary"}
-          valueClass={data.totalSupplierPayable > 0 ? "text-destructive" : "text-foreground"}
-          sub="Supplier outstanding"
-        />
-        <KpiCard
-          title="Cash in Hand"
-          value={formatCurrency(data.cashInHand)}
-          icon={Banknote}
-          iconClass="text-primary"
-          sub="From cash ledger"
-        />
-        <KpiCard
-          title="Inventory Value"
-          value={formatCurrency(data.totalStockValue)}
-          icon={Layers}
-          iconClass="text-primary"
-          sub="At avg purchase rate"
-        />
-      </Section>
+      {/* Financial Summary — owner only */}
+      {permissions.canViewFinancialDashboard && (
+        <Section title="Financial Summary">
+          <KpiCard
+            title="Total Receivable"
+            value={formatCurrency(data.totalCustomerDue)}
+            icon={Receipt}
+            iconClass={data.totalCustomerDue > 0 ? "text-destructive" : "text-primary"}
+            valueClass={data.totalCustomerDue > 0 ? "text-destructive" : "text-foreground"}
+            sub="Customer outstanding"
+          />
+          <KpiCard
+            title="Total Payable"
+            value={formatCurrency(data.totalSupplierPayable)}
+            icon={CreditCard}
+            iconClass={data.totalSupplierPayable > 0 ? "text-destructive" : "text-primary"}
+            valueClass={data.totalSupplierPayable > 0 ? "text-destructive" : "text-foreground"}
+            sub="Supplier outstanding"
+          />
+          <KpiCard title="Cash in Hand" value={formatCurrency(data.cashInHand)} icon={Banknote} iconClass="text-primary" sub="From cash ledger" />
+          <KpiCard title="Inventory Value" value={formatCurrency(data.totalStockValue)} icon={Layers} iconClass="text-primary" sub="At avg purchase rate" />
+        </Section>
+      )}
 
-      {/* ── Section: Delivery Summary ── */}
+      {/* Delivery Summary */}
       <Section title="Delivery Summary">
         <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate("/challans")}>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -513,7 +516,59 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         </Card>
       </Section>
 
-      {/* ── Section 4: Alerts ── */}
+      {/* Top Overdue Customers Widget */}
+      {topOverdue.length > 0 && (
+        <Card className="border-destructive/30">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Clock className="h-4 w-4 text-destructive" />
+                Top Overdue Customers
+                <Badge variant="destructive" className="text-xs">{topOverdue.length}</Badge>
+              </CardTitle>
+              <button
+                onClick={() => navigate("/collections")}
+                className="text-xs text-primary hover:underline"
+              >
+                View All →
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer</TableHead>
+                    <TableHead className="text-right">Outstanding</TableHead>
+                    <TableHead className="text-right">Days</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {topOverdue.map((c) => (
+                    <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate("/collections")}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{c.name}</p>
+                          {c.phone && <p className="text-xs text-muted-foreground">{c.phone}</p>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold text-destructive">{formatCurrency(c.outstanding)}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={c.daysOverdue > 90 ? "destructive" : c.daysOverdue > 30 ? "secondary" : "outline"} className="text-xs">
+                          {c.daysOverdue}d
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Alerts */}
       {totalAlerts > 0 && (
         <Section title="Alerts">
           {data.overdueCustomerCount > 0 && (
@@ -567,7 +622,7 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         </Section>
       )}
 
-      {/* ── Charts Row ── */}
+      {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -634,7 +689,7 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         </Card>
       </div>
 
-      {/* ── Sales Trend Line Chart ── */}
+      {/* Sales Trend */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Monthly Sales Trend</CardTitle>
@@ -652,9 +707,8 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         </CardContent>
       </Card>
 
-      {/* ── Top Customers & Product Performance ── */}
+      {/* Top Customers & Product Performance */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Top Customers */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Top 10 Customers (This Year)</CardTitle>
@@ -676,7 +730,6 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
           </CardContent>
         </Card>
 
-        {/* Product Performance Pie */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Top Products by Sales</CardTitle>
@@ -725,7 +778,7 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
         </Card>
       </div>
 
-      {/* ── Low Stock Alerts Dashboard ── */}
+      {/* Low Stock Alerts Dashboard */}
       {data.lowStockItems.length > 0 && (
         <Card className="border-destructive/30">
           <CardHeader className="pb-3">

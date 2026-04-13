@@ -31,13 +31,14 @@ interface ProductDetailDialogProps {
   cost: number;
   lastCost?: number;
   quantity: number;
+  showCost?: boolean;
   onEdit: () => void;
   onPrintBarcode: () => void;
   onPurchase?: () => void;
 }
 
 const ProductDetailDialog = ({
-  open, onOpenChange, product, cost, lastCost, quantity, onEdit, onPrintBarcode, onPurchase,
+  open, onOpenChange, product, cost, lastCost, quantity, showCost = true, onEdit, onPrintBarcode, onPurchase,
 }: ProductDetailDialogProps) => {
   const barcodeSvgRef = useRef<SVGSVGElement>(null);
 
@@ -80,16 +81,20 @@ const ProductDetailDialog = ({
 
   if (isBoxSft && perBoxSft > 0) {
     details.push({ label: "Per Box (Sft)", value: String(perBoxSft) });
-    details.push({ label: "Avg Cost/Sft", value: formatCurrency(safeCost) });
-    details.push({ label: "Avg Cost/Box", value: formatCurrency(boxCost) });
-    if (safeLast > 0) {
-      details.push({ label: "Last Cost/Sft", value: formatCurrency(safeLast) });
-      details.push({ label: "Last Cost/Box", value: formatCurrency(lastBoxCost) });
+    if (showCost) {
+      details.push({ label: "Avg Cost/Sft", value: formatCurrency(safeCost) });
+      details.push({ label: "Avg Cost/Box", value: formatCurrency(boxCost) });
+      if (safeLast > 0) {
+        details.push({ label: "Last Cost/Sft", value: formatCurrency(safeLast) });
+        details.push({ label: "Last Cost/Box", value: formatCurrency(lastBoxCost) });
+      }
     }
   } else {
-    details.push({ label: "Avg Cost", value: formatCurrency(safeCost) });
-    if (safeLast > 0) {
-      details.push({ label: "Last Cost", value: formatCurrency(safeLast) });
+    if (showCost) {
+      details.push({ label: "Avg Cost", value: formatCurrency(safeCost) });
+      if (safeLast > 0) {
+        details.push({ label: "Last Cost", value: formatCurrency(safeLast) });
+      }
     }
   }
 
@@ -106,7 +111,6 @@ const ProductDetailDialog = ({
           <DialogTitle className="text-lg uppercase">{product.name}</DialogTitle>
         </DialogHeader>
 
-        {/* Barcode */}
         <div className="flex justify-center py-2">
           <div className="bg-white rounded p-3 border">
             <svg ref={barcodeSvgRef} />
@@ -115,7 +119,6 @@ const ProductDetailDialog = ({
 
         <Separator />
 
-        {/* Product Details Table */}
         <div className="rounded-md border">
           <Table>
             <TableBody>
@@ -136,8 +139,8 @@ const ProductDetailDialog = ({
                <TableHeader>
                  <TableRow>
                    <TableHead>Quantity</TableHead>
-                   <TableHead>{isBoxSft ? "Avg Cost/Sft" : "Avg Cost"}</TableHead>
-                   {isBoxSft && perBoxSft > 0 && <TableHead>Avg Cost/Box</TableHead>}
+                   {showCost && <TableHead>{isBoxSft ? "Avg Cost/Sft" : "Avg Cost"}</TableHead>}
+                   {showCost && isBoxSft && perBoxSft > 0 && <TableHead>Avg Cost/Box</TableHead>}
                  </TableRow>
                </TableHeader>
                <TableBody>
@@ -145,15 +148,14 @@ const ProductDetailDialog = ({
                    <TableCell className={`font-medium ${quantity < 0 ? "text-destructive" : ""}`}>
                      {quantity.toFixed(2)}
                    </TableCell>
-                   <TableCell>{formatCurrency(safeCost)}</TableCell>
-                   {isBoxSft && perBoxSft > 0 && <TableCell>{formatCurrency(boxCost)}</TableCell>}
+                   {showCost && <TableCell>{formatCurrency(safeCost)}</TableCell>}
+                   {showCost && isBoxSft && perBoxSft > 0 && <TableCell>{formatCurrency(boxCost)}</TableCell>}
                  </TableRow>
                </TableBody>
              </Table>
            </div>
          </div>
 
-        {/* Action Buttons */}
         <div className="flex gap-2 pt-2">
           <Button variant="outline" className="flex-1" onClick={onPrintBarcode}>
             <Barcode className="mr-2 h-4 w-4" /> Barcode

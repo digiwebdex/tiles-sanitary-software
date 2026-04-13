@@ -14,9 +14,12 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Plus, Search, Eye, Pencil, Download, Mail, RotateCcw, Trash2, CreditCard, Barcode,
+  Plus, Search, Eye, Pencil, Download, RotateCcw, CreditCard, Barcode,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { usePermissions } from "@/hooks/usePermissions";
+import { exportToExcel } from "@/lib/exportUtils";
+import { toast } from "sonner";
 
 interface PurchaseListProps {
   dealerId: string;
@@ -26,6 +29,7 @@ const PAGE_SIZE = 25;
 
 const PurchaseList = ({ dealerId }: PurchaseListProps) => {
   const navigate = useNavigate();
+  const permissions = usePermissions();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -53,13 +57,43 @@ const PurchaseList = ({ dealerId }: PurchaseListProps) => {
     else setSelected(new Set(purchases.map((p: any) => p.id)));
   };
 
+  const handleExport = () => {
+    if (!permissions.canExportReports) {
+      toast.error("You don't have permission to export.");
+      return;
+    }
+    exportToExcel(
+      purchases.map((p: any) => ({
+        date: p.purchase_date,
+        invoice: p.invoice_number ?? "",
+        supplier: p.suppliers?.name ?? "",
+        total: Number(p.total_amount),
+      })),
+      [
+        { header: "Date", key: "date" },
+        { header: "Invoice", key: "invoice" },
+        { header: "Supplier", key: "supplier" },
+        { header: "Total", key: "total", format: "currency" as const },
+      ],
+      `purchases-${new Date().toISOString().split("T")[0]}`
+    );
+    toast.success("Purchases exported");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">Purchases</h1>
-        <Button onClick={() => navigate("/purchases/new")}>
-          <Plus className="mr-2 h-4 w-4" /> Add Purchase
-        </Button>
+        <div className="flex gap-2">
+          {permissions.canExportReports && (
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" /> Export
+            </Button>
+          )}
+          <Button onClick={() => navigate("/purchases/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Purchase
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -75,7 +109,12 @@ const PurchaseList = ({ dealerId }: PurchaseListProps) => {
       {isLoading ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : purchases.length === 0 ? (
-        <p className="text-muted-foreground">No purchases found.</p>
+        <div className="text-center py-12 space-y-3">
+          <p className="text-muted-foreground">No purchases found.</p>
+          <Button onClick={() => navigate("/purchases/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Record Your First Purchase
+          </Button>
+        </div>
       ) : (
         <>
           <div className="rounded-md border overflow-x-auto">
@@ -102,7 +141,6 @@ const PurchaseList = ({ dealerId }: PurchaseListProps) => {
               <TableBody>
                 {purchases.map((p: any) => {
                   const total = Number(p.total_amount) || 0;
-                  // Purchases don't track paid/due yet, so show full as balance
                   const paid = 0;
                   const balance = total - paid;
 

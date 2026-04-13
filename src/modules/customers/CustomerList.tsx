@@ -17,10 +17,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Pagination from "@/components/Pagination";
 import { toast } from "sonner";
-import { Plus, Search, Eye, Pencil, Copy, ToggleLeft, ToggleRight, BookOpen, ShoppingCart, CreditCard } from "lucide-react";
+import { Plus, Search, Eye, Pencil, Copy, ToggleLeft, ToggleRight, BookOpen, ShoppingCart, CreditCard, Download } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { CreditStatusBadge } from "@/components/CreditStatusBadge";
+import { usePermissions } from "@/hooks/usePermissions";
+import { exportToExcel } from "@/lib/exportUtils";
 
 const PAGE_SIZE = 25;
 
@@ -40,6 +42,7 @@ const CustomerList = () => {
   const dealerId = useDealerId();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const permissions = usePermissions();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -104,13 +107,42 @@ const CustomerList = () => {
     }
   };
 
+  const handleExport = () => {
+    if (!permissions.canExportReports) {
+      toast.error("You don't have permission to export.");
+      return;
+    }
+    const exportData = customers.map((c) => ({
+      name: c.name,
+      type: TYPE_LABELS[c.type] ?? c.type,
+      phone: c.phone ?? "",
+      email: c.email ?? "",
+      address: c.address ?? "",
+      credit_limit: c.credit_limit,
+      opening_balance: c.opening_balance,
+      due: ledgerSums[c.id] ?? 0,
+    }));
+    exportToExcel(exportData, [
+      ...commonColumns.customers,
+      { header: "Due Balance", key: "due", format: "currency" },
+    ], `customers-${new Date().toISOString().split("T")[0]}`);
+    toast.success("Customers exported");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">Customers</h1>
-        <Button onClick={() => navigate("/customers/new")}>
-          <Plus className="mr-2 h-4 w-4" /> Add Customer
-        </Button>
+        <div className="flex gap-2">
+          {permissions.canExportReports && (
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" /> Export
+            </Button>
+          )}
+          <Button onClick={() => navigate("/customers/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Customer
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -142,7 +174,12 @@ const CustomerList = () => {
       {isLoading ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : customers.length === 0 ? (
-        <p className="text-muted-foreground">No customers found.</p>
+        <div className="text-center py-12 space-y-3">
+          <p className="text-muted-foreground">No customers found.</p>
+          <Button onClick={() => navigate("/customers/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Your First Customer
+          </Button>
+        </div>
       ) : (
         <>
           <div className="rounded-md border overflow-x-auto">
@@ -225,9 +262,11 @@ const CustomerList = () => {
                             <DropdownMenuItem onClick={() => navigate(`/sales/new`)}>
                               <ShoppingCart className="mr-2 h-4 w-4" /> Add Sale
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate(`/collections`)}>
-                              <CreditCard className="mr-2 h-4 w-4" /> Add Payment
-                            </DropdownMenuItem>
+                            {permissions.canRecordCollections && (
+                              <DropdownMenuItem onClick={() => navigate(`/collections`)}>
+                                <CreditCard className="mr-2 h-4 w-4" /> Add Payment
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => navigate(`/ledger?customer=${c.id}`)}>
                               <BookOpen className="mr-2 h-4 w-4" /> View Ledger
                             </DropdownMenuItem>
@@ -266,6 +305,18 @@ const CustomerList = () => {
       )}
     </div>
   );
+};
+
+const commonColumns = {
+  customers: [
+    { header: "Name", key: "name" },
+    { header: "Type", key: "type" },
+    { header: "Phone", key: "phone" },
+    { header: "Email", key: "email" },
+    { header: "Address", key: "address" },
+    { header: "Credit Limit", key: "credit_limit", format: "currency" as const },
+    { header: "Opening Balance", key: "opening_balance", format: "currency" as const },
+  ],
 };
 
 export default CustomerList;
