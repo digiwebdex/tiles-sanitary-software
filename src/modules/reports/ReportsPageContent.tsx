@@ -128,6 +128,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "low-stock": return <LowStockReport dealerId={dealerId} />;
       case "sales": return <SalesReport dealerId={dealerId} />;
       case "sales-report": return <DetailedSalesReport dealerId={dealerId} />;
+      case "sales-by-salesman": return <SalesBySalesmanReport dealerId={dealerId} />;
       case "purchases": return <PurchasesReport dealerId={dealerId} />;
       case "payments": return <PaymentsReport dealerId={dealerId} />;
       case "retailer": return <RetailerSalesReport dealerId={dealerId} />;
@@ -135,6 +136,10 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "accounting": return <AccountingSummaryReport dealerId={dealerId} />;
       case "due-aging": return <DueAgingReport dealerId={dealerId} />;
       case "profit-analysis": return <ProfitAnalysisReport dealerId={dealerId} />;
+      case "supplier-outstanding": return <SupplierOutstandingReport dealerId={dealerId} />;
+      case "pending-delivery": return <PendingDeliveryReport dealerId={dealerId} />;
+      case "delivery-status": return <DeliveryStatusReport dealerId={dealerId} />;
+      case "stock-movement": return <StockMovementReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
