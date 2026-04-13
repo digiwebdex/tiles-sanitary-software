@@ -59,6 +59,11 @@ const months = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+// Reports that require admin-only access
+const ADMIN_ONLY_REPORTS = new Set([
+  "profit-analysis", "accounting", "supplier-outstanding", "purchases",
+]);
+
 const reportGroups = [
   {
     label: "Sales & Revenue",
@@ -117,10 +122,21 @@ const reportNavItems = reportGroups.flatMap((g) => g.items);
 
 const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
   const [activeReport, setActiveReport] = useState("stock");
+  const permissions = usePermissions();
+
+  // Filter out admin-only reports for non-privileged users
+  const filteredGroups = permissions.canViewProfit
+    ? reportGroups
+    : reportGroups
+        .map((g) => ({ ...g, items: g.items.filter((i) => !ADMIN_ONLY_REPORTS.has(i.key)) }))
+        .filter((g) => g.items.length > 0);
+
+  const filteredNavItems = filteredGroups.flatMap((g) => g.items);
 
   const renderReport = () => {
     switch (activeReport) {
       case "stock": return <StockReport dealerId={dealerId} />;
+
       case "brand-stock": return <BrandStockReport dealerId={dealerId} />;
       case "daily-sales": return <DailySalesCalendar dealerId={dealerId} />;
       case "monthly-summary": return <MonthlySummaryReport dealerId={dealerId} />;
@@ -145,7 +161,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
   };
 
   // Find which group the active report belongs to
-  const activeGroup = reportGroups.find((g) => g.items.some((i) => i.key === activeReport));
+  const activeGroup = filteredGroups.find((g) => g.items.some((i) => i.key === activeReport));
 
   return (
     <div className="min-h-[calc(100vh-8rem)] flex flex-col md:flex-row">
@@ -156,7 +172,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
           <h2 className="text-sm font-bold text-foreground">Reports</h2>
         </div>
         <nav className="p-2 space-y-1">
-          {reportGroups.map((group) => {
+          {filteredGroups.map((group) => {
             const isGroupActive = group.items.some((i) => i.key === activeReport);
             return (
               <Collapsible key={group.label} defaultOpen={isGroupActive}>
@@ -197,7 +213,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
           <h2 className="text-sm font-bold text-foreground">Reports</h2>
         </div>
         <div className="flex overflow-x-auto gap-0 -mb-px">
-          {reportNavItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <button
               key={item.key}
               onClick={() => setActiveReport(item.key)}
@@ -359,6 +375,7 @@ function DailySalesCalendar({ dealerId }: { dealerId: string }) {
 function StockReport({ dealerId }: { dealerId: string }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const { canViewProfit } = usePermissions();
 
   const { data, isLoading } = useQuery({
     queryKey: ["report-products", dealerId, page, search],
@@ -387,13 +404,13 @@ function StockReport({ dealerId }: { dealerId: string }) {
                     <TableHead>Product Name</TableHead>
                     <TableHead className="text-right">Purchased</TableHead>
                     <TableHead className="text-right">Sold</TableHead>
-                    <TableHead className="text-right">Profit and/or Loss</TableHead>
+                    {canViewProfit && <TableHead className="text-right">Profit and/or Loss</TableHead>}
                     <TableHead className="text-right">Stock (Qty) Amt</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(data?.rows ?? []).length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No products</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={canViewProfit ? 6 : 5} className="text-center text-muted-foreground">No products</TableCell></TableRow>
                   ) : (data?.rows ?? []).map((r) => (
                     <TableRow key={r.productId}>
                       <TableCell className="font-mono text-sm">{r.sku}</TableCell>
@@ -406,9 +423,11 @@ function StockReport({ dealerId }: { dealerId: string }) {
                         <span className="text-muted-foreground">({r.soldQty})</span>{" "}
                         {formatCurrency(r.soldAmount)}
                       </TableCell>
-                      <TableCell className={`text-right font-semibold ${r.profitOrLoss >= 0 ? "text-primary" : "text-destructive"}`}>
-                        {formatCurrency(r.profitOrLoss)}
-                      </TableCell>
+                      {canViewProfit && (
+                        <TableCell className={`text-right font-semibold ${r.profitOrLoss >= 0 ? "text-primary" : "text-destructive"}`}>
+                          {formatCurrency(r.profitOrLoss)}
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">
                         <span className="text-muted-foreground">({r.stockQty})</span>{" "}
                         {formatCurrency(r.stockAmount)}
@@ -428,6 +447,7 @@ function StockReport({ dealerId }: { dealerId: string }) {
 
 // ─── Brand-wise Stock ─────────────────────────────────────
 function BrandStockReport({ dealerId }: { dealerId: string }) {
+  const { canViewProfit } = usePermissions();
   const { data, isLoading } = useQuery({
     queryKey: ["report-brand-stock", dealerId],
     queryFn: () => fetchBrandStockReport(dealerId),
@@ -447,12 +467,12 @@ function BrandStockReport({ dealerId }: { dealerId: string }) {
                   <TableHead className="text-right">Sold</TableHead>
                   <TableHead className="text-right">Purchased Amount</TableHead>
                   <TableHead className="text-right">Sold Amount</TableHead>
-                  <TableHead className="text-right">Profit and/or Loss</TableHead>
+                  {canViewProfit && <TableHead className="text-right">Profit and/or Loss</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(data ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No data</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={canViewProfit ? 6 : 5} className="text-center text-muted-foreground">No data</TableCell></TableRow>
                 ) : (
                   <>
                     {(data ?? []).map((r) => (
@@ -462,9 +482,11 @@ function BrandStockReport({ dealerId }: { dealerId: string }) {
                         <TableCell className="text-right">{r.soldQty.toLocaleString()}</TableCell>
                         <TableCell className="text-right">{formatCurrency(r.purchasedAmount)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(r.soldAmount)}</TableCell>
-                        <TableCell className={`text-right font-semibold ${r.profitOrLoss >= 0 ? "text-primary" : "text-destructive"}`}>
-                          {formatCurrency(r.profitOrLoss)}
-                        </TableCell>
+                        {canViewProfit && (
+                          <TableCell className={`text-right font-semibold ${r.profitOrLoss >= 0 ? "text-primary" : "text-destructive"}`}>
+                            {formatCurrency(r.profitOrLoss)}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                     {/* Totals row */}
@@ -474,7 +496,7 @@ function BrandStockReport({ dealerId }: { dealerId: string }) {
                       <TableCell className="text-right">{(data ?? []).reduce((s, r) => s + r.soldQty, 0).toLocaleString()}</TableCell>
                       <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.purchasedAmount, 0))}</TableCell>
                       <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.soldAmount, 0))}</TableCell>
-                      <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.profitOrLoss, 0))}</TableCell>
+                      {canViewProfit && <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.profitOrLoss, 0))}</TableCell>}
                     </TableRow>
                   </>
                 )}

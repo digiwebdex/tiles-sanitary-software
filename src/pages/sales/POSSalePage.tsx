@@ -146,7 +146,12 @@ const POSSalePage = () => {
     setCart((prev) => prev.filter((c) => c.product_id !== productId));
   };
 
-  const grandTotal = cart.reduce((s, c) => s + c.quantity * c.sale_rate, 0);
+  const grandTotal = cart.reduce((s, c) => {
+    if (c.unit_type === "box_sft" && c.per_box_sft) {
+      return s + c.quantity * c.per_box_sft * c.sale_rate;
+    }
+    return s + c.quantity * c.sale_rate;
+  }, 0);
 
   const handleCheckout = async () => {
     if (!customerId) {
@@ -285,7 +290,10 @@ const POSSalePage = () => {
                   <div key={item.product_id} className="flex items-center gap-2 px-3 py-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs sm:text-sm font-medium truncate">{item.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{formatCurrency(item.sale_rate)} × {item.quantity}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {formatCurrency(item.sale_rate)} × {item.quantity}
+                        {item.unit_type === "box_sft" && item.per_box_sft ? ` × ${item.per_box_sft} sft` : ""}
+                      </p>
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
                       <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => updateQty(item.product_id, -1)}>
@@ -297,7 +305,11 @@ const POSSalePage = () => {
                       </Button>
                     </div>
                     <span className="text-sm font-semibold w-16 text-right shrink-0">
-                      {formatCurrency(item.quantity * item.sale_rate)}
+                      {formatCurrency(
+                        item.unit_type === "box_sft" && item.per_box_sft
+                          ? item.quantity * item.per_box_sft * item.sale_rate
+                          : item.quantity * item.sale_rate
+                      )}
                     </span>
                     <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => removeFromCart(item.product_id)}>
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
