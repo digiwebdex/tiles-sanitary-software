@@ -64,14 +64,15 @@ export function RevenueCollectionReport() {
   };
 
   const handleExport = () => {
-    exportToExcel(filtered.map((r) => ({
-      Dealer: r.dealer_name,
-      Date: r.payment_date,
-      Amount: Number(r.amount),
-      Method: r.payment_method,
-      Status: r.payment_status,
-      Note: r.note ?? "",
-    })), "Revenue_Collection_Report");
+    const cols = [
+      { header: "Dealer", key: "dealer_name" },
+      { header: "Date", key: "payment_date" },
+      { header: "Amount", key: "amount", format: "currency" as const },
+      { header: "Method", key: "payment_method" },
+      { header: "Status", key: "payment_status" },
+      { header: "Note", key: "note" },
+    ];
+    exportToExcel(filtered.map((r) => ({ ...r, amount: Number(r.amount), note: r.note ?? "" })), cols, "Revenue_Collection_Report");
   };
 
   return (
@@ -228,17 +229,24 @@ export function SubscriptionStatusReport() {
   });
 
   const handleExport = () => {
+    const cols = [
+      { header: "Dealer", key: "dealer_name" },
+      { header: "Plan", key: "plan_name" },
+      { header: "Status", key: "display_status" },
+      { header: "Start Date", key: "start_date" },
+      { header: "End Date", key: "end_date" },
+      { header: "Days Remaining", key: "days_remaining" },
+      { header: "Billing", key: "billing_cycle" },
+      { header: "Last Payment", key: "last_payment_date" },
+      { header: "Last Amount", key: "last_payment_amount", format: "currency" as const },
+    ];
     exportToExcel(filtered.map((r) => ({
-      Dealer: r.dealer_name,
-      Plan: r.plan_name,
-      Status: r.display_status,
-      "Start Date": r.start_date,
-      "End Date": r.end_date ?? "N/A",
-      "Days Remaining": r.days_remaining ?? "N/A",
-      Billing: r.billing_cycle,
-      "Last Payment": r.last_payment_date ?? "N/A",
-      "Last Amount": r.last_payment_amount ?? 0,
-    })), "Subscription_Status_Report");
+      ...r,
+      end_date: r.end_date ?? "N/A",
+      days_remaining: r.days_remaining ?? "N/A",
+      last_payment_date: r.last_payment_date ?? "N/A",
+      last_payment_amount: r.last_payment_amount ?? 0,
+    })), cols, "Subscription_Status_Report");
   };
 
   const getStatusBadge = (status: string) => {
