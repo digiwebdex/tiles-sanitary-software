@@ -146,7 +146,12 @@ const POSSalePage = () => {
     setCart((prev) => prev.filter((c) => c.product_id !== productId));
   };
 
-  const grandTotal = cart.reduce((s, c) => s + c.quantity * c.sale_rate, 0);
+  const grandTotal = cart.reduce((s, c) => {
+    if (c.unit_type === "box_sft" && c.per_box_sft) {
+      return s + c.quantity * c.per_box_sft * c.sale_rate;
+    }
+    return s + c.quantity * c.sale_rate;
+  }, 0);
 
   const handleCheckout = async () => {
     if (!customerId) {
