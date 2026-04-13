@@ -19,7 +19,7 @@ export interface JwtPayload {
 }
 
 function signAccessToken(payload: JwtPayload): string {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN });
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN as string | number });
 }
 
 function signRefreshToken(userId: string): { token: string; hash: string; expiresAt: Date } {
