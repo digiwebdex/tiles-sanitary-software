@@ -124,8 +124,14 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
   const [activeReport, setActiveReport] = useState("stock");
   const permissions = usePermissions();
 
-  const renderReport = () => {
-    switch (activeReport) {
+  // Filter out admin-only reports for non-privileged users
+  const filteredGroups = permissions.canViewProfit
+    ? reportGroups
+    : reportGroups
+        .map((g) => ({ ...g, items: g.items.filter((i) => !ADMIN_ONLY_REPORTS.has(i.key)) }))
+        .filter((g) => g.items.length > 0);
+
+  const filteredNavItems = filteredGroups.flatMap((g) => g.items);
       case "stock": return <StockReport dealerId={dealerId} />;
       case "brand-stock": return <BrandStockReport dealerId={dealerId} />;
       case "daily-sales": return <DailySalesCalendar dealerId={dealerId} />;
