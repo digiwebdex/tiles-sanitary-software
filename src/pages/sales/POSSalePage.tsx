@@ -1,22 +1,20 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useDealerId } from "@/hooks/useDealerId";
 import { useAuth } from "@/contexts/AuthContext";
 import { salesService } from "@/services/salesService";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Minus, Trash2, ShoppingCart } from "lucide-react";
+import { Plus, Minus, Trash2, ShoppingCart, Search } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useNavigate } from "react-router-dom";
 
 interface CartItem {
   product_id: string;
@@ -33,11 +31,32 @@ const POSSalePage = () => {
   const dealerId = useDealerId();
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [paymentMode, setPaymentMode] = useState("cash");
   const [processing, setProcessing] = useState(false);
+  const barcodeRef = useRef<HTMLInputElement>(null);
+  const paidRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus barcode input on load
+  useEffect(() => {
+    setTimeout(() => barcodeRef.current?.focus(), 100);
+  }, []);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    F2: () => {
+      setCart([]);
+      setCustomerId("");
+      setSearch("");
+      barcodeRef.current?.focus();
+    },
+    F5: () => paidRef.current?.focus(),
+    F12: () => handleCheckout(),
+    Escape: () => navigate("/sales"),
+  });
 
   const { data: products = [] } = useQuery({
     queryKey: ["pos-products", dealerId, search],
@@ -71,7 +90,15 @@ const POSSalePage = () => {
     },
   });
 
-  const addToCart = (product: any) => {
+  // Auto-select walk-in customer
+  useEffect(() => {
+    if (!customerId && customers.length > 0) {
+      const walkIn = customers.find((c) => c.name.toLowerCase().includes("walk"));
+      if (walkIn) setCustomerId(walkIn.id);
+    }
+  }, [customers, customerId]);
+
+  const addToCart = useCallback((product: any) => {
     setCart((prev) => {
       const existing = prev.find((c) => c.product_id === product.id);
       if (existing) {
@@ -90,6 +117,21 @@ const POSSalePage = () => {
         sale_rate: Number(product.default_sale_rate),
       }];
     });
+  }, []);
+
+  // Scan-to-add: on Enter in barcode field, match exact barcode/sku and add
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && search.trim()) {
+      e.preventDefault();
+      const match = products.find(
+        (p) => p.barcode === search.trim() || p.sku === search.trim()
+      );
+      if (match) {
+        addToCart(match);
+        setSearch("");
+        barcodeRef.current?.focus();
+      }
+    }
   };
 
   const updateQty = (productId: string, delta: number) => {
@@ -145,7 +187,8 @@ const POSSalePage = () => {
       });
       toast({ title: "Sale completed!" });
       setCart([]);
-      setCustomerId("");
+      setSearch("");
+      barcodeRef.current?.focus();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -154,110 +197,135 @@ const POSSalePage = () => {
   };
 
   return (
-    <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Product Search */}
-      <div className="lg:col-span-2 space-y-4">
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <ShoppingCart className="h-6 w-6" /> POS Sale
-        </h1>
-
-        <Input
-          placeholder="Search by name, SKU, or barcode…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-md"
-        />
-
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          {products.map((p) => (
-            <Card
-              key={p.id}
-              className="cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => addToCart(p)}
-            >
-              <CardContent className="p-3">
-                <p className="font-medium text-sm truncate">{p.name}</p>
-                <p className="text-xs text-muted-foreground font-mono">{p.sku}</p>
-                <p className="text-sm font-semibold mt-1">{formatCurrency(p.default_sale_rate)}</p>
-              </CardContent>
-            </Card>
-          ))}
+    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+      {/* Top bar: search + customer */}
+      <div className="shrink-0 border-b bg-card px-3 py-2 sm:px-4 sm:py-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <ShoppingCart className="h-5 w-5 text-primary shrink-0 hidden sm:block" />
+          <h1 className="text-base sm:text-lg font-bold text-foreground">POS</h1>
+          <div className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground hidden md:flex">
+            <kbd className="px-1.5 py-0.5 rounded bg-muted border text-[10px]">F2</kbd> New
+            <kbd className="px-1.5 py-0.5 rounded bg-muted border text-[10px] ml-2">F5</kbd> Pay
+            <kbd className="px-1.5 py-0.5 rounded bg-muted border text-[10px] ml-2">F12</kbd> Save
+            <kbd className="px-1.5 py-0.5 rounded bg-muted border text-[10px] ml-2">Esc</kbd> Exit
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              ref={barcodeRef}
+              placeholder="Scan barcode or search…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleBarcodeKeyDown}
+              className="pl-8 h-10 text-sm"
+            />
+          </div>
+          <Select value={customerId} onValueChange={setCustomerId}>
+            <SelectTrigger className="w-full sm:w-48 h-10">
+              <SelectValue placeholder="Customer" />
+            </SelectTrigger>
+            <SelectContent>
+              {customers.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Cart */}
-      <div className="space-y-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Cart ({cart.length} items)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-              <SelectContent>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {cart.length === 0 ? (
-              <p className="text-muted-foreground text-sm text-center py-4">Add products to cart</p>
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableBody>
-                    {cart.map((item) => (
-                      <TableRow key={item.product_id}>
-                        <TableCell className="py-2">
-                          <p className="text-sm font-medium truncate max-w-[120px]">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatCurrency(item.sale_rate)}</p>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <div className="flex items-center gap-1">
-                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => updateQty(item.product_id, -1)}>
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="text-sm w-6 text-center">{item.quantity}</span>
-                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => updateQty(item.product_id, 1)}>
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-2 text-right text-sm font-medium">
-                          {formatCurrency(item.quantity * item.sale_rate)}
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeFromCart(item.product_id)}>
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+      {/* Main area: product grid + cart side-by-side on desktop, stacked on mobile */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* Product grid */}
+        <div className="flex-1 overflow-y-auto p-2 sm:p-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+            {products.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => addToCart(p)}
+                className="flex flex-col items-start rounded-lg border bg-card p-2.5 sm:p-3 text-left hover:border-primary/50 active:scale-[0.98] transition-all min-h-[68px]"
+              >
+                <p className="font-medium text-xs sm:text-sm truncate w-full">{p.name}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-mono">{p.sku}</p>
+                <p className="text-xs sm:text-sm font-semibold mt-auto text-primary">{formatCurrency(p.default_sale_rate)}</p>
+              </button>
+            ))}
+            {products.length === 0 && (
+              <p className="col-span-full text-center text-sm text-muted-foreground py-8">
+                {search ? "No products found" : "Type to search products"}
+              </p>
             )}
+          </div>
+        </div>
 
-            <div className="flex items-center justify-between pt-2 border-t">
-              <span className="font-semibold">Total</span>
-              <span className="text-lg font-bold">{formatCurrency(grandTotal)}</span>
-            </div>
-
+        {/* Cart panel - collapsible on mobile, always visible on desktop */}
+        <div className="lg:w-80 xl:w-96 shrink-0 border-t lg:border-t-0 lg:border-l bg-card flex flex-col overflow-hidden">
+          <div className="px-3 py-2 border-b flex items-center justify-between">
+            <span className="text-sm font-semibold">Cart ({cart.length})</span>
             <Select value={paymentMode} onValueChange={setPaymentMode}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-32 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="cash">Cash</SelectItem>
                 <SelectItem value="bank">Bank</SelectItem>
-                <SelectItem value="mobile_banking">Mobile Banking</SelectItem>
+                <SelectItem value="mobile_banking">mBanking</SelectItem>
               </SelectContent>
             </Select>
+          </div>
 
-            <Button className="w-full" onClick={handleCheckout} disabled={processing || cart.length === 0}>
-              {processing ? "Processing…" : `Checkout — ${formatCurrency(grandTotal)}`}
-            </Button>
-          </CardContent>
-        </Card>
+          {/* Cart items - scrollable */}
+          <div className="flex-1 overflow-y-auto">
+            {cart.length === 0 ? (
+              <p className="text-muted-foreground text-sm text-center py-6">Add products to cart</p>
+            ) : (
+              <div className="divide-y">
+                {cart.map((item) => (
+                  <div key={item.product_id} className="flex items-center gap-2 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium truncate">{item.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatCurrency(item.sale_rate)} × {item.quantity}</p>
+                    </div>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => updateQty(item.product_id, -1)}>
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="text-sm w-7 text-center font-medium">{item.quantity}</span>
+                      <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => updateQty(item.product_id, 1)}>
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <span className="text-sm font-semibold w-16 text-right shrink-0">
+                      {formatCurrency(item.quantity * item.sale_rate)}
+                    </span>
+                    <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => removeFromCart(item.product_id)}>
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Fixed bottom payment bar */}
+      <div className="shrink-0 border-t bg-card px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex items-center gap-3 justify-between">
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-lg sm:text-xl font-bold text-foreground">{formatCurrency(grandTotal)}</p>
+          </div>
+          <Button
+            size="lg"
+            className="h-12 px-6 sm:px-8 text-sm sm:text-base font-semibold min-w-[140px]"
+            onClick={handleCheckout}
+            disabled={processing || cart.length === 0}
+          >
+            {processing ? "Processing…" : "Checkout"}
+          </Button>
+        </div>
       </div>
     </div>
   );
