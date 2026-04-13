@@ -482,9 +482,11 @@ function BrandStockReport({ dealerId }: { dealerId: string }) {
                         <TableCell className="text-right">{r.soldQty.toLocaleString()}</TableCell>
                         <TableCell className="text-right">{formatCurrency(r.purchasedAmount)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(r.soldAmount)}</TableCell>
-                        <TableCell className={`text-right font-semibold ${r.profitOrLoss >= 0 ? "text-primary" : "text-destructive"}`}>
-                          {formatCurrency(r.profitOrLoss)}
-                        </TableCell>
+                        {canViewProfit && (
+                          <TableCell className={`text-right font-semibold ${r.profitOrLoss >= 0 ? "text-primary" : "text-destructive"}`}>
+                            {formatCurrency(r.profitOrLoss)}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                     {/* Totals row */}
@@ -494,7 +496,7 @@ function BrandStockReport({ dealerId }: { dealerId: string }) {
                       <TableCell className="text-right">{(data ?? []).reduce((s, r) => s + r.soldQty, 0).toLocaleString()}</TableCell>
                       <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.purchasedAmount, 0))}</TableCell>
                       <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.soldAmount, 0))}</TableCell>
-                      <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.profitOrLoss, 0))}</TableCell>
+                      {canViewProfit && <TableCell className="text-right">{formatCurrency((data ?? []).reduce((s, r) => s + r.profitOrLoss, 0))}</TableCell>}
                     </TableRow>
                   </>
                 )}
