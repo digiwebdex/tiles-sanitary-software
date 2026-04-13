@@ -340,8 +340,8 @@ const SaleList = ({ dealerId }: SaleListProps) => {
         <DeleteConfirmDialog
           open={!!deleteSale}
           onOpenChange={(open) => { if (!open) setDeleteSale(null); }}
-          title="Delete Sale"
-          description={`Are you sure you want to permanently delete sale "${deleteSale?.invoice_number ?? ""}"? This action cannot be undone.`}
+          title="Cancel & Delete Sale"
+          description={`This will cancel sale "${deleteSale?.invoice_number ?? ""}", reverse all stock changes, and remove ledger entries. This action cannot be undone.`}
           onConfirm={() => { if (deleteSale) deleteMutation.mutate(deleteSale.id); }}
         />
       )}
