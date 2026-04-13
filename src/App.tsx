@@ -135,7 +135,7 @@ const App = () => (
             <Route path="/sales-returns/new" element={<ProtectedRoute><AppLayout><CreateSalesReturn /></AppLayout></ProtectedRoute>} />
             <Route path="/purchase-returns" element={<ProtectedRoute><AppLayout><PurchaseReturnsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/purchase-returns/new" element={<ProtectedRoute><AppLayout><CreatePurchaseReturn /></AppLayout></ProtectedRoute>} />
-            <Route path="/sales/pos" element={<ProtectedRoute><AppLayout><POSSalePage /></AppLayout></ProtectedRoute>} />
+            <Route path="/sales/pos" element={<ProtectedRoute><POSSalePage /></ProtectedRoute>} />
             <Route path="/ledger" element={<ProtectedRoute><AppLayout><LedgerPage /></AppLayout></ProtectedRoute>} />
             <Route path="/campaigns" element={<ProtectedRoute><AppLayout><CampaignsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/collections" element={<ProtectedRoute><AppLayout><CollectionsPage /></AppLayout></ProtectedRoute>} />
