@@ -14,10 +14,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Search, Barcode } from "lucide-react";
+import { Plus, Trash2, Search, Barcode, AlertTriangle } from "lucide-react";
 import { formatCurrency, CURRENCY_CODE } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 interface SaleFormProps {
   dealerId: string;
@@ -64,6 +65,54 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
       return data ?? [];
     },
     enabled: !!dealerId,
+  });
+
+  // Fetch customers for overdue check
+  const { data: allCustomers = [] } = useQuery({
+    queryKey: ["customers-for-sale-overdue", dealerId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("customers")
+        .select("id, name, credit_limit, max_overdue_days")
+        .eq("dealer_id", dealerId)
+        .eq("status", "active");
+      return data ?? [];
+    },
+    enabled: !!dealerId,
+  });
+
+  const watchCustomerName = form.watch("customer_name");
+  const matchedCustomer = allCustomers.find(
+    (c) => c.name.toLowerCase() === (watchCustomerName ?? "").toLowerCase().trim()
+  );
+
+  const { data: overdueInfo } = useQuery({
+    queryKey: ["sale-overdue-check", matchedCustomer?.id],
+    queryFn: async () => {
+      if (!matchedCustomer) return null;
+      const [ledgerRes, salesRes] = await Promise.all([
+        supabase.from("customer_ledger").select("amount, type").eq("customer_id", matchedCustomer.id).eq("dealer_id", dealerId),
+        supabase.from("sales").select("sale_date, due_amount").eq("customer_id", matchedCustomer.id).eq("dealer_id", dealerId).gt("due_amount", 0).order("sale_date", { ascending: true }).limit(1),
+      ]);
+      let outstanding = 0;
+      for (const row of ledgerRes.data ?? []) {
+        const amt = Number(row.amount);
+        if (row.type === "sale") outstanding += amt;
+        else if (row.type === "payment" || row.type === "refund") outstanding -= amt;
+        else if (row.type === "adjustment") outstanding += amt;
+      }
+      const oldestDate = salesRes.data?.[0]?.sale_date ?? null;
+      const daysOverdue = oldestDate ? Math.max(0, Math.floor((Date.now() - new Date(oldestDate).getTime()) / 86400000)) : 0;
+      return {
+        outstanding: Math.round(outstanding * 100) / 100,
+        daysOverdue,
+        maxOverdueDays: Number(matchedCustomer.max_overdue_days ?? 0),
+        creditLimit: Number(matchedCustomer.credit_limit ?? 0),
+        isOverdueViolated: Number(matchedCustomer.max_overdue_days ?? 0) > 0 && daysOverdue > Number(matchedCustomer.max_overdue_days ?? 0),
+        isCreditExceeded: Number(matchedCustomer.credit_limit ?? 0) > 0 && outstanding > Number(matchedCustomer.credit_limit ?? 0),
+      };
+    },
+    enabled: !!matchedCustomer,
   });
 
   const { data: stockData = [] } = useQuery({
@@ -259,6 +308,35 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
             </div>
           </CardContent>
         </Card>
+
+        {/* Overdue / Credit Warning */}
+        {overdueInfo && (overdueInfo.isOverdueViolated || overdueInfo.isCreditExceeded) && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/5 px-4 py-3 space-y-1">
+            <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              Credit / Overdue Warning
+            </div>
+            {overdueInfo.isOverdueViolated && (
+              <p className="text-xs text-destructive">
+                ⚠ This customer is <strong>{overdueInfo.daysOverdue} days</strong> overdue (max: {overdueInfo.maxOverdueDays} days).
+              </p>
+            )}
+            {overdueInfo.isCreditExceeded && (
+              <p className="text-xs text-destructive">
+                ⚠ Outstanding <strong>৳{overdueInfo.outstanding.toLocaleString()}</strong> exceeds credit limit of ৳{overdueInfo.creditLimit.toLocaleString()}.
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Owner approval may be required. Proceed with caution.
+            </p>
+          </div>
+        )}
+        {overdueInfo && !overdueInfo.isOverdueViolated && !overdueInfo.isCreditExceeded && overdueInfo.outstanding > 0 && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-4 py-2 text-xs text-amber-800 dark:text-amber-200">
+            ℹ Current outstanding: <strong>৳{overdueInfo.outstanding.toLocaleString()}</strong>
+            {overdueInfo.daysOverdue > 0 && <> · {overdueInfo.daysOverdue} days since oldest due</>}
+          </div>
+        )}
 
         {/* Product Search Bar */}
         <Card>

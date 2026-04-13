@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { useNavigate } from "react-router-dom";
 import { dashboardService } from "@/services/dashboardService";
 import { supabase } from "@/integrations/supabase/client";
@@ -255,6 +256,9 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
 
   return (
     <div className="space-y-8">
+      {/* Onboarding Checklist */}
+      <OnboardingChecklist dealerId={dealerId} />
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         {totalAlerts > 0 && (

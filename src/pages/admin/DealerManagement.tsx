@@ -285,6 +285,7 @@ const DealerManagement = () => {
                     <TableHead>Phone</TableHead>
                     <TableHead>Subscription</TableHead>
                     <TableHead>Expiry</TableHead>
+                    <TableHead>Onboarding</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="w-48">Actions</TableHead>
                   </TableRow>
@@ -292,7 +293,7 @@ const DealerManagement = () => {
                 <TableBody>
                   {dealers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">No dealers</TableCell>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground">No dealers</TableCell>
                     </TableRow>
                   ) : (
                     dealers.map((d: any) => (
@@ -308,6 +309,15 @@ const DealerManagement = () => {
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">{d.subscription?.end_date ?? "—"}</TableCell>
+                        <TableCell>
+                          {(() => {
+                            const hasSub = !!d.subscription;
+                            const hasUsers = d.userCount > 0;
+                            if (hasSub && hasUsers) return <Badge variant="default" className="text-xs">Ready</Badge>;
+                            if (!hasSub && !hasUsers) return <Badge variant="destructive" className="text-xs">Setup Pending</Badge>;
+                            return <Badge variant="secondary" className="text-xs">Incomplete</Badge>;
+                          })()}
+                        </TableCell>
                         <TableCell>
                           <Badge
                             variant={(d.status ?? "active") === "active" ? "default" : "destructive"}

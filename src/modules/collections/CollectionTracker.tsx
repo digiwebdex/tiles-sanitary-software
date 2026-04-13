@@ -13,13 +13,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Search, Wallet, AlertTriangle, CheckCircle, DollarSign, TrendingDown, CalendarIcon, X, Download, Printer, MessageSquare } from "lucide-react";
+import { Search, Wallet, AlertTriangle, CheckCircle, DollarSign, TrendingDown, CalendarIcon, X, Download, Printer, MessageSquare, BookOpen, Clock, MessageSquareText } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import PaymentReceipt from "./PaymentReceipt";
+import FollowUpPanel from "./FollowUpPanel";
 import { notificationService } from "@/services/notificationService";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
 
@@ -33,6 +36,12 @@ interface CustomerOutstanding {
   total_sales: number;
   total_paid: number;
   invoices: { invoice_number: string; sale_id: string; sale_date: string }[];
+  oldestSaleDate: string | null;
+  daysOverdue: number;
+  agingBucket: string;
+  lastFollowupDate: string | null;
+  lastFollowupStatus: string | null;
+  maxOverdueDays: number;
 }
 
 interface CollectionEntry {
@@ -43,6 +52,23 @@ interface CollectionEntry {
   entry_date: string;
   created_at: string;
 }
+
+type SortOption = "highest" | "oldest" | "followup_oldest";
+
+function getAgingBucket(daysOverdue: number): string {
+  if (daysOverdue <= 0) return "current";
+  if (daysOverdue <= 30) return "current";
+  if (daysOverdue <= 60) return "30+";
+  if (daysOverdue <= 90) return "60+";
+  return "90+";
+}
+
+const AGING_BADGE: Record<string, { label: string; variant: string }> = {
+  current: { label: "Current", variant: "secondary" },
+  "30+": { label: "30+", variant: "outline" },
+  "60+": { label: "60+", variant: "default" },
+  "90+": { label: "90+", variant: "destructive" },
+};
 
 export default function CollectionTracker({ dealerId }: { dealerId: string }) {
   const { profile } = useAuth();
@@ -56,6 +82,9 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
   const [payNote, setPayNote] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [sortBy, setSortBy] = useState<SortOption>("highest");
+  const [activeTab, setActiveTab] = useState("all");
+  const [followUpCustomer, setFollowUpCustomer] = useState<{ id: string; name: string } | null>(null);
   const [receiptData, setReceiptData] = useState<{
     customerName: string;
     customerPhone: string | null;
@@ -65,40 +94,35 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
     receiptNo: string;
     date: string;
   } | null>(null);
-
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
 
-  // Fetch all customers with outstanding balances
+  // Fetch all customers with outstanding balances + follow-up data
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ["collection-tracker", dealerId],
     queryFn: async () => {
-      // Get all active customers
-      const { data: custs, error: custErr } = await supabase
-        .from("customers")
-        .select("id, name, phone, type")
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("name");
-      if (custErr) throw new Error(custErr.message);
-
-      // Get all customer ledger entries and latest sales
-      const [ledgerRes, salesRes] = await Promise.all([
-        supabase
-          .from("customer_ledger")
-          .select("customer_id, amount, type, entry_date")
-          .eq("dealer_id", dealerId),
-        supabase
-          .from("sales")
-          .select("customer_id, invoice_number, sale_date, id")
-          .eq("dealer_id", dealerId)
-          .order("sale_date", { ascending: false }),
+      const [custRes, ledgerRes, salesRes, followupRes] = await Promise.all([
+        supabase.from("customers").select("id, name, phone, type, max_overdue_days").eq("dealer_id", dealerId).eq("status", "active").order("name"),
+        supabase.from("customer_ledger").select("customer_id, amount, type, entry_date").eq("dealer_id", dealerId),
+        supabase.from("sales").select("customer_id, invoice_number, sale_date, id, due_amount").eq("dealer_id", dealerId).order("sale_date", { ascending: false }),
+        supabase.from("customer_followups").select("customer_id, followup_date, status, created_at").eq("dealer_id", dealerId).order("created_at", { ascending: false }),
       ]);
+      if (custRes.error) throw new Error(custRes.error.message);
       if (ledgerRes.error) throw new Error(ledgerRes.error.message);
       if (salesRes.error) throw new Error(salesRes.error.message);
+
       const ledger = ledgerRes.data ?? [];
       const sales = salesRes.data ?? [];
+      const followups = followupRes.data ?? [];
 
-      // Map all invoices per customer
+      // Latest follow-up per customer
+      const followupMap = new Map<string, { date: string; status: string }>();
+      for (const f of followups) {
+        if (!followupMap.has(f.customer_id)) {
+          followupMap.set(f.customer_id, { date: f.followup_date, status: f.status });
+        }
+      }
+
+      // Invoice map
       const invoiceMap = new Map<string, { invoice_number: string; sale_id: string; sale_date: string }[]>();
       for (const s of sales) {
         if (s.invoice_number) {
@@ -108,48 +132,61 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
         }
       }
 
+      // Oldest unpaid sale per customer
+      const oldestUnpaidMap = new Map<string, string>();
+      for (const s of sales) {
+        if (Number(s.due_amount) > 0 && !oldestUnpaidMap.has(s.customer_id)) {
+          // sales are sorted desc, so we keep updating
+          oldestUnpaidMap.set(s.customer_id, s.sale_date);
+        }
+      }
+      // Actually need oldest — iterate in reverse
+      const salesAsc = [...sales].reverse();
+      const oldestMap2 = new Map<string, string>();
+      for (const s of salesAsc) {
+        if (Number(s.due_amount) > 0 && !oldestMap2.has(s.customer_id)) {
+          oldestMap2.set(s.customer_id, s.sale_date);
+        }
+      }
+
       // Aggregate per customer
       const map = new Map<string, { outstanding: number; total_sales: number; total_paid: number; last_payment: string | null }>();
-      for (const entry of ledger ?? []) {
+      for (const entry of ledger) {
         const cur = map.get(entry.customer_id) ?? { outstanding: 0, total_sales: 0, total_paid: 0, last_payment: null };
         const amt = Number(entry.amount);
-        if (entry.type === "sale") {
-          cur.outstanding += amt;
-          cur.total_sales += amt;
-        } else if (entry.type === "payment" || entry.type === "refund") {
-          cur.outstanding -= amt;
-          cur.total_paid += amt;
-          if (!cur.last_payment || entry.entry_date > cur.last_payment) {
-            cur.last_payment = entry.entry_date;
-          }
-        } else if (entry.type === "adjustment") {
-          cur.outstanding += amt;
-          cur.total_sales += amt;
-        }
+        if (entry.type === "sale") { cur.outstanding += amt; cur.total_sales += amt; }
+        else if (entry.type === "payment" || entry.type === "refund") { cur.outstanding -= amt; cur.total_paid += amt; if (!cur.last_payment || entry.entry_date > cur.last_payment) cur.last_payment = entry.entry_date; }
+        else if (entry.type === "adjustment") { cur.outstanding += amt; cur.total_sales += amt; }
         map.set(entry.customer_id, cur);
       }
 
-      const result: CustomerOutstanding[] = (custs ?? []).map((c) => {
+      const today = new Date();
+      const result: CustomerOutstanding[] = (custRes.data ?? []).map((c) => {
         const agg = map.get(c.id) ?? { outstanding: 0, total_sales: 0, total_paid: 0, last_payment: null };
+        const oldestDate = oldestMap2.get(c.id) ?? null;
+        const daysOverdue = oldestDate ? Math.max(0, Math.floor((today.getTime() - new Date(oldestDate).getTime()) / 86400000)) : 0;
+        const fu = followupMap.get(c.id);
         return {
-          id: c.id,
-          name: c.name,
-          phone: c.phone,
-          type: c.type,
+          id: c.id, name: c.name, phone: c.phone, type: c.type,
           outstanding: Math.round(agg.outstanding * 100) / 100,
           last_payment_date: agg.last_payment,
           total_sales: Math.round(agg.total_sales * 100) / 100,
           total_paid: Math.round(agg.total_paid * 100) / 100,
           invoices: invoiceMap.get(c.id) ?? [],
+          oldestSaleDate: oldestDate,
+          daysOverdue,
+          agingBucket: getAgingBucket(daysOverdue),
+          lastFollowupDate: fu?.date ?? null,
+          lastFollowupStatus: fu?.status ?? null,
+          maxOverdueDays: Number(c.max_overdue_days ?? 0),
         };
       });
 
-      // Sort by outstanding descending, filter out zero/negative
       return result.filter((c) => c.outstanding > 0).sort((a, b) => b.outstanding - a.outstanding);
     },
   });
 
-  // Recent collections (payments)
+  // Recent collections
   const { data: recentCollections = [] } = useQuery({
     queryKey: ["recent-collections", dealerId],
     queryFn: async () => {
@@ -162,32 +199,21 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
         .limit(20);
       if (error) throw new Error(error.message);
       return (data ?? []).map((r: any) => ({
-        id: r.id,
-        customer_name: r.customers?.name ?? "Unknown",
-        amount: Number(r.amount),
-        description: r.description,
-        entry_date: r.entry_date,
-        created_at: r.created_at,
+        id: r.id, customer_name: r.customers?.name ?? "Unknown",
+        amount: Number(r.amount), description: r.description,
+        entry_date: r.entry_date, created_at: r.created_at,
       })) as CollectionEntry[];
     },
   });
 
-  // Record payment mutation
   const recordPayment = useMutation({
     mutationFn: async ({ customerId, amount, note }: { customerId: string; amount: number; note: string }) => {
-      // Add to customer ledger as payment
       await customerLedgerService.addEntry({
-        dealer_id: dealerId,
-        customer_id: customerId,
-        type: "payment",
-        amount,
-        description: note || `Payment collected`,
+        dealer_id: dealerId, customer_id: customerId, type: "payment",
+        amount, description: note || "Payment collected",
       });
-      // Add to cash ledger as receipt
       await cashLedgerService.addEntry({
-        dealer_id: dealerId,
-        type: "receipt",
-        amount,
+        dealer_id: dealerId, type: "receipt", amount,
         description: `Payment from ${payDialog.customer?.name}: ${note || "Collection"}`,
         reference_type: "customer_payment",
       });
@@ -197,10 +223,8 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
       const customer = payDialog.customer;
       if (customer) {
         setReceiptData({
-          customerName: customer.name,
-          customerPhone: customer.phone,
-          amount: variables.amount,
-          note: variables.note,
+          customerName: customer.name, customerPhone: customer.phone,
+          amount: variables.amount, note: variables.note,
           remainingDue: Math.max(0, customer.outstanding - variables.amount),
           receiptNo: `RCP-${Date.now().toString(36).toUpperCase()}`,
           date: new Date().toISOString(),
@@ -208,31 +232,45 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
       }
       queryClient.invalidateQueries({ queryKey: ["collection-tracker"] });
       queryClient.invalidateQueries({ queryKey: ["recent-collections"] });
-      setPayDialog({ open: false });
-      setPayAmount("");
-      setPayNote("");
+      queryClient.invalidateQueries({ queryKey: ["dashboard-top-overdue"] });
+      setPayDialog({ open: false }); setPayAmount(""); setPayNote("");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const filtered = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      (c.phone && c.phone.includes(search))
+  // Sorting
+  const sortedCustomers = [...customers].sort((a, b) => {
+    if (sortBy === "highest") return b.outstanding - a.outstanding;
+    if (sortBy === "oldest") return b.daysOverdue - a.daysOverdue;
+    if (sortBy === "followup_oldest") {
+      const aDate = a.lastFollowupDate ?? "0000-01-01";
+      const bDate = b.lastFollowupDate ?? "0000-01-01";
+      return aDate.localeCompare(bDate);
+    }
+    return 0;
+  });
+
+  // Filtering
+  const filtered = sortedCustomers.filter(
+    (c) => c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone && c.phone.includes(search))
   );
 
-  // Apply date range filter — filter customers who have at least one invoice in range
-  const dateFiltered = (dateFrom || dateTo)
-    ? filtered.filter((c) =>
-        c.invoices.some((inv) => {
-          const d = inv.sale_date;
-          if (dateFrom && d < format(dateFrom, "yyyy-MM-dd")) return false;
-          if (dateTo && d > format(dateTo, "yyyy-MM-dd")) return false;
-          return true;
-        })
-      )
-    : filtered;
+  const overdueOnly = filtered.filter((c) => {
+    if (c.maxOverdueDays > 0 && c.daysOverdue > c.maxOverdueDays) return true;
+    return c.daysOverdue > 30;
+  });
 
+  const dateFiltered = (tab: string) => {
+    const list = tab === "overdue" ? overdueOnly : filtered;
+    if (!dateFrom && !dateTo) return list;
+    return list.filter((c) => c.invoices.some((inv) => {
+      if (dateFrom && inv.sale_date < format(dateFrom, "yyyy-MM-dd")) return false;
+      if (dateTo && inv.sale_date > format(dateTo, "yyyy-MM-dd")) return false;
+      return true;
+    }));
+  };
+
+  const displayList = dateFiltered(activeTab);
   const totalOutstanding = customers.reduce((s, c) => s + c.outstanding, 0);
   const totalCollectedToday = recentCollections
     .filter((c) => c.entry_date === new Date().toISOString().split("T")[0])
@@ -240,54 +278,120 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
 
   const exportCSV = () => {
     const rows = [
-      ["Customer", "Phone", "Type", "Invoice Numbers", "Total Sales", "Paid", "Outstanding", "Last Payment"],
-      ...dateFiltered.map((c) => [
-        c.name,
-        c.phone || "",
-        c.type,
-        c.invoices.map((i) => i.invoice_number).join("; "),
-        c.total_sales.toString(),
-        c.total_paid.toString(),
-        c.outstanding.toString(),
-        c.last_payment_date ? format(new Date(c.last_payment_date), "dd MMM yyyy") : "",
+      ["Customer", "Phone", "Type", "Outstanding", "Days Overdue", "Aging", "Last Payment", "Last Follow-up", "Follow-up Status"],
+      ...displayList.map((c) => [
+        c.name, c.phone || "", c.type, c.outstanding.toString(), c.daysOverdue.toString(),
+        c.agingBucket, c.last_payment_date ? format(new Date(c.last_payment_date), "dd MMM yyyy") : "",
+        c.lastFollowupDate ?? "No follow-up", c.lastFollowupStatus?.replace(/_/g, " ") ?? "",
       ]),
     ];
     const csv = rows.map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `payments-${format(new Date(), "yyyy-MM-dd")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("CSV exported successfully");
+    const a = document.createElement("a"); a.href = url;
+    a.download = `collections-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast.success("CSV exported");
   };
 
   const handleSendReminder = async (customer: CustomerOutstanding) => {
-    if (!customer.phone) {
-      toast.error("এই কাস্টমারের ফোন নম্বর নেই");
-      return;
-    }
+    if (!customer.phone) { toast.error("No phone number"); return; }
     setSendingReminder(customer.id);
     try {
       const success = await notificationService.sendPaymentReminder(dealerId, {
-        customer_name: customer.name,
-        customer_phone: customer.phone,
+        customer_name: customer.name, customer_phone: customer.phone,
         outstanding: customer.outstanding,
-        last_payment_date: customer.last_payment_date
-          ? format(new Date(customer.last_payment_date), "dd MMM yyyy")
-          : undefined,
-        dealer_name: dealerInfo?.name,
-        dealer_phone: dealerInfo?.phone ?? undefined,
+        last_payment_date: customer.last_payment_date ? format(new Date(customer.last_payment_date), "dd MMM yyyy") : undefined,
+        dealer_name: dealerInfo?.name, dealer_phone: dealerInfo?.phone ?? undefined,
       });
-      if (success) toast.success(`${customer.name}-কে SMS রিমাইন্ডার পাঠানো হয়েছে`);
-      else toast.error("SMS পাঠাতে সমস্যা হয়েছে");
-    } catch {
-      toast.error("SMS পাঠাতে ব্যর্থ");
-    } finally {
-      setSendingReminder(null);
-    }
+      if (success) toast.success(`Reminder sent to ${customer.name}`);
+      else toast.error("Failed to send reminder");
+    } catch { toast.error("Failed to send reminder"); }
+    finally { setSendingReminder(null); }
   };
+
+  const renderTable = (list: CustomerOutstanding[]) => (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Customer</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Aging</TableHead>
+            <TableHead className="text-right">Outstanding</TableHead>
+            <TableHead>Days Overdue</TableHead>
+            <TableHead>Last Payment</TableHead>
+            <TableHead>Follow-up</TableHead>
+            <TableHead className="text-center">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {isLoading ? (
+            <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+          ) : list.length === 0 ? (
+            <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No outstanding balances found</TableCell></TableRow>
+          ) : list.map((c) => {
+            const badge = AGING_BADGE[c.agingBucket] ?? AGING_BADGE.current;
+            return (
+              <TableRow key={c.id}>
+                <TableCell>
+                  <div>
+                    <p className="font-medium text-foreground">{c.name}</p>
+                    {c.phone && <p className="text-xs text-muted-foreground">{c.phone}</p>}
+                  </div>
+                </TableCell>
+                <TableCell><Badge variant="outline" className="text-xs capitalize">{c.type}</Badge></TableCell>
+                <TableCell>
+                  <Badge variant={badge.variant as any} className="text-xs">{badge.label}</Badge>
+                </TableCell>
+                <TableCell className="text-right font-semibold text-destructive">৳{c.outstanding.toLocaleString()}</TableCell>
+                <TableCell>
+                  <span className={cn("text-sm", c.daysOverdue > 60 ? "text-destructive font-semibold" : c.daysOverdue > 30 ? "text-amber-600" : "text-muted-foreground")}>
+                    {c.daysOverdue > 0 ? `${c.daysOverdue} days` : "—"}
+                  </span>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {c.last_payment_date ? format(new Date(c.last_payment_date), "dd MMM yyyy") : "—"}
+                </TableCell>
+                <TableCell>
+                  {c.lastFollowupDate ? (
+                    <div className="text-xs">
+                      <span className="text-muted-foreground">{format(new Date(c.lastFollowupDate), "dd MMM")}</span>
+                      {c.lastFollowupStatus && (
+                        <Badge variant="secondary" className="ml-1 text-[10px] capitalize">
+                          {c.lastFollowupStatus.replace(/_/g, " ")}
+                        </Badge>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">No follow-up yet</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center justify-center gap-1">
+                    <Button size="sm" variant="default" onClick={() => { setPayDialog({ open: true, customer: c }); setPayAmount(""); setPayNote(""); }}>
+                      <DollarSign className="h-3 w-3 mr-1" /> Collect
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setFollowUpCustomer({ id: c.id, name: c.name })} title="Follow-up history">
+                      <MessageSquareText className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => navigate(`/ledger?customer=${c.id}`)} title="View ledger">
+                      <BookOpen className="h-3 w-3" />
+                    </Button>
+                    {c.phone && (
+                      <Button size="sm" variant="ghost" disabled={sendingReminder === c.id} onClick={() => handleSendReminder(c)} title="SMS reminder">
+                        <MessageSquare className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -299,12 +403,10 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-destructive/10">
-              <TrendingDown className="h-5 w-5 text-destructive" />
-            </div>
+            <div className="p-2 rounded-lg bg-destructive/10"><TrendingDown className="h-5 w-5 text-destructive" /></div>
             <div>
               <p className="text-xs text-muted-foreground">Total Outstanding</p>
               <p className="text-xl font-bold text-foreground">৳{totalOutstanding.toLocaleString()}</p>
@@ -313,9 +415,7 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Wallet className="h-5 w-5 text-primary" />
-            </div>
+            <div className="p-2 rounded-lg bg-primary/10"><Wallet className="h-5 w-5 text-primary" /></div>
             <div>
               <p className="text-xs text-muted-foreground">Today's Collection</p>
               <p className="text-xl font-bold text-foreground">৳{totalCollectedToday.toLocaleString()}</p>
@@ -324,48 +424,56 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-accent">
-              <AlertTriangle className="h-5 w-5 text-accent-foreground" />
-            </div>
+            <div className="p-2 rounded-lg bg-accent"><AlertTriangle className="h-5 w-5 text-accent-foreground" /></div>
             <div>
               <p className="text-xs text-muted-foreground">Customers with Due</p>
               <p className="text-xl font-bold text-foreground">{customers.length}</p>
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-destructive/10"><Clock className="h-5 w-5 text-destructive" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground">Overdue ({">"}30 days)</p>
+              <p className="text-xl font-bold text-destructive">{customers.filter((c) => c.daysOverdue > 30).length}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Search & Date Filters */}
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search customer name or phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+          <Input placeholder="Search customer..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="highest">Highest Outstanding</SelectItem>
+            <SelectItem value="oldest">Oldest Overdue</SelectItem>
+            <SelectItem value="followup_oldest">Oldest Follow-up</SelectItem>
+          </SelectContent>
+        </Select>
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className={cn("gap-1.5 text-xs", !dateFrom && "text-muted-foreground")}>
-              <CalendarIcon className="h-3.5 w-3.5" />
-              {dateFrom ? format(dateFrom, "dd MMM yyyy") : "From"}
+              <CalendarIcon className="h-3.5 w-3.5" /> {dateFrom ? format(dateFrom, "dd MMM yyyy") : "From"}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
-            <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} initialFocus className={cn("p-3 pointer-events-auto")} />
+            <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} initialFocus className="p-3 pointer-events-auto" />
           </PopoverContent>
         </Popover>
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className={cn("gap-1.5 text-xs", !dateTo && "text-muted-foreground")}>
-              <CalendarIcon className="h-3.5 w-3.5" />
-              {dateTo ? format(dateTo, "dd MMM yyyy") : "To"}
+              <CalendarIcon className="h-3.5 w-3.5" /> {dateTo ? format(dateTo, "dd MMM yyyy") : "To"}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
-            <Calendar mode="single" selected={dateTo} onSelect={setDateTo} initialFocus className={cn("p-3 pointer-events-auto")} />
+            <Calendar mode="single" selected={dateTo} onSelect={setDateTo} initialFocus className="p-3 pointer-events-auto" />
           </PopoverContent>
         </Popover>
         {(dateFrom || dateTo) && (
@@ -375,100 +483,33 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
         )}
       </div>
 
-      {/* Outstanding Customers Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Outstanding Balances</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Invoice No.</TableHead>
-                  <TableHead className="text-right">Total Sales</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead className="text-right">Outstanding</TableHead>
-                  <TableHead>Last Payment</TableHead>
-                  <TableHead className="text-center">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
-                ) : dateFiltered.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No outstanding balances found</TableCell></TableRow>
-                ) : (
-                  dateFiltered.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium text-foreground">{c.name}</p>
-                          {c.phone && <p className="text-xs text-muted-foreground">{c.phone}</p>}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs capitalize">{c.type}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {c.invoices.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {c.invoices.map((inv) => (
-                              <button
-                                key={inv.sale_id}
-                                onClick={() => navigate(`/sales/${inv.sale_id}/invoice`)}
-                                className="text-xs font-mono text-primary hover:underline cursor-pointer"
-                              >
-                                {inv.invoice_number}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">৳{c.total_sales.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">৳{c.total_paid.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-semibold text-destructive">৳{c.outstanding.toLocaleString()}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {c.last_payment_date ? format(new Date(c.last_payment_date), "dd MMM yyyy") : "—"}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => {
-                              setPayDialog({ open: true, customer: c });
-                              setPayAmount("");
-                              setPayNote("");
-                            }}
-                          >
-                            <DollarSign className="h-3 w-3 mr-1" /> Collect
-                          </Button>
-                          {c.phone && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={sendingReminder === c.id}
-                              onClick={() => handleSendReminder(c)}
-                              title="SMS রিমাইন্ডার পাঠান"
-                            >
-                              <MessageSquare className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Tabs: All / Overdue */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="all">All ({filtered.length})</TabsTrigger>
+          <TabsTrigger value="overdue" className="text-destructive">
+            Overdue ({overdueOnly.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all">
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Outstanding Balances</CardTitle></CardHeader>
+            <CardContent className="p-0">{renderTable(displayList)}</CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="overdue">
+          <Card className="border-destructive/30">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-destructive" /> Overdue Customers
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">{renderTable(dateFiltered("overdue"))}</CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Recent Collections */}
       {recentCollections.length > 0 && (
@@ -481,14 +522,12 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Note</TableHead>
-                    <TableHead>Date</TableHead>
-                  </TableRow>
-                </TableHeader>
+                <TableHeader><TableRow>
+                  <TableHead>Customer</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Note</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow></TableHeader>
                 <TableBody>
                   {recentCollections.map((c) => (
                     <TableRow key={c.id}>
@@ -508,9 +547,7 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
       {/* Payment Dialog */}
       <Dialog open={payDialog.open} onOpenChange={(o) => setPayDialog({ open: o })}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Collect Payment — {payDialog.customer?.name}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Collect Payment — {payDialog.customer?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Outstanding:</span>
@@ -518,23 +555,22 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
             </div>
             <div className="space-y-2">
               <Label>Amount (৳)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={payDialog.customer?.outstanding}
-                placeholder="Enter amount"
-                value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value)}
-              />
+              <Input type="number" min={1} max={payDialog.customer?.outstanding} placeholder="Enter amount" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {payDialog.customer && [
+                Math.round(payDialog.customer.outstanding * 0.25),
+                Math.round(payDialog.customer.outstanding * 0.5),
+                payDialog.customer.outstanding,
+              ].map((q) => (
+                <Button key={q} type="button" variant="outline" size="sm" className="text-xs" onClick={() => setPayAmount(String(q))}>
+                  ৳{q.toLocaleString()}
+                </Button>
+              ))}
             </div>
             <div className="space-y-2">
               <Label>Note (optional)</Label>
-              <Textarea
-                placeholder="Collection note..."
-                value={payNote}
-                onChange={(e) => setPayNote(e.target.value)}
-                rows={2}
-              />
+              <Textarea placeholder="Collection note..." value={payNote} onChange={(e) => setPayNote(e.target.value)} rows={2} />
             </div>
           </div>
           <DialogFooter>
@@ -543,11 +579,7 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
               disabled={!payAmount || Number(payAmount) <= 0 || recordPayment.isPending}
               onClick={() => {
                 if (!payDialog.customer) return;
-                recordPayment.mutate({
-                  customerId: payDialog.customer.id,
-                  amount: Number(payAmount),
-                  note: payNote,
-                });
+                recordPayment.mutate({ customerId: payDialog.customer.id, amount: Number(payAmount), note: payNote });
               }}
             >
               {recordPayment.isPending ? "Recording..." : "Record Payment"}
@@ -559,52 +591,41 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
       {/* Receipt Dialog */}
       <Dialog open={!!receiptData} onOpenChange={(o) => !o && setReceiptData(null)}>
         <DialogContent className="sm:max-w-lg print:shadow-none print:border-none">
-          <DialogHeader>
-            <DialogTitle>Payment Receipt</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Payment Receipt</DialogTitle></DialogHeader>
           {receiptData && (
             <div className="overflow-auto max-h-[70vh]">
               <PaymentReceipt
-                ref={receiptRef}
-                dealerName={dealerInfo?.name ?? ""}
-                dealerPhone={dealerInfo?.phone ?? null}
-                dealerAddress={dealerInfo?.address ?? null}
-                customerName={receiptData.customerName}
-                customerPhone={receiptData.customerPhone}
-                amount={receiptData.amount}
-                note={receiptData.note}
-                date={receiptData.date}
-                receiptNo={receiptData.receiptNo}
-                remainingDue={receiptData.remainingDue}
+                ref={receiptRef} dealerName={dealerInfo?.name ?? ""} dealerPhone={dealerInfo?.phone ?? null}
+                dealerAddress={dealerInfo?.address ?? null} customerName={receiptData.customerName}
+                customerPhone={receiptData.customerPhone} amount={receiptData.amount} note={receiptData.note}
+                date={receiptData.date} receiptNo={receiptData.receiptNo} remainingDue={receiptData.remainingDue}
               />
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReceiptData(null)}>Close</Button>
-            <Button
-              onClick={() => {
-                const content = receiptRef.current;
-                if (!content) return;
-                const printWindow = window.open("", "_blank");
-                if (!printWindow) return;
-                printWindow.document.write(`
-                  <html><head><title>Payment Receipt</title>
-                  <style>
-                    body { margin: 0; font-family: 'Segoe UI', sans-serif; }
-                    @media print { body { margin: 0; } }
-                  </style>
-                  </head><body>${content.innerHTML}</body></html>
-                `);
-                printWindow.document.close();
-                printWindow.focus();
-                printWindow.print();
-              }}
-            >
+            <Button onClick={() => {
+              const content = receiptRef.current;
+              if (!content) return;
+              const w = window.open("", "_blank");
+              if (!w) return;
+              w.document.write(`<html><head><title>Receipt</title><style>body{margin:0;font-family:'Segoe UI',sans-serif}@media print{body{margin:0}}</style></head><body>${content.innerHTML}</body></html>`);
+              w.document.close(); w.focus(); w.print();
+            }}>
               <Printer className="h-4 w-4 mr-1" /> Print Receipt
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Follow-up Panel */}
+      <FollowUpPanel
+        open={!!followUpCustomer}
+        onClose={() => setFollowUpCustomer(null)}
+        customerId={followUpCustomer?.id ?? ""}
+        customerName={followUpCustomer?.name ?? ""}
+        dealerId={dealerId}
+      />
     </div>
   );
 }
