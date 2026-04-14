@@ -8,39 +8,64 @@ import { logAudit } from "@/services/auditService";
  * Called automatically after purchase stock is added.
  * 
  * Fulfillment status flow:
- *   fulfilled   → stock fully available at sale time (no backorder)
- *   pending     → backorder exists, nothing allocated yet
+ *   in_stock            → no shortage at sale time
+ *   pending             → backorder exists, nothing allocated yet
  *   partially_allocated → some stock allocated from purchases, not all
  *   ready_for_delivery  → all backorder qty allocated, awaiting delivery
+ *   partially_delivered → some delivered, some still pending
+ *   fulfilled           → fully delivered, no pending quantity
+ *   cancelled           → cancelled safely
  */
 
 export type FulfillmentStatus =
-  | "fulfilled"
+  | "in_stock"
   | "pending"
   | "partially_allocated"
-  | "ready_for_delivery";
+  | "ready_for_delivery"
+  | "partially_delivered"
+  | "fulfilled"
+  | "cancelled";
 
-function computeFulfillmentStatus(
+export function computeFulfillmentStatus(
   quantity: number,
   backorderQty: number,
   allocatedQty: number
 ): FulfillmentStatus {
-  if (backorderQty <= 0) return "fulfilled";
+  // No shortage at sale time
+  if (backorderQty <= 0) return "in_stock";
+  // Has shortage, nothing allocated
   if (allocatedQty <= 0) return "pending";
+  // Fully allocated
   if (allocatedQty >= backorderQty) return "ready_for_delivery";
+  // Partial
   return "partially_allocated";
 }
+
+/** Map of status to user-friendly labels */
+export const FULFILLMENT_STATUS_LABELS: Record<string, string> = {
+  in_stock: "In Stock",
+  pending: "Backordered",
+  partially_allocated: "Partially Allocated",
+  ready_for_delivery: "Ready for Delivery",
+  partially_delivered: "Partially Delivered",
+  fulfilled: "Fulfilled",
+  cancelled: "Cancelled",
+};
+
+export const FULFILLMENT_STATUS_COLORS: Record<string, string> = {
+  in_stock: "text-green-600",
+  pending: "text-red-600",
+  partially_allocated: "text-amber-600",
+  ready_for_delivery: "text-blue-600",
+  partially_delivered: "text-orange-600",
+  fulfilled: "text-green-700",
+  cancelled: "text-muted-foreground",
+};
 
 export const backorderAllocationService = {
   /**
    * Allocate newly received stock to pending backorders for a product (FIFO).
    * Called after purchaseService.create() adds stock.
-   * 
-   * @param productId - The product that was restocked
-   * @param receivedQty - Quantity received in this purchase
-   * @param dealerId - Tenant dealer
-   * @param purchaseItemId - The purchase_item record for audit linking
-   * @returns Total quantity allocated to backorders
    */
   async allocateNewStock(
     productId: string,
@@ -151,7 +176,7 @@ export const backorderAllocationService = {
 
     const hasBackorder = items.some(
       (i) => Number(i.backorder_qty) > 0 || 
-             (i.fulfillment_status !== "fulfilled" && i.fulfillment_status !== "ready_for_delivery")
+             !["in_stock", "fulfilled", "ready_for_delivery"].includes(i.fulfillment_status)
     );
 
     await supabase
@@ -197,5 +222,99 @@ export const backorderAllocationService = {
 
     if (error) throw new Error(error.message);
     return items ?? [];
+  },
+
+  /**
+   * Get backorder summary for dashboard/reports.
+   */
+  async getBackorderSummary(dealerId: string) {
+    const { data, error } = await supabase
+      .from("sale_items")
+      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, sale_rate, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name))")
+      .eq("dealer_id", dealerId)
+      .gt("backorder_qty", 0)
+      .order("created_at", { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  },
+
+  /**
+   * Get pending fulfillment items (allocated but not delivered).
+   */
+  async getPendingFulfillment(dealerId: string) {
+    const { data, error } = await supabase
+      .from("sale_items")
+      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name))")
+      .eq("dealer_id", dealerId)
+      .in("fulfillment_status", ["pending", "partially_allocated", "ready_for_delivery", "partially_delivered"])
+      .order("created_at", { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  },
+
+  /**
+   * Get shortage demand report: products with pending backorder demand.
+   */
+  async getShortageDemandReport(dealerId: string) {
+    const { data, error } = await supabase
+      .from("sale_items")
+      .select("product_id, backorder_qty, allocated_qty, products(name, sku, unit_type, brand)")
+      .eq("dealer_id", dealerId)
+      .gt("backorder_qty", 0);
+
+    if (error) throw new Error(error.message);
+
+    // Aggregate by product
+    const productMap = new Map<string, { name: string; sku: string; unit_type: string; brand: string; totalShortage: number; totalAllocated: number; pendingCount: number }>();
+    for (const item of data ?? []) {
+      const pid = item.product_id;
+      const existing = productMap.get(pid);
+      const product = item.products as any;
+      if (existing) {
+        existing.totalShortage += Number(item.backorder_qty);
+        existing.totalAllocated += Number(item.allocated_qty);
+        existing.pendingCount++;
+      } else {
+        productMap.set(pid, {
+          name: product?.name ?? "Unknown",
+          sku: product?.sku ?? "",
+          unit_type: product?.unit_type ?? "piece",
+          brand: product?.brand ?? "—",
+          totalShortage: Number(item.backorder_qty),
+          totalAllocated: Number(item.allocated_qty),
+          pendingCount: 1,
+        });
+      }
+    }
+
+    return Array.from(productMap.entries()).map(([id, v]) => ({
+      product_id: id,
+      ...v,
+      unfulfilledQty: v.totalShortage - v.totalAllocated,
+    })).sort((a, b) => b.unfulfilledQty - a.unfulfilledQty);
+  },
+
+  /**
+   * Get dashboard stats for backorder widgets.
+   */
+  async getDashboardStats(dealerId: string) {
+    const { data, error } = await supabase
+      .from("sale_items")
+      .select("fulfillment_status, backorder_qty, allocated_qty, product_id, sale_id")
+      .eq("dealer_id", dealerId)
+      .neq("fulfillment_status", "in_stock")
+      .neq("fulfillment_status", "fulfilled")
+      .neq("fulfillment_status", "cancelled");
+
+    if (error) return { totalBackorders: 0, pendingFulfillment: 0, readyForDelivery: 0 };
+
+    const items = data ?? [];
+    const totalBackorders = items.filter(i => Number(i.backorder_qty) > 0).length;
+    const pendingFulfillment = items.filter(i => ["pending", "partially_allocated", "partially_delivered"].includes(i.fulfillment_status)).length;
+    const readyForDelivery = items.filter(i => i.fulfillment_status === "ready_for_delivery").length;
+
+    return { totalBackorders, pendingFulfillment, readyForDelivery };
   },
 };
