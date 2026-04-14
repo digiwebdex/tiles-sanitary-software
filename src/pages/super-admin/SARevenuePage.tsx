@@ -40,10 +40,17 @@ const SARevenuePage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("subscriptions")
-        .select("*, dealers(name), plans(name, price_monthly, price_yearly)")
+        .select("*, dealers(name), subscription_plans!subscriptions_plan_id_fkey(name, monthly_price, yearly_price)")
         .order("start_date", { ascending: false });
       if (error) throw new Error(error.message);
-      return data as SubRow[];
+      return (data ?? []).map((s: any) => ({
+        ...s,
+        plans: s.subscription_plans ? {
+          name: s.subscription_plans.name,
+          price_monthly: s.subscription_plans.monthly_price,
+          price_yearly: s.subscription_plans.yearly_price,
+        } : null,
+      })) as SubRow[];
     },
   });
 
