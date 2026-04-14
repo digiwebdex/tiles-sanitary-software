@@ -84,6 +84,6 @@ export async function seed(knex: Knex): Promise<void> {
   });
 
   console.log('Seed completed:');
-  console.log('  Super Admin: admin@tileserp.com / admin123456');
+  console.log('  Super Admin: bditengineer@gmail.com / KeyaIq11151000@#');
   console.log('  Dealer Admin: dealer@tileserp.com / admin123456');
 }
