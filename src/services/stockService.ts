@@ -45,37 +45,39 @@ function computeStockUpdate(
   product: StockProduct,
   currentStock: { box_qty: number; sft_qty: number; piece_qty: number },
   quantity: number,
-  type: AdjustmentType
+  type: AdjustmentType,
+  allowNegative = false
 ) {
   const sign = type === "deduct" ? -1 : 1;
 
   if (product.unit_type === "box_sft") {
     const perBoxSft = product.per_box_sft ?? 0;
     const newBoxQty = Number(currentStock.box_qty) + sign * quantity;
-    if (newBoxQty < 0) throw new Error("Insufficient box stock");
+    if (newBoxQty < 0 && !allowNegative) throw new Error("Insufficient box stock");
     return {
-      box_qty: newBoxQty,
-      sft_qty: newBoxQty * perBoxSft,
+      box_qty: Math.max(0, newBoxQty),
+      sft_qty: Math.max(0, newBoxQty) * perBoxSft,
     };
   }
 
   // piece
   const newPieceQty = Number(currentStock.piece_qty) + sign * quantity;
-  if (newPieceQty < 0) throw new Error("Insufficient piece stock");
-  return { piece_qty: newPieceQty };
+  if (newPieceQty < 0 && !allowNegative) throw new Error("Insufficient piece stock");
+  return { piece_qty: Math.max(0, newPieceQty) };
 }
 
 async function applyStockChange(
   productId: string,
   dealerId: string,
   quantity: number,
-  type: AdjustmentType
+  type: AdjustmentType,
+  allowNegative = false
 ) {
   if (quantity <= 0) throw new Error("Quantity must be positive");
 
   const product = await getProduct(productId);
   const stock = await getOrCreateStock(productId, dealerId);
-  const updates = computeStockUpdate(product, stock, quantity, type);
+  const updates = computeStockUpdate(product, stock, quantity, type, allowNegative);
 
   const { error } = await supabase
     .from("stock")
@@ -85,7 +87,7 @@ async function applyStockChange(
 
   if (error) throw new Error(`Stock update failed: ${error.message}`);
 
-  // Audit log for every stock change (DB trigger also logs, this adds app-level context)
+  // Audit log for every stock change
   await logAudit({
     dealer_id: dealerId,
     action: `stock_${type}`,
@@ -94,6 +96,46 @@ async function applyStockChange(
     old_data: { box_qty: stock.box_qty, sft_qty: stock.sft_qty, piece_qty: stock.piece_qty },
     new_data: { ...updates, adjustment_type: type, quantity },
   });
+}
+
+/**
+ * Get available stock quantity for a product.
+ * Returns box_qty for box_sft products, piece_qty for piece products.
+ */
+async function getAvailableQty(productId: string, dealerId: string): Promise<number> {
+  const product = await getProduct(productId);
+  const stock = await getOrCreateStock(productId, dealerId);
+
+  if (product.unit_type === "box_sft") {
+    return Number(stock.box_qty);
+  }
+  return Number(stock.piece_qty);
+}
+
+/**
+ * Deduct stock with backorder awareness.
+ * Deducts only what's available and returns how much was actually deducted vs backordered.
+ */
+async function deductStockWithBackorder(
+  productId: string,
+  requestedQty: number,
+  dealerId: string
+): Promise<{ deducted: number; backordered: number; availableAtSale: number }> {
+  if (requestedQty <= 0) throw new Error("Quantity must be positive");
+
+  const available = await getAvailableQty(productId, dealerId);
+  const deductible = Math.min(available, requestedQty);
+  const backordered = Math.max(0, requestedQty - available);
+
+  if (deductible > 0) {
+    await applyStockChange(productId, dealerId, deductible, "deduct", false);
+  }
+
+  return {
+    deducted: deductible,
+    backordered,
+    availableAtSale: available,
+  };
 }
 
 async function updateAverageCost(
@@ -105,8 +147,6 @@ async function updateAverageCost(
   const stock = await getOrCreateStock(productId, dealerId);
   const product = await getProduct(productId);
 
-  // For box_sft products, use sft_qty as the base for weighted average
-  // For piece products, use piece_qty
   let currentQty: number;
   if (product.unit_type === "box_sft") {
     currentQty = Number(stock.sft_qty);
@@ -152,6 +192,9 @@ export const stockService = {
     });
     return applyStockChange(productId, dealerId, quantity, type);
   },
+
+  getAvailableQty,
+  deductStockWithBackorder,
 
   /**
    * Reserve stock: reduce available, increase reserved (for challan workflow)
