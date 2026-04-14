@@ -529,7 +529,7 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
                     )}
                   </div>
                   {isTrial ? (
-                    <p className="text-xs mt-2 text-emerald-400/70 font-medium">3 days • No credit card required</p>
+                    <p className="text-xs mt-2 text-emerald-400/70 font-medium">3 days • No payment required</p>
                   ) : yearly ? (
                     <Badge className="mt-2 text-[10px] px-2 py-0.5 gap-1 bg-gradient-to-r from-amber-500 to-orange-600 text-white border-0">
                       <Sparkles className="h-3 w-3" /> Save 2 months
