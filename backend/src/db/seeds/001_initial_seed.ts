@@ -21,7 +21,7 @@ export async function seed(knex: Knex): Promise<void> {
   await knex('profiles').insert({
     id: superAdminUser.id,
     name: 'Super Admin',
-    email: 'admin@tileserp.com',
+    email: 'bditengineer@gmail.com',
   });
 
   await knex('user_roles').insert({
