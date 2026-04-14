@@ -161,6 +161,87 @@ Deno.serve(async (req) => {
       status: "auto_provisioned",
     });
 
+    // ── 8. Send notifications to dealer and super admin ──
+    try {
+      const dealerSmsMsg = `স্বাগতম ${name.trim()}!\nআপনার "${business_name.trim()}" ব্যবসার অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে।\n3 দিনের ফ্রি ট্রায়াল শুরু হয়েছে।\nলগইন: ${emailLower}\n\nTiles & Sanitary ERP`;
+      const dealerEmailSubject = `Welcome to Tiles & Sanitary ERP - Account Created`;
+      const dealerEmailBody = `Dear ${name.trim()},\n\nYour business account "${business_name.trim()}" has been successfully created!\n\nAccount Details:\n- Business: ${business_name.trim()}\n- Email: ${emailLower}\n- Phone: ${phone.trim()}\n- Plan: Starter (3-day free trial)\n\nYou can now log in and start managing your business.\n\nBest regards,\nTiles & Sanitary ERP Team`;
+
+      // Get super admin info
+      const { data: saRoles } = await serviceClient
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "super_admin");
+
+      let adminEmail: string | null = null;
+      let adminPhone: string | null = null;
+      if (saRoles && saRoles.length > 0) {
+        const { data: saProfile } = await serviceClient
+          .from("profiles")
+          .select("email")
+          .eq("id", saRoles[0].user_id)
+          .single();
+        if (saProfile) adminEmail = saProfile.email;
+
+        // Check ADMIN_EMAIL secret as fallback
+        const envAdminEmail = Deno.env.get("ADMIN_EMAIL");
+        if (envAdminEmail) adminEmail = envAdminEmail;
+      }
+
+      const adminSmsMsg = `নতুন ডিলার রেজিস্ট্রেশন!\nনাম: ${name.trim()}\nব্যবসা: ${business_name.trim()}\nফোন: ${phone.trim()}\nইমেইল: ${emailLower}\nPlan: Starter (Trial)`;
+      const adminEmailSubject = `New Dealer Registration - ${business_name.trim()}`;
+      const adminEmailBody = `New Dealer Account Created!\n\nDealer Details:\n- Owner: ${name.trim()}\n- Business: ${business_name.trim()}\n- Phone: ${phone.trim()}\n- Email: ${emailLower}\n- Plan: Starter (3-day trial)\n- Date: ${new Date().toISOString().split("T")[0]}\n\nPlease review in the Super Admin panel.`;
+
+      // Send SMS to dealer
+      if (phone.trim()) {
+        await sendNotification(serviceClient, {
+          dealer_id: dealer.id,
+          channel: "sms",
+          type: "new_signup",
+          recipient: phone.trim(),
+          message: dealerSmsMsg,
+        });
+      }
+
+      // Send Email to dealer
+      await sendNotification(serviceClient, {
+        dealer_id: dealer.id,
+        channel: "email",
+        type: "new_signup",
+        recipient: emailLower,
+        subject: dealerEmailSubject,
+        message: dealerEmailBody,
+      });
+
+      // Send SMS to admin (if admin phone available)
+      const envAdminPhone = Deno.env.get("ADMIN_PHONE");
+      if (envAdminPhone) {
+        await sendNotification(serviceClient, {
+          dealer_id: dealer.id,
+          channel: "sms",
+          type: "new_signup",
+          recipient: envAdminPhone,
+          message: adminSmsMsg,
+        });
+      }
+
+      // Send Email to admin
+      if (adminEmail) {
+        await sendNotification(serviceClient, {
+          dealer_id: dealer.id,
+          channel: "email",
+          type: "new_signup",
+          recipient: adminEmail,
+          subject: adminEmailSubject,
+          message: adminEmailBody,
+        });
+      }
+
+      console.log("[Self-signup] Notifications sent successfully");
+    } catch (notifErr) {
+      console.error("[Self-signup] Notification error (non-blocking):", notifErr);
+    }
+
     return new Response(
       JSON.stringify({ success: true, user_id: userId, dealer_id: dealer.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
