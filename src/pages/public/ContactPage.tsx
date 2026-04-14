@@ -99,8 +99,8 @@ const INFO_CARDS = [
   {
     icon: Phone,
     label: "Phone",
-    value: "+880 1234-567890",
-    href: "tel:+8801234567890",
+    value: "+880 1674-533303",
+    href: "tel:+8801674533303",
     note: "Available 9am – 6pm (BD Time)",
   },
   {

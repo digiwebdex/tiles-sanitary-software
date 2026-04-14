@@ -154,7 +154,7 @@ const SubscriptionBlockedPage = () => {
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <a
-              href="tel:+8801711111111"
+              href="tel:+8801674533303"
               className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
             >
               <Phone className="h-4 w-4 text-muted-foreground" /> Call Admin

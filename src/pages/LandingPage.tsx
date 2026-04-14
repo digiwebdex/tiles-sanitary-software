@@ -13,6 +13,7 @@ import {
   TrendingUp, LayoutDashboard, AlertCircle, Receipt, Sparkles,
   Globe, ExternalLink, ChevronRight, Play, Box, Menu, X, Building2,
 } from "lucide-react";
+import FloatingButtons from "@/components/FloatingButtons";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   BarChart2, Package, ShoppingCart, Users, Truck, FileText,
@@ -54,7 +55,7 @@ const DEFAULTS = {
     title: "Tiles & Sanitary ERP",
     description: "The modern ERP platform for tiles and sanitary dealers.",
     extra_json: {
-      phone: "+880 1234-567890",
+      phone: "+880 1674-533303",
       email: "support@tilesERP.com",
       address: "Dhaka, Bangladesh",
       copyright: `© ${new Date().getFullYear()} Tiles ERP. All rights reserved.`,
@@ -791,6 +792,7 @@ const LandingPage = () => {
       <PricingSection cms={pricing} />
       <CtaSection heroBtn={hero.button_text || "Start Free Trial"} heroBtnLink={hero.button_link || "/get-started"} />
       <FooterSection cms={footer} />
+      <FloatingButtons />
     </div>
   );
 };
