@@ -11,7 +11,7 @@ import {
   CheckCircle2, Phone, Mail, MapPin, ArrowRight, Lock,
   Star, Zap, Server, Database, RefreshCw, UserCheck, Store,
   TrendingUp, LayoutDashboard, AlertCircle, Receipt, Sparkles,
-  Globe, ExternalLink, ChevronRight, Play, Box, Menu, X,
+  Globe, ExternalLink, ChevronRight, Play, Box, Menu, X, Building2,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
