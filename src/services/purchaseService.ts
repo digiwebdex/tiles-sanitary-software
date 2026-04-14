@@ -151,11 +151,21 @@ export const purchaseService = {
       // For piece: average cost is per piece (landed_cost / quantity)
       if (unitType === "box_sft" && perBoxSft && item.total_sft) {
         const costPerSft = item.total_sft > 0 ? item.landed_cost / item.total_sft : 0;
-        // Pass total_sft as the "quantity" for weighted average calculation
         await stockService.updateAverageCost(item.product_id, input.dealer_id, item.total_sft, costPerSft);
       } else {
         const costPerUnit = item.quantity > 0 ? item.landed_cost / item.quantity : 0;
         await stockService.updateAverageCost(item.product_id, input.dealer_id, item.quantity, costPerUnit);
+      }
+
+      // Auto-allocate to pending backorders (FIFO)
+      const purchaseItemId = insertedItemMap.get(item.product_id);
+      if (purchaseItemId) {
+        await backorderAllocationService.allocateNewStock(
+          item.product_id,
+          item.quantity,
+          input.dealer_id,
+          purchaseItemId
+        );
       }
     }
 
