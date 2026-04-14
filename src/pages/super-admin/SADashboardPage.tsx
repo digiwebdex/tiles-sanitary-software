@@ -47,7 +47,7 @@ const SADashboardPage = () => {
     queryFn: async () => {
       const [dealersRes, subsRes, paymentsRes] = await Promise.all([
         supabase.from("dealers").select("id, status"),
-        supabase.from("subscriptions").select("id, status, start_date, end_date, plan_id, dealer_id, plans(price_monthly, price_yearly)"),
+        supabase.from("subscriptions").select("id, status, start_date, end_date, plan_id, dealer_id, subscription_plans!subscriptions_plan_id_fkey(monthly_price, yearly_price)"),
         supabase.from("subscription_payments").select("id, amount, payment_date, payment_status"),
       ]);
 
@@ -89,7 +89,7 @@ const SADashboardPage = () => {
       // MRR
       const monthlyRevenue = subs
         .filter((s: any) => s.status === "active")
-        .reduce((sum: number, s: any) => sum + (Number(s.plans?.price_monthly) || 0), 0);
+        .reduce((sum: number, s: any) => sum + (Number(s.subscription_plans?.monthly_price) || 0), 0);
 
       // This month collected revenue from subscription_payments
       const thisMonthStart = startOfMonth(now);

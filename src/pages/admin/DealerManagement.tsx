@@ -75,7 +75,7 @@ const DealerManagement = () => {
     queryFn: async () => {
       const [dealersRes, subsRes, profilesRes] = await Promise.all([
         supabase.from("dealers").select("*").order("created_at", { ascending: false }),
-        supabase.from("subscriptions").select("*, plans(name)").order("start_date", { ascending: false }),
+        supabase.from("subscriptions").select("*, subscription_plans!subscriptions_plan_id_fkey(name)").order("start_date", { ascending: false }),
         supabase.from("profiles").select("id, name, email, dealer_id, status"),
       ]);
       if (dealersRes.error) throw new Error(dealersRes.error.message);
