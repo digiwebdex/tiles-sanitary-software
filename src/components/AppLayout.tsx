@@ -26,6 +26,7 @@ const navItems = [
   { path: "/campaigns", label: "Campaigns", icon: Gift },
   { path: "/reports", label: "Reports", icon: BarChart3, readonlyAllowed: true },
   { path: "/reports/credit", label: "Credit Report", icon: ShieldCheck, readonlyAllowed: true },
+  { path: "/settings", label: "Settings", icon: Settings, readonlyAllowed: false },
 ];
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
