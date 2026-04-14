@@ -21,7 +21,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Ban, CheckCircle, UserPlus, Eye } from "lucide-react";
+import { Plus, Pencil, Ban, CheckCircle, UserPlus, Eye, RefreshCw } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 interface DealerForm {
@@ -64,6 +64,13 @@ const DealerManagement = () => {
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [addUserDealerId, setAddUserDealerId] = useState("");
   const [addUserForm, setAddUserForm] = useState<AdminUserForm>(emptyAdminForm);
+
+  // Change plan dialog
+  const [changePlanOpen, setChangePlanOpen] = useState(false);
+  const [changePlanDealerId, setChangePlanDealerId] = useState("");
+  const [changePlanDealerName, setChangePlanDealerName] = useState("");
+  const [changePlanForm, setChangePlanForm] = useState<SubscriptionForm>(emptySubForm);
+  const [changePlanHasExisting, setChangePlanHasExisting] = useState(false);
 
   // Detail sheet
   const [detailDealer, setDetailDealer] = useState<any>(null);
@@ -229,6 +236,45 @@ const DealerManagement = () => {
     },
   });
 
+  const changePlanMutation = useMutation({
+    mutationFn: async () => {
+      if (!changePlanForm.plan_id) throw new Error("Please select a plan");
+      if (changePlanHasExisting) {
+        // Update existing subscription
+        const { error } = await supabase
+          .from("subscriptions")
+          .update({
+            plan_id: changePlanForm.plan_id,
+            start_date: changePlanForm.start_date || todayStr,
+            end_date: changePlanForm.end_date || null,
+            status: "active" as any,
+          })
+          .eq("dealer_id", changePlanDealerId)
+          .order("start_date", { ascending: false })
+          .limit(1);
+        if (error) throw new Error(error.message);
+      } else {
+        // Create new subscription
+        const { error } = await supabase.from("subscriptions").insert({
+          dealer_id: changePlanDealerId,
+          plan_id: changePlanForm.plan_id,
+          start_date: changePlanForm.start_date || todayStr,
+          end_date: changePlanForm.end_date || null,
+          status: "active" as any,
+        });
+        if (error) throw new Error(error.message);
+      }
+    },
+    onSuccess: () => {
+      toast({ title: "Subscription plan updated for " + changePlanDealerName });
+      invalidateAll();
+      setChangePlanOpen(false);
+    },
+    onError: (e: Error) => {
+      toast({ variant: "destructive", title: "Error", description: e.message });
+    },
+  });
+
   // ─── Helpers ───
   const closeDialog = () => {
     setDialogOpen(false);
@@ -346,6 +392,25 @@ const DealerManagement = () => {
                               title="Add User"
                             >
                               <UserPlus className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                setChangePlanDealerId(d.id);
+                                setChangePlanDealerName(d.name);
+                                setChangePlanHasExisting(!!d.subscription);
+                                setChangePlanForm({
+                                  plan_id: d.subscription?.plan_id ?? "",
+                                  start_date: d.subscription?.start_date ?? todayStr,
+                                  end_date: d.subscription?.end_date ?? "",
+                                });
+                                setChangePlanOpen(true);
+                              }}
+                              title="Change Plan"
+                            >
+                              <RefreshCw className="h-3 w-3" />
                             </Button>
                             <Button
                               size="sm"
@@ -503,6 +568,49 @@ const DealerManagement = () => {
             <Button variant="outline" onClick={() => setAddUserOpen(false)}>Cancel</Button>
             <Button onClick={() => addUserMutation.mutate()} disabled={addUserMutation.isPending}>
               {addUserMutation.isPending ? "Creating…" : "Create User"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Change Plan Dialog ─── */}
+      <Dialog open={changePlanOpen} onOpenChange={setChangePlanOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change Plan — {changePlanDealerName}</DialogTitle>
+            <DialogDescription>
+              {changePlanHasExisting ? "Update the subscription plan for this dealer." : "Assign a new subscription plan to this dealer."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Plan *</Label>
+              <Select value={changePlanForm.plan_id} onValueChange={(v) => setChangePlanForm({ ...changePlanForm, plan_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Select plan" /></SelectTrigger>
+                <SelectContent>
+                  {plans.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} — {formatCurrency(p.price_monthly)}/mo
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <Input type="date" value={changePlanForm.start_date} onChange={(e) => setChangePlanForm({ ...changePlanForm, start_date: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <Input type="date" value={changePlanForm.end_date} onChange={(e) => setChangePlanForm({ ...changePlanForm, end_date: e.target.value })} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChangePlanOpen(false)}>Cancel</Button>
+            <Button onClick={() => changePlanMutation.mutate()} disabled={changePlanMutation.isPending}>
+              {changePlanMutation.isPending ? "Saving…" : changePlanHasExisting ? "Update Plan" : "Assign Plan"}
             </Button>
           </DialogFooter>
         </DialogContent>
