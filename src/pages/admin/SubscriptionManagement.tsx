@@ -106,7 +106,11 @@ const SubscriptionManagement = () => {
   const { data: plans = [] } = useQuery({
     queryKey: ["admin-plans-list"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("plans").select("id, name").order("name");
+      const { data, error } = await supabase
+        .from("subscription_plans")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("monthly_price");
       if (error) throw new Error(error.message);
       return data;
     },
