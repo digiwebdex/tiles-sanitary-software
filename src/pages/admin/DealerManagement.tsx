@@ -65,6 +65,13 @@ const DealerManagement = () => {
   const [addUserDealerId, setAddUserDealerId] = useState("");
   const [addUserForm, setAddUserForm] = useState<AdminUserForm>(emptyAdminForm);
 
+  // Change plan dialog
+  const [changePlanOpen, setChangePlanOpen] = useState(false);
+  const [changePlanDealerId, setChangePlanDealerId] = useState("");
+  const [changePlanDealerName, setChangePlanDealerName] = useState("");
+  const [changePlanForm, setChangePlanForm] = useState<SubscriptionForm>(emptySubForm);
+  const [changePlanHasExisting, setChangePlanHasExisting] = useState(false);
+
   // Detail sheet
   const [detailDealer, setDetailDealer] = useState<any>(null);
 
