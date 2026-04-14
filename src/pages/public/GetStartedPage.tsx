@@ -70,7 +70,6 @@ const GetStartedPage = () => {
 
     setLoading(true);
     try {
-      // 1. Call self-signup edge function
       const { data, error } = await supabase.functions.invoke("self-signup", {
         body: {
           name: result.data.name,
@@ -84,7 +83,6 @@ const GetStartedPage = () => {
       if (error) throw new Error("Signup failed. Please try again.");
       if (data?.error) throw new Error(data.error);
 
-      // 2. Auto-login
       const { error: loginErr } = await supabase.auth.signInWithPassword({
         email: result.data.email.trim().toLowerCase(),
         password: result.data.password,
@@ -97,7 +95,6 @@ const GetStartedPage = () => {
         description: "Your account is ready. Redirecting to dashboard...",
       });
 
-      // 3. Redirect to dashboard
       setTimeout(() => navigate("/dashboard", { replace: true }), 1000);
     } catch (err: any) {
       toast({
@@ -111,18 +108,18 @@ const GetStartedPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
+    <div className="min-h-screen bg-[#0d1117]">
       {/* Nav */}
-      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
+      <nav className="sticky top-0 z-50 bg-[#0d1117]/90 backdrop-blur-xl border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-              <Layers className="h-4.5 w-4.5 text-primary-foreground" />
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
+              <Layers className="h-5 w-5 text-white" />
             </div>
-            <span className="font-bold text-lg text-foreground">TilesERP</span>
+            <span className="font-bold text-lg text-white">TilesERP</span>
           </Link>
           <Link to="/login">
-            <Button size="sm" variant="outline" className="rounded-lg">Sign In</Button>
+            <Button size="sm" className="bg-white text-gray-900 hover:bg-gray-100 font-semibold border-0">Sign In</Button>
           </Link>
         </div>
       </nav>
@@ -134,39 +131,39 @@ const GetStartedPage = () => {
             <div>
               <Link
                 to="/"
-                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-5"
+                className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-orange-400 transition-colors mb-5"
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Back to home
               </Link>
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight mb-3">
-                Create Your Account
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">
+                Create Your <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">Account</span>
               </h1>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                Set up your ERP instantly. 3-day free trial — no credit card needed.
+              <p className="text-lg text-gray-400 leading-relaxed">
+                Set up your ERP instantly. <span className="text-orange-400 font-semibold">3-day free trial</span> — no credit card needed.
               </p>
             </div>
 
             <div className="space-y-3.5">
               {BENEFITS.map((b, i) => (
                 <div key={i} className="flex items-center gap-3.5 group">
-                  <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/15 transition-colors">
-                    <b.icon className="h-5 w-5 text-primary" />
+                  <div className="h-10 w-10 rounded-xl bg-orange-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-orange-500/20 transition-colors">
+                    <b.icon className="h-5 w-5 text-orange-400" />
                   </div>
-                  <span className="text-foreground font-medium">{b.text}</span>
+                  <span className="text-gray-300 font-medium">{b.text}</span>
                 </div>
               ))}
             </div>
 
             {/* How it works */}
-            <div className="rounded-2xl border border-border bg-card/50 p-6 space-y-4">
-              <p className="font-semibold text-foreground text-sm uppercase tracking-wider">How it works</p>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 space-y-4">
+              <p className="font-semibold text-white text-sm uppercase tracking-wider">How it works</p>
               <div className="space-y-3">
                 {STEPS.map((s, i) => (
                   <div key={i} className="flex items-center gap-3">
-                    <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
+                    <div className="h-7 w-7 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
                       {s.num}
                     </div>
-                    <span className="text-sm text-muted-foreground">{s.text}</span>
+                    <span className="text-sm text-gray-500">{s.text}</span>
                   </div>
                 ))}
               </div>
@@ -174,69 +171,69 @@ const GetStartedPage = () => {
           </div>
 
           {/* Right — Form */}
-          <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-xl shadow-black/5">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8 shadow-2xl shadow-black/20 backdrop-blur-sm">
             <div className="mb-6">
-              <h2 className="text-xl font-bold text-foreground">Get Started Free</h2>
-              <p className="text-sm text-muted-foreground mt-1">Create your dealer account in seconds</p>
+              <h2 className="text-xl font-bold text-white">Get Started Free</h2>
+              <p className="text-sm text-gray-500 mt-1">Create your dealer account in seconds</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="name" className="text-sm font-medium">Full Name *</Label>
+                  <Label htmlFor="name" className="text-sm font-medium text-gray-300">Full Name *</Label>
                   <Input
                     id="name"
                     placeholder="Your full name"
                     value={form.name}
                     onChange={(e) => update("name", e.target.value)}
-                    className={`h-11 ${errors.name ? "border-destructive" : ""}`}
+                    className={`h-11 bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-orange-500 focus:ring-orange-500/20 ${errors.name ? "border-red-500" : ""}`}
                   />
-                  {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+                  {errors.name && <p className="text-xs text-red-400">{errors.name}</p>}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="business_name" className="text-sm font-medium">Business Name *</Label>
+                  <Label htmlFor="business_name" className="text-sm font-medium text-gray-300">Business Name *</Label>
                   <Input
                     id="business_name"
                     placeholder="e.g. ABC Tiles"
                     value={form.business_name}
                     onChange={(e) => update("business_name", e.target.value)}
-                    className={`h-11 ${errors.business_name ? "border-destructive" : ""}`}
+                    className={`h-11 bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-orange-500 focus:ring-orange-500/20 ${errors.business_name ? "border-red-500" : ""}`}
                   />
-                  {errors.business_name && <p className="text-xs text-destructive">{errors.business_name}</p>}
+                  {errors.business_name && <p className="text-xs text-red-400">{errors.business_name}</p>}
                 </div>
               </div>
 
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="phone" className="text-sm font-medium">Phone Number *</Label>
+                  <Label htmlFor="phone" className="text-sm font-medium text-gray-300">Phone Number *</Label>
                   <Input
                     id="phone"
                     type="tel"
                     placeholder="+880 1XXX-XXXXXX"
                     value={form.phone}
                     onChange={(e) => update("phone", e.target.value)}
-                    className={`h-11 ${errors.phone ? "border-destructive" : ""}`}
+                    className={`h-11 bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-orange-500 focus:ring-orange-500/20 ${errors.phone ? "border-red-500" : ""}`}
                   />
-                  {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
+                  {errors.phone && <p className="text-xs text-red-400">{errors.phone}</p>}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-sm font-medium">Email Address *</Label>
+                  <Label htmlFor="email" className="text-sm font-medium text-gray-300">Email Address *</Label>
                   <Input
                     id="email"
                     type="email"
                     placeholder="you@example.com"
                     value={form.email}
                     onChange={(e) => update("email", e.target.value)}
-                    className={`h-11 ${errors.email ? "border-destructive" : ""}`}
+                    className={`h-11 bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-orange-500 focus:ring-orange-500/20 ${errors.email ? "border-red-500" : ""}`}
                   />
-                  {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+                  {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-sm font-medium">Password *</Label>
+                <Label htmlFor="password" className="text-sm font-medium text-gray-300">Password *</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -244,50 +241,50 @@ const GetStartedPage = () => {
                     placeholder="Min 6 characters"
                     value={form.password}
                     onChange={(e) => update("password", e.target.value)}
-                    className={`h-11 pr-10 ${errors.password ? "border-destructive" : ""}`}
+                    className={`h-11 pr-10 bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-orange-500 focus:ring-orange-500/20 ${errors.password ? "border-red-500" : ""}`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
                     tabIndex={-1}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
+                {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
               </div>
 
               <Button
                 type="submit"
-                className="w-full h-12 text-base font-semibold gap-2 rounded-xl mt-2"
+                className="w-full h-12 text-base font-bold gap-2 rounded-xl mt-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white border-0 shadow-lg shadow-orange-500/20"
                 disabled={loading}
               >
                 {loading ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Creating Account…</>
                 ) : (
-                  <>Create Free Account <ArrowRight className="h-4 w-4" /></>
+                  <><Zap className="h-4 w-4" /> Create Free Account</>
                 )}
               </Button>
 
-              <p className="text-xs text-muted-foreground text-center pt-1">
+              <p className="text-xs text-gray-600 text-center pt-1">
                 By signing up, you agree to our{" "}
-                <Link to="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
-                <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
+                <Link to="/terms" className="underline hover:text-orange-400">Terms</Link> and{" "}
+                <Link to="/privacy" className="underline hover:text-orange-400">Privacy Policy</Link>.
               </p>
 
               <div className="relative py-2">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border" />
+                  <div className="w-full border-t border-white/10" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">or</span>
+                  <span className="bg-[#0d1117] px-2 text-gray-600">or</span>
                 </div>
               </div>
 
-              <p className="text-sm text-center text-muted-foreground">
+              <p className="text-sm text-center text-gray-500">
                 Already have an account?{" "}
-                <Link to="/login" className="font-medium text-primary hover:underline">
+                <Link to="/login" className="font-semibold text-orange-400 hover:underline">
                   Sign In
                 </Link>
               </p>

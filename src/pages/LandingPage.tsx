@@ -11,7 +11,7 @@ import {
   CheckCircle2, Phone, Mail, MapPin, ArrowRight, Lock,
   Star, Zap, Server, Database, RefreshCw, UserCheck, Store,
   TrendingUp, LayoutDashboard, AlertCircle, Receipt, Sparkles,
-  Globe, ExternalLink, ChevronRight, Play, Box,
+  Globe, ExternalLink, ChevronRight, Play, Box, Menu, X,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -26,14 +26,14 @@ const DEFAULTS = {
     button_text: "Start Free Trial",
     button_link: "/get-started",
     extra_json: {
-      badge: "Trusted by 100+ Dealers",
+      badge: "🚀 #1 Tiles & Sanitary ERP in Bangladesh",
       secondary_button: "Sign In",
       secondary_link: "/login",
     },
   },
   features: {
-    title: "Everything You Need",
-    subtitle: "Powerful features built for tiles & sanitary dealers",
+    title: "Built for Tiles & Sanitary Professionals",
+    subtitle: "Every module is designed around how dealers actually work — not generic business software.",
     extra_json: {
       items: [
         { icon: "Package", title: "Inventory Management", description: "Track stock levels by box, SFT, and piece. Set reorder alerts and monitor aging inventory in real time." },
@@ -64,10 +64,10 @@ const DEFAULTS = {
 
 const SectionSkeleton = () => (
   <div className="space-y-4 py-12 px-4 max-w-4xl mx-auto">
-    <Skeleton className="h-10 w-64 mx-auto" />
-    <Skeleton className="h-5 w-96 mx-auto" />
+    <Skeleton className="h-10 w-64 mx-auto bg-white/10" />
+    <Skeleton className="h-5 w-96 mx-auto bg-white/10" />
     <div className="grid grid-cols-3 gap-4 mt-8">
-      {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 rounded-xl" />)}
+      {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 rounded-xl bg-white/10" />)}
     </div>
   </div>
 );
@@ -76,32 +76,47 @@ const SectionSkeleton = () => (
 const Navbar = ({ companyName }: { companyName: string }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   return (
-    <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
+    <nav className="sticky top-0 z-50 bg-[#0d1117]/90 backdrop-blur-xl border-b border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-primary/25">
-            <Layers className="h-5 w-5 text-primary-foreground" />
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
+            <Layers className="h-5 w-5 text-white" />
           </div>
-          <span className="font-bold text-lg text-foreground tracking-tight">{companyName}</span>
+          <div>
+            <span className="font-bold text-lg text-white tracking-tight">{companyName}</span>
+            <span className="hidden sm:block text-[10px] uppercase tracking-[0.2em] text-gray-500 -mt-0.5">ERP Software</span>
+          </div>
         </div>
-        <div className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
-          <a href="#features" className="hover:text-primary transition-colors">Features</a>
-          <a href="#why-us" className="hover:text-primary transition-colors">Why Us</a>
-          <a href="#pricing" className="hover:text-primary transition-colors">Pricing</a>
-          <a href="#security" className="hover:text-primary transition-colors">Security</a>
-          <a href="#contact" className="hover:text-primary transition-colors">Contact</a>
+        <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
+          <a href="#features" className="hover:text-orange-400 transition-colors">Features</a>
+          <a href="#how-it-works" className="hover:text-orange-400 transition-colors">How It Works</a>
+          <a href="#pricing" className="hover:text-orange-400 transition-colors">Pricing</a>
+          <a href="#security" className="hover:text-orange-400 transition-colors">Security</a>
+          <a href="#contact" className="hover:text-orange-400 transition-colors">Contact</a>
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/login">
-            <Button size="sm" variant="ghost" className="text-foreground font-medium">Sign In</Button>
-          </Link>
           <Link to="/get-started">
-            <Button size="sm" className="gap-1.5 shadow-md shadow-primary/20">
-              Get Started <ArrowRight className="h-3.5 w-3.5" />
+            <Button size="sm" className="hidden sm:inline-flex bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white border-0 shadow-lg shadow-orange-500/20 font-semibold gap-1.5">
+              Book a Demo <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </Link>
+          <Link to="/login">
+            <Button size="sm" className="bg-white text-gray-900 hover:bg-gray-100 font-semibold border-0">
+              Login
+            </Button>
+          </Link>
+          <button className="md:hidden text-white" onClick={() => setMobileOpen(!mobileOpen)}>
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
       </div>
+      {mobileOpen && (
+        <div className="md:hidden border-t border-white/10 bg-[#0d1117] px-4 py-4 space-y-3">
+          {["Features", "How It Works", "Pricing", "Security", "Contact"].map(item => (
+            <a key={item} href={`#${item.toLowerCase().replace(/\s+/g, '-')}`} className="block text-sm text-gray-400 hover:text-orange-400" onClick={() => setMobileOpen(false)}>{item}</a>
+          ))}
+        </div>
+      )}
     </nav>
   );
 };
@@ -110,70 +125,124 @@ const Navbar = ({ companyName }: { companyName: string }) => {
 const HeroSection = ({ cms }: { cms: typeof DEFAULTS.hero & { extra_json: any } }) => {
   const ex = cms.extra_json ?? {};
   return (
-    <section className="relative overflow-hidden pt-16 pb-24 sm:pt-24 sm:pb-32">
-      {/* Background pattern */}
+    <section className="relative overflow-hidden pt-20 pb-28 sm:pt-28 sm:pb-36 bg-[#0d1117]">
+      {/* Gradient orbs */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] rounded-full bg-primary/8 blur-[120px]" />
-        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-primary/5 blur-[80px]" />
-        {/* Grid pattern */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{
-          backgroundImage: `linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)`,
-          backgroundSize: '60px 60px'
-        }} />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full bg-orange-500/8 blur-[150px]" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-amber-500/5 blur-[100px]" />
+        <div className="absolute top-1/2 left-0 w-[300px] h-[300px] rounded-full bg-orange-600/5 blur-[80px]" />
       </div>
 
       <div className="relative max-w-5xl mx-auto px-4 sm:px-6 text-center">
         {ex.badge && (
-          <div className="inline-flex items-center gap-2 mb-8 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
-            <Star className="h-3.5 w-3.5 text-primary" />
-            <span className="text-sm font-semibold text-primary">{ex.badge}</span>
+          <div className="inline-flex items-center gap-2 mb-8 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm">
+            <span className="text-sm font-semibold text-gray-300">{ex.badge}</span>
           </div>
         )}
 
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-extrabold text-foreground leading-[1.1] tracking-tight mb-6">
-          {cms.title?.split("ERP").map((part, i, arr) =>
-            i < arr.length - 1 ? (
-              <span key={i}>{part}<span className="text-primary">ERP</span></span>
-            ) : <span key={i}>{part}</span>
-          )}
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-extrabold text-white leading-[1.08] tracking-tight mb-7">
+          {(() => {
+            const title = cms.title || "";
+            const parts = title.split("ERP");
+            if (parts.length > 1) {
+              return parts.map((part, i, arr) =>
+                i < arr.length - 1 ? (
+                  <span key={i}>{part}<span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">ERP</span></span>
+                ) : <span key={i}>{part}</span>
+              );
+            }
+            // Highlight last 2-3 words
+            const words = title.split(" ");
+            const cutoff = Math.max(0, words.length - 3);
+            return (
+              <>
+                {words.slice(0, cutoff).join(" ")}{" "}
+                <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
+                  {words.slice(cutoff).join(" ")}
+                </span>
+              </>
+            );
+          })()}
         </h1>
 
         {cms.subtitle && (
-          <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
             {cms.subtitle}
           </p>
         )}
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link to={cms.button_link || "/get-started"}>
-            <Button size="lg" className="gap-2 px-10 h-14 text-base font-semibold shadow-xl shadow-primary/25 rounded-xl">
+            <Button size="lg" className="gap-2 px-10 h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white border-0 shadow-xl shadow-orange-500/25 rounded-xl">
+              <Zap className="h-4 w-4" />
               {cms.button_text || "Start Free Trial"}
-              <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
           {ex.secondary_button && (
             <Link to={ex.secondary_link || "/login"}>
-              <Button size="lg" variant="outline" className="gap-2 px-10 h-14 text-base font-semibold rounded-xl border-2">
-                {ex.secondary_button}
+              <Button size="lg" variant="outline" className="gap-2 px-10 h-14 text-base font-semibold rounded-xl border-2 border-white/20 text-white hover:bg-white/5 hover:border-white/30 bg-transparent">
+                {ex.secondary_button} <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
           )}
         </div>
 
         {/* Stats */}
-        <div className="mt-16 flex flex-wrap justify-center gap-8 sm:gap-16">
+        <div className="mt-20 flex flex-wrap justify-center gap-10 sm:gap-20">
           {[
-            { value: "100+", label: "Active Dealers", icon: Store },
-            { value: "99.9%", label: "Uptime SLA", icon: Zap },
-            { value: "24/7", label: "Data Backup", icon: Database },
+            { value: "100+", label: "Active Dealers" },
+            { value: "50K+", label: "Invoices Generated" },
+            { value: "99.9%", label: "Uptime" },
+            { value: "24/7", label: "Support" },
           ].map((s, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <s.icon className="h-5 w-5 text-primary" />
+            <div key={i} className="text-center">
+              <div className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
+                {s.value}
               </div>
-              <div className="text-left">
-                <div className="text-xl font-bold text-foreground">{s.value}</div>
-                <div className="text-xs text-muted-foreground">{s.label}</div>
+              <div className="text-sm text-gray-500 mt-1 font-medium">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/* ─── HOW IT WORKS ─── */
+const HowItWorksSection = () => {
+  const steps = [
+    { num: "1", title: "Sign Up", desc: "Create account in 30 seconds" },
+    { num: "2", title: "Add Products", desc: "Import or add your inventory" },
+    { num: "3", title: "Start Selling", desc: "Create invoices instantly" },
+    { num: "4", title: "Manage Stock", desc: "Real-time tracking" },
+    { num: "5", title: "Collect Payments", desc: "Track dues & credit" },
+    { num: "6", title: "View Reports", desc: "Full business insights" },
+  ];
+
+  return (
+    <section id="how-it-works" className="py-24 bg-[#0f1419] relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <div className="inline-flex items-center gap-2 mb-4 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            How It Works
+          </div>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-4 tracking-tight">
+            From Setup to Profit — <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">Simplified</span>
+          </h2>
+          <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+            A complete workflow that mirrors how tiles & sanitary dealers actually operate.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {steps.map((step, i) => (
+            <div key={i} className="relative group">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center hover:border-orange-500/40 hover:bg-orange-500/5 transition-all duration-300">
+                <div className="mx-auto mb-3 h-10 w-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-orange-500/20">
+                  {step.num}
+                </div>
+                <h3 className="font-bold text-white text-sm mb-1">{step.title}</h3>
+                <p className="text-xs text-gray-500">{step.desc}</p>
               </div>
             </div>
           ))}
@@ -187,14 +256,14 @@ const HeroSection = ({ cms }: { cms: typeof DEFAULTS.hero & { extra_json: any } 
 const FeaturesSection = ({ cms }: { cms: typeof DEFAULTS.features & { extra_json: any } }) => {
   const items: { icon: string; title: string; description: string }[] = cms.extra_json?.items ?? [];
   return (
-    <section id="features" className="py-24 bg-background relative">
+    <section id="features" className="py-24 bg-[#0d1117] relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full bg-primary/10 text-xs font-semibold text-primary uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 mb-4 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Features
           </div>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-foreground mb-4 tracking-tight">{cms.title}</h2>
-          {cms.subtitle && <p className="text-muted-foreground text-lg max-w-2xl mx-auto">{cms.subtitle}</p>}
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-4 tracking-tight">{cms.title}</h2>
+          {cms.subtitle && <p className="text-gray-400 text-lg max-w-2xl mx-auto">{cms.subtitle}</p>}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -203,13 +272,13 @@ const FeaturesSection = ({ cms }: { cms: typeof DEFAULTS.features & { extra_json
             return (
               <div
                 key={i}
-                className="group relative rounded-2xl border border-border/60 bg-card p-7 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300"
+                className="group relative rounded-2xl border border-white/10 bg-white/[0.03] p-7 hover:border-orange-500/30 hover:bg-orange-500/5 transition-all duration-300"
               >
-                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 group-hover:bg-primary group-hover:shadow-lg group-hover:shadow-primary/25 transition-all duration-300">
-                  <Icon className="h-6 w-6 text-primary group-hover:text-primary-foreground transition-colors duration-300" />
+                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/10 group-hover:bg-gradient-to-br group-hover:from-amber-500 group-hover:to-orange-600 group-hover:shadow-lg group-hover:shadow-orange-500/25 transition-all duration-300">
+                  <Icon className="h-6 w-6 text-orange-400 group-hover:text-white transition-colors duration-300" />
                 </div>
-                <h3 className="font-bold text-foreground mb-2 text-lg">{item.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+                <h3 className="font-bold text-white mb-2 text-lg">{item.title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{item.description}</p>
               </div>
             );
           })}
@@ -231,16 +300,16 @@ const WhyChooseUsSection = () => {
   ];
 
   return (
-    <section id="why-us" className="py-24 bg-muted/30">
+    <section id="why-us" className="py-24 bg-[#0f1419]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full bg-primary/10 text-xs font-semibold text-primary uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 mb-4 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Why Choose Us
           </div>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-foreground mb-4 tracking-tight">
-            Built for Dealers, Not Just Anyone
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-4 tracking-tight">
+            Built for Dealers, <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">Not Just Anyone</span>
           </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+          <p className="text-gray-400 text-lg max-w-2xl mx-auto">
             Every feature designed specifically for tiles and sanitary businesses.
           </p>
         </div>
@@ -249,13 +318,13 @@ const WhyChooseUsSection = () => {
           {items.map((item, i) => (
             <div
               key={i}
-              className="group rounded-2xl border border-border/60 bg-card p-7 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300"
+              className="group rounded-2xl border border-white/10 bg-white/[0.03] p-7 hover:border-orange-500/30 hover:bg-orange-500/5 transition-all duration-300"
             >
-              <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 group-hover:bg-primary group-hover:shadow-lg group-hover:shadow-primary/25 transition-all duration-300">
-                <item.icon className="h-6 w-6 text-primary group-hover:text-primary-foreground transition-colors duration-300" />
+              <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/10 group-hover:bg-gradient-to-br group-hover:from-amber-500 group-hover:to-orange-600 group-hover:shadow-lg group-hover:shadow-orange-500/25 transition-all duration-300">
+                <item.icon className="h-6 w-6 text-orange-400 group-hover:text-white transition-colors duration-300" />
               </div>
-              <h3 className="font-bold text-foreground mb-2 text-lg">{item.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+              <h3 className="font-bold text-white mb-2 text-lg">{item.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{item.description}</p>
             </div>
           ))}
         </div>
@@ -275,59 +344,54 @@ const TrustedSecureSection = () => {
   ];
 
   return (
-    <section id="security" className="py-24 bg-background">
+    <section id="security" className="py-24 bg-[#0d1117]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full bg-primary/10 text-xs font-semibold text-primary uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 mb-4 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Security
           </div>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-foreground mb-4 tracking-tight">
-            Your Data is Safe With Us
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-4 tracking-tight">
+            Your Data is <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">Safe With Us</span>
           </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+          <p className="text-gray-400 text-lg max-w-2xl mx-auto">
             Enterprise-grade security so you can focus on growing your business.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
           {trustItems.slice(0, 3).map((item, i) => (
-            <div key={i} className="rounded-2xl border border-border/60 bg-card p-7 flex flex-col gap-4 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                <item.icon className="h-6 w-6 text-primary" />
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 flex flex-col gap-4 hover:border-orange-500/30 hover:bg-orange-500/5 transition-all duration-300">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/10">
+                <item.icon className="h-6 w-6 text-orange-400" />
               </div>
-              <h3 className="font-bold text-foreground text-lg">{item.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+              <h3 className="font-bold text-white text-lg">{item.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{item.description}</p>
             </div>
           ))}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-2xl mx-auto lg:max-w-none lg:grid-cols-2 lg:px-[17%]">
           {trustItems.slice(3).map((item, i) => (
-            <div key={i} className="rounded-2xl border border-border/60 bg-card p-7 flex flex-col gap-4 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                <item.icon className="h-6 w-6 text-primary" />
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 flex flex-col gap-4 hover:border-orange-500/30 hover:bg-orange-500/5 transition-all duration-300">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/10">
+                <item.icon className="h-6 w-6 text-orange-400" />
               </div>
-              <h3 className="font-bold text-foreground text-lg">{item.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+              <h3 className="font-bold text-white text-lg">{item.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{item.description}</p>
             </div>
           ))}
         </div>
 
         {/* Compliance banner */}
-        <div className="mt-10 rounded-2xl bg-primary/5 border border-primary/20 px-8 py-7 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="mt-10 rounded-2xl bg-orange-500/5 border border-orange-500/20 px-8 py-7 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="h-6 w-6 text-primary" />
+            <div className="h-12 w-12 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="h-6 w-6 text-orange-400" />
             </div>
             <div>
-              <p className="font-bold text-foreground text-lg">Compliance Ready</p>
-              <p className="text-sm text-muted-foreground">Complete audit trail — who did what, when, and from where.</p>
+              <p className="font-bold text-white text-lg">Compliance Ready</p>
+              <p className="text-sm text-gray-500">Complete audit trail — who did what, when, and from where.</p>
             </div>
           </div>
-          <Link to="/security">
-            <Button variant="outline" size="sm" className="shrink-0 gap-1.5 rounded-xl">
-              Learn More <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
         </div>
       </div>
     </section>
@@ -356,25 +420,25 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
   const [yearly, setYearly] = useState(false);
 
   return (
-    <section id="pricing" className="py-24 bg-muted/30">
+    <section id="pricing" className="py-24 bg-[#0f1419]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full bg-primary/10 text-xs font-semibold text-primary uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 mb-4 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Pricing
           </div>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-foreground mb-4 tracking-tight">{cms.title}</h2>
-          {cms.subtitle && <p className="text-muted-foreground text-lg max-w-2xl mx-auto">{cms.subtitle}</p>}
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-4 tracking-tight">{cms.title}</h2>
+          {cms.subtitle && <p className="text-gray-400 text-lg max-w-2xl mx-auto">{cms.subtitle}</p>}
         </div>
 
         <div className="flex flex-col items-center gap-3 mb-14">
-          <div className="inline-flex items-center gap-4 bg-card border border-border rounded-full px-6 py-3 shadow-sm">
-            <span className={`text-sm font-semibold transition-colors ${!yearly ? "text-foreground" : "text-muted-foreground"}`}>Monthly</span>
-            <Switch checked={yearly} onCheckedChange={setYearly} className="data-[state=checked]:bg-primary" />
-            <span className={`text-sm font-semibold transition-colors ${yearly ? "text-foreground" : "text-muted-foreground"}`}>Yearly</span>
+          <div className="inline-flex items-center gap-4 bg-white/5 border border-white/10 rounded-full px-6 py-3">
+            <span className={`text-sm font-semibold transition-colors ${!yearly ? "text-white" : "text-gray-500"}`}>Monthly</span>
+            <Switch checked={yearly} onCheckedChange={setYearly} className="data-[state=checked]:bg-orange-500" />
+            <span className={`text-sm font-semibold transition-colors ${yearly ? "text-white" : "text-gray-500"}`}>Yearly</span>
           </div>
           <div className={`flex items-center gap-2 transition-all duration-300 ${yearly ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"}`}>
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold text-primary">Save 2 months with yearly billing</span>
+            <Sparkles className="h-4 w-4 text-orange-400" />
+            <span className="text-sm font-semibold text-orange-400">Save 2 months with yearly billing</span>
           </div>
         </div>
 
@@ -387,28 +451,28 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
                 key={i}
                 className={`relative rounded-2xl border-2 p-8 flex flex-col gap-6 transition-all ${
                   plan.highlighted
-                    ? "border-primary bg-primary text-primary-foreground shadow-2xl shadow-primary/20 scale-[1.02]"
-                    : "border-border bg-card"
+                    ? "border-orange-500 bg-gradient-to-b from-orange-500/10 to-orange-600/5 shadow-2xl shadow-orange-500/10 scale-[1.02]"
+                    : "border-white/10 bg-white/[0.03]"
                 }`}
               >
                 {plan.highlighted && (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary-foreground text-primary text-xs px-4 py-1 font-bold shadow-lg">
+                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs px-4 py-1 font-bold shadow-lg border-0">
                     <Zap className="h-3 w-3 mr-1" /> Most Popular
                   </Badge>
                 )}
                 <div>
-                  <p className={`text-sm font-semibold mb-2 ${plan.highlighted ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{plan.name}</p>
+                  <p className={`text-sm font-semibold mb-2 ${plan.highlighted ? "text-orange-400" : "text-gray-500"}`}>{plan.name}</p>
                   <div className="flex items-end gap-1 mb-1">
-                    <span className="text-sm font-bold">৳</span>
-                    <span className="text-5xl font-extrabold leading-none tracking-tight">{price.toLocaleString()}</span>
-                    <span className={`text-sm mb-1 ${plan.highlighted ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{period}</span>
+                    <span className="text-sm font-bold text-white">৳</span>
+                    <span className="text-5xl font-extrabold leading-none tracking-tight text-white">{price.toLocaleString()}</span>
+                    <span className="text-sm mb-1 text-gray-500">{period}</span>
                   </div>
                   {yearly ? (
-                    <Badge className={`mt-2 text-[10px] px-2 py-0.5 gap-1 ${plan.highlighted ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground"}`}>
+                    <Badge className="mt-2 text-[10px] px-2 py-0.5 gap-1 bg-gradient-to-r from-amber-500 to-orange-600 text-white border-0">
                       <Sparkles className="h-3 w-3" /> Save 2 months
                     </Badge>
                   ) : (
-                    <p className={`text-xs mt-2 ${plan.highlighted ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                    <p className="text-xs mt-2 text-gray-600">
                       Switch to yearly to save 2 months
                     </p>
                   )}
@@ -416,13 +480,17 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
                 <ul className="space-y-3 flex-1">
                   {plan.features.map((feat, fi) => (
                     <li key={fi} className="flex items-start gap-2.5 text-sm">
-                      <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${plan.highlighted ? "text-primary-foreground/80" : "text-primary"}`} />
-                      <span className={plan.highlighted ? "text-primary-foreground/90" : "text-foreground"}>{feat}</span>
+                      <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${plan.highlighted ? "text-orange-400" : "text-orange-500/60"}`} />
+                      <span className="text-gray-300">{feat}</span>
                     </li>
                   ))}
                 </ul>
                 <Link to="/get-started">
-                  <Button className="w-full h-12 rounded-xl font-semibold text-base" variant={plan.highlighted ? "secondary" : "default"}>
+                  <Button className={`w-full h-12 rounded-xl font-semibold text-base border-0 ${
+                    plan.highlighted
+                      ? "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg shadow-orange-500/20"
+                      : "bg-white/10 hover:bg-white/15 text-white"
+                  }`}>
                     Start Free Trial
                   </Button>
                 </Link>
@@ -431,8 +499,8 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
           })}
         </div>
 
-        <p className="text-center text-sm text-muted-foreground mt-8">
-          <Link to="/pricing" className="underline underline-offset-4 hover:text-primary transition-colors">
+        <p className="text-center text-sm text-gray-500 mt-8">
+          <Link to="/pricing" className="underline underline-offset-4 hover:text-orange-400 transition-colors">
             View full pricing details →
           </Link>
         </p>
@@ -443,27 +511,27 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
 
 /* ─── CTA BANNER ─── */
 const CtaSection = ({ heroBtn }: { heroBtn: string; heroBtnLink: string }) => (
-  <section className="py-24 bg-primary relative overflow-hidden">
+  <section className="py-24 bg-gradient-to-b from-[#0d1117] to-[#0f1419] relative overflow-hidden">
     <div className="absolute inset-0 pointer-events-none">
-      <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full bg-primary-foreground/5 blur-[100px]" />
-      <div className="absolute bottom-0 left-0 w-[300px] h-[300px] rounded-full bg-primary-foreground/5 blur-[80px]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-orange-500/10 blur-[150px]" />
     </div>
     <div className="relative max-w-3xl mx-auto px-4 text-center">
-      <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-primary-foreground mb-5 tracking-tight">
+      <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-5 tracking-tight">
         Ready to modernise your business?
       </h2>
-      <p className="text-primary-foreground/70 text-lg mb-10 max-w-xl mx-auto">
+      <p className="text-gray-400 text-lg mb-10 max-w-xl mx-auto">
         Join hundreds of dealers already using our ERP to grow faster and manage smarter.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
         <Link to="/get-started">
-          <Button size="lg" variant="secondary" className="gap-2 px-10 h-14 text-base font-semibold rounded-xl shadow-xl">
-            {heroBtn || "Start Free Trial"} <ArrowRight className="h-4 w-4" />
+          <Button size="lg" className="gap-2 px-10 h-14 text-base font-bold bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white border-0 shadow-xl shadow-orange-500/25 rounded-xl">
+            <Zap className="h-4 w-4" />
+            {heroBtn || "Start Free Trial"}
           </Button>
         </Link>
         <Link to="/login">
-          <Button size="lg" variant="outline" className="gap-2 px-10 h-14 text-base font-semibold rounded-xl border-2 border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
-            Sign In
+          <Button size="lg" variant="outline" className="gap-2 px-10 h-14 text-base font-semibold rounded-xl border-2 border-white/20 text-white hover:bg-white/5 bg-transparent">
+            Sign In <ArrowRight className="h-4 w-4" />
           </Button>
         </Link>
       </div>
@@ -475,26 +543,26 @@ const CtaSection = ({ heroBtn }: { heroBtn: string; heroBtnLink: string }) => (
 const FooterSection = ({ cms }: { cms: typeof DEFAULTS.footer & { extra_json: any } }) => {
   const ex = cms.extra_json ?? {};
   return (
-    <footer id="contact" className="bg-card border-t border-border">
+    <footer id="contact" className="bg-[#080b10] border-t border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
           {/* Brand */}
           <div className="md:col-span-2">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-primary/25">
-                <Layers className="h-5 w-5 text-primary-foreground" />
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                <Layers className="h-5 w-5 text-white" />
               </div>
-              <span className="font-bold text-lg text-foreground">{cms.title}</span>
+              <span className="font-bold text-lg text-white">{cms.title}</span>
             </div>
             {cms.description && (
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">{cms.description}</p>
+              <p className="text-sm text-gray-500 leading-relaxed max-w-sm">{cms.description}</p>
             )}
           </div>
 
           {/* Links */}
           <div>
-            <p className="font-bold text-sm text-foreground mb-4 uppercase tracking-wider">Company</p>
-            <ul className="space-y-3 text-sm text-muted-foreground">
+            <p className="font-bold text-sm text-white mb-4 uppercase tracking-wider">Company</p>
+            <ul className="space-y-3 text-sm text-gray-500">
               {[
                 { label: "Features", href: "#features" },
                 { label: "Pricing", href: "#pricing" },
@@ -503,7 +571,7 @@ const FooterSection = ({ cms }: { cms: typeof DEFAULTS.footer & { extra_json: an
                 { label: "Terms", href: "/terms" },
               ].map(link => (
                 <li key={link.href}>
-                  <a href={link.href} className="hover:text-primary transition-colors">{link.label}</a>
+                  <a href={link.href} className="hover:text-orange-400 transition-colors">{link.label}</a>
                 </li>
               ))}
             </ul>
@@ -511,28 +579,28 @@ const FooterSection = ({ cms }: { cms: typeof DEFAULTS.footer & { extra_json: an
 
           {/* Contact */}
           <div>
-            <p className="font-bold text-sm text-foreground mb-4 uppercase tracking-wider">Contact</p>
-            <ul className="space-y-3 text-sm text-muted-foreground">
+            <p className="font-bold text-sm text-white mb-4 uppercase tracking-wider">Contact</p>
+            <ul className="space-y-3 text-sm text-gray-500">
               {ex.phone && (
                 <li className="flex items-center gap-2.5">
-                  <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <Phone className="h-3.5 w-3.5 text-primary" />
+                  <div className="h-7 w-7 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
+                    <Phone className="h-3.5 w-3.5 text-orange-400" />
                   </div>
-                  <a href={`tel:${ex.phone}`} className="hover:text-primary transition-colors">{ex.phone}</a>
+                  <a href={`tel:${ex.phone}`} className="hover:text-orange-400 transition-colors">{ex.phone}</a>
                 </li>
               )}
               {ex.email && (
                 <li className="flex items-center gap-2.5">
-                  <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <Mail className="h-3.5 w-3.5 text-primary" />
+                  <div className="h-7 w-7 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
+                    <Mail className="h-3.5 w-3.5 text-orange-400" />
                   </div>
-                  <a href={`mailto:${ex.email}`} className="hover:text-primary transition-colors">{ex.email}</a>
+                  <a href={`mailto:${ex.email}`} className="hover:text-orange-400 transition-colors">{ex.email}</a>
                 </li>
               )}
               {ex.address && (
                 <li className="flex items-start gap-2.5">
-                  <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <MapPin className="h-3.5 w-3.5 text-primary" />
+                  <div className="h-7 w-7 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
+                    <MapPin className="h-3.5 w-3.5 text-orange-400" />
                   </div>
                   <span>{ex.address}</span>
                 </li>
@@ -542,18 +610,18 @@ const FooterSection = ({ cms }: { cms: typeof DEFAULTS.footer & { extra_json: an
         </div>
 
         {/* Bottom bar */}
-        <div className="pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground">
+        <div className="pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-gray-600">
             {ex.copyright || `© ${new Date().getFullYear()} Tiles ERP. All rights reserved.`}
           </p>
           <a
             href="https://digiwebdex.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors group"
+            className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-orange-400 transition-colors group"
           >
             Design & Development by{" "}
-            <span className="font-semibold text-foreground group-hover:text-primary transition-colors">
+            <span className="font-semibold text-gray-400 group-hover:text-orange-400 transition-colors">
               digiwebdex.com
             </span>
             <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -574,16 +642,17 @@ const LandingPage = () => {
   const footer   = { ...DEFAULTS.footer,   ...(sections?.footer   ?? {}), extra_json: { ...DEFAULTS.footer.extra_json,   ...(sections?.footer?.extra_json   ?? {}) } };
 
   if (isLoading) return (
-    <div className="min-h-screen bg-background">
-      <div className="h-16 border-b border-border" />
+    <div className="min-h-screen bg-[#0d1117]">
+      <div className="h-16 border-b border-white/10" />
       {[1, 2, 3].map(i => <SectionSkeleton key={i} />)}
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#0d1117]">
       <Navbar companyName={footer.title || "Tiles ERP"} />
       <HeroSection cms={hero} />
+      <HowItWorksSection />
       <FeaturesSection cms={features} />
       <WhyChooseUsSection />
       <TrustedSecureSection />
