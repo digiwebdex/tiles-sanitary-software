@@ -1682,7 +1682,7 @@ export type Database = {
             foreignKeyName: "subscriptions_plan_id_fkey"
             columns: ["plan_id"]
             isOneToOne: false
-            referencedRelation: "plans"
+            referencedRelation: "subscription_plans"
             referencedColumns: ["id"]
           },
         ]
