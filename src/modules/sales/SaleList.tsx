@@ -257,7 +257,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                       <TableCell className="whitespace-nowrap">{s.sale_date}</TableCell>
                       <TableCell className="font-mono text-sm">{s.invoice_number ?? "—"}</TableCell>
                       <TableCell>{s.customers?.name ?? "—"}</TableCell>
-                      <TableCell>
+                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <Badge
                             variant={statusColors[s.sale_status] as any ?? "secondary"}
@@ -267,6 +267,11 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                               ? "Partial Delivery" 
                               : (s.sale_status ?? "invoiced").replace(/_/g, " ")}
                           </Badge>
+                          {s.has_backorder && (
+                            <Badge variant="outline" className="text-xs border-amber-500 text-amber-600 bg-amber-50">
+                              Backorder
+                            </Badge>
+                          )}
                           {s.sale_status === "partially_delivered" && (
                             <span className="text-xs text-orange-600 font-medium">
                               <Truck className="inline h-3 w-3 mr-0.5" />

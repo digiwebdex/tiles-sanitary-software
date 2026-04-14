@@ -5,6 +5,7 @@ import { logAudit } from "@/services/auditService";
 import { validateInput, createPurchaseServiceSchema } from "@/lib/validators";
 import { assertDealerId } from "@/lib/tenancy";
 import { rateLimits } from "@/lib/rateLimit";
+import { backorderAllocationService } from "@/services/backorderAllocationService";
 
 export interface PurchaseItemInput {
   product_id: string;
@@ -134,8 +135,10 @@ export const purchaseService = {
       total: item.landed_cost,
     }));
 
-    const { error: iErr } = await supabase.from("purchase_items").insert(itemRows);
+    const { data: insertedItems, error: iErr } = await supabase.from("purchase_items").insert(itemRows).select("id, product_id");
     if (iErr) throw new Error(iErr.message);
+
+    const insertedItemMap = new Map((insertedItems ?? []).map(i => [i.product_id, i.id]));
 
     for (const item of itemsWithCalc) {
       const product = productMap.get(item.product_id);
@@ -148,11 +151,21 @@ export const purchaseService = {
       // For piece: average cost is per piece (landed_cost / quantity)
       if (unitType === "box_sft" && perBoxSft && item.total_sft) {
         const costPerSft = item.total_sft > 0 ? item.landed_cost / item.total_sft : 0;
-        // Pass total_sft as the "quantity" for weighted average calculation
         await stockService.updateAverageCost(item.product_id, input.dealer_id, item.total_sft, costPerSft);
       } else {
         const costPerUnit = item.quantity > 0 ? item.landed_cost / item.quantity : 0;
         await stockService.updateAverageCost(item.product_id, input.dealer_id, item.quantity, costPerUnit);
+      }
+
+      // Auto-allocate to pending backorders (FIFO)
+      const purchaseItemId = insertedItemMap.get(item.product_id);
+      if (purchaseItemId) {
+        await backorderAllocationService.allocateNewStock(
+          item.product_id,
+          item.quantity,
+          input.dealer_id,
+          purchaseItemId
+        );
       }
     }
 

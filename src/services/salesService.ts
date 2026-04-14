@@ -636,7 +636,7 @@ export const salesService = {
     // 1. Fetch full sale with items and related records
     const { data: sale, error: fetchErr } = await supabase
       .from("sales")
-      .select("*, sale_items(product_id, quantity, backorder_qty, available_qty_at_sale)")
+      .select("*, sale_items(id, product_id, quantity, backorder_qty, available_qty_at_sale, allocated_qty, fulfillment_status)")
       .eq("id", saleId)
       .eq("dealer_id", dealerId)
       .single();

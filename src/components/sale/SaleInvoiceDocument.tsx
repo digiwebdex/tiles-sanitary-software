@@ -152,6 +152,55 @@ const SaleInvoiceDocument = ({
             {Number(sale.total_piece) > 0 && <span>Total Pcs: <strong className="text-foreground">{Number(sale.total_piece)}</strong></span>}
           </div>
         )}
+
+        {/* Backorder / Fulfillment Status */}
+        {sale.has_backorder && (
+          <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-2">
+              Backorder / Fulfillment Status
+            </p>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-amber-800 dark:text-amber-300">
+                  <th className="text-left py-1 font-semibold">Product</th>
+                  <th className="text-center py-1 font-semibold">Ordered</th>
+                  <th className="text-center py-1 font-semibold">Available at Sale</th>
+                  <th className="text-center py-1 font-semibold">Backorder</th>
+                  <th className="text-center py-1 font-semibold">Allocated</th>
+                  <th className="text-center py-1 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.filter((i: any) => Number(i.backorder_qty) > 0 || i.fulfillment_status !== "fulfilled").map((item: any) => {
+                  const statusLabels: Record<string, string> = {
+                    fulfilled: "Fulfilled",
+                    pending: "Pending",
+                    partially_allocated: "Partially Allocated",
+                    ready_for_delivery: "Ready for Delivery",
+                  };
+                  const statusColors: Record<string, string> = {
+                    fulfilled: "text-green-600",
+                    pending: "text-red-600",
+                    partially_allocated: "text-amber-600",
+                    ready_for_delivery: "text-blue-600",
+                  };
+                  return (
+                    <tr key={item.id} className="border-t border-amber-200">
+                      <td className="py-1 text-foreground font-medium">{item.products?.name}</td>
+                      <td className="py-1 text-center">{item.quantity}</td>
+                      <td className="py-1 text-center">{item.available_qty_at_sale ?? "—"}</td>
+                      <td className="py-1 text-center font-semibold text-amber-700">{item.backorder_qty ?? 0}</td>
+                      <td className="py-1 text-center font-semibold text-blue-700">{item.allocated_qty ?? 0}</td>
+                      <td className={`py-1 text-center font-semibold ${statusColors[item.fulfillment_status] ?? ""}`}>
+                        {statusLabels[item.fulfillment_status] ?? item.fulfillment_status}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Totals */}

@@ -125,6 +125,10 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
                     const remaining = Math.max(0, ordered - delivered);
                     const stock = stockData[si.product_id];
                     const availableStock = isBox ? (stock?.box_qty ?? 0) : (stock?.piece_qty ?? 0);
+                    // For backorder items, also consider allocated qty
+                    const backorderQty = Number(si.backorder_qty ?? 0);
+                    const allocatedQty = Number(si.allocated_qty ?? 0);
+                    const fulfillmentStatus = si.fulfillment_status ?? "fulfilled";
                     const maxDeliverable = Math.min(remaining, availableStock);
                     const currentQty = quantities[si.id] || 0;
                     const progress = ordered > 0 ? ((delivered / ordered) * 100) : 0;
@@ -158,7 +162,14 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
                         </td>
                         <td className="text-center px-3 py-2">{ordered} {unit}</td>
                         <td className="text-center px-3 py-2">{delivered} {unit}</td>
-                        <td className="text-center px-3 py-2 font-semibold text-orange-600">{remaining} {unit}</td>
+                        <td className="text-center px-3 py-2 font-semibold text-orange-600">
+                          {remaining} {unit}
+                          {backorderQty > 0 && (
+                            <span className="block text-xs text-amber-600">
+                              ({allocatedQty}/{backorderQty} allocated)
+                            </span>
+                          )}
+                        </td>
                         <td className="text-center px-3 py-2">
                           {availableStock <= 0 ? (
                             <span className="text-destructive text-xs flex items-center justify-center gap-1">

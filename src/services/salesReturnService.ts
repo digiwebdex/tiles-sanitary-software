@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { stockService } from "@/services/stockService";
 import { cashLedgerService, customerLedgerService } from "@/services/ledgerService";
 import { logAudit } from "@/services/auditService";
+import { backorderAllocationService } from "@/services/backorderAllocationService";
 import { validateInput, createSalesReturnServiceSchema } from "@/lib/validators";
 import { assertDealerId } from "@/lib/tenancy";
 
@@ -58,13 +59,13 @@ export const salesReturnService = {
     }
 
     // Validate return qty does not exceed sold qty for this product
-    const { data: saleItem, error: siErr } = await supabase
+    const { data: saleItemForValidation, error: siErr } = await supabase
       .from("sale_items")
-      .select("quantity")
+      .select("id, quantity, backorder_qty, allocated_qty, fulfillment_status")
       .eq("sale_id", input.sale_id)
       .eq("product_id", input.product_id)
       .single();
-    if (siErr || !saleItem) throw new Error("Product not found in this sale");
+    if (siErr || !saleItemForValidation) throw new Error("Product not found in this sale");
 
     // Check already-returned qty for this product on this sale
     const { data: existingReturns, error: erErr } = await supabase
@@ -75,7 +76,7 @@ export const salesReturnService = {
     if (erErr) throw new Error(erErr.message);
 
     const alreadyReturned = (existingReturns ?? []).reduce((s, r) => s + Number(r.qty), 0);
-    if (alreadyReturned + input.qty > Number(saleItem.quantity)) {
+    if (alreadyReturned + input.qty > Number(saleItemForValidation.quantity)) {
       throw new Error("Return quantity exceeds sold quantity");
     }
 
@@ -98,9 +99,23 @@ export const salesReturnService = {
       .single();
     if (rErr) throw new Error(rErr.message);
 
-    // Stock handling
+    // Stock handling: restore if not broken
     if (!input.is_broken) {
       await stockService.restoreStock(input.product_id, input.qty, input.dealer_id);
+    }
+
+    // Update sale_item fulfillment if this product had backorder tracking
+    if (saleItemForValidation.fulfillment_status !== "fulfilled") {
+      await backorderAllocationService.releaseAllocations(saleItemForValidation.id, input.dealer_id);
+      const newBackorder = Math.max(0, Number(saleItemForValidation.backorder_qty) - input.qty);
+      const newAllocated = Math.min(Number(saleItemForValidation.allocated_qty), newBackorder);
+      const newStatus = newBackorder <= 0 ? "fulfilled" : newAllocated >= newBackorder ? "ready_for_delivery" : newAllocated > 0 ? "partially_allocated" : "pending";
+      await supabase.from("sale_items").update({
+        backorder_qty: newBackorder,
+        allocated_qty: newAllocated,
+        fulfillment_status: newStatus,
+      } as any).eq("id", saleItemForValidation.id);
+      await backorderAllocationService.updateSaleBackorderFlag(input.sale_id);
     }
 
     // Customer ledger — reduce customer's balance (refund)
