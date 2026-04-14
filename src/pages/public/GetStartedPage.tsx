@@ -142,7 +142,7 @@ const GetStartedPage = () => {
                 Create Your Account
               </h1>
               <p className="text-lg text-muted-foreground leading-relaxed">
-                Set up your ERP instantly. 30-day free trial — no credit card needed.
+                Set up your ERP instantly. 3-day free trial — no credit card needed.
               </p>
             </div>
 
