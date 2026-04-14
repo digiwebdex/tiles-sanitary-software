@@ -1,12 +1,18 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { Navigate } from "react-router-dom";
 import OwnerDashboard from "@/modules/dashboard/OwnerDashboard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, RefreshCw, Phone, Mail } from "lucide-react";
 
 const Index = () => {
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, isSuperAdmin } = useAuth();
   const dealerId = profile?.dealer_id;
+
+  // Super admins have no dealer_id — redirect to Super Admin panel
+  if (isSuperAdmin && !dealerId) {
+    return <Navigate to="/super-admin" replace />;
+  }
 
   if (!dealerId) {
     return (
