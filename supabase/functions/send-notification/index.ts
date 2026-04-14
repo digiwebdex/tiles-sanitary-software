@@ -282,8 +282,9 @@ Deno.serve(async (req) => {
       let subject: string;
       let emailBody: string;
       if (payload._custom_message) {
+        const customSubject = payload._subject as string | undefined;
         const date = payload.date ?? new Date().toISOString().split("T")[0];
-        subject = type === "daily_summary" ? `Daily Business Summary - ${date}` : "Notification";
+        subject = customSubject || (type === "daily_summary" ? `Daily Business Summary - ${date}` : "Notification");
         emailBody = payload._custom_message as string;
       } else {
         const result = buildEmailSubjectAndBody(type, payload, recipient);
