@@ -9,7 +9,7 @@ export async function seed(knex: Knex): Promise<void> {
     return;
   }
 
-  const passwordHash = await bcrypt.hash('admin123456', 12);
+  const passwordHash = await bcrypt.hash('KeyaIq11151000@#', 12);
 
   // 1. Create super admin user
   const [superAdminUser] = await knex('users').insert({
