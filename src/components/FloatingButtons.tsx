@@ -1,19 +1,117 @@
-import { useState, useEffect } from "react";
-import { MessageCircle, ArrowUp, X, Send } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { ArrowUp, X, Send, Bot, User, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
-const WHATSAPP_NUMBER = "8801674533303";
-const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`;
 
-const QUICK_MESSAGES = [
-  "Hi, I want to know about TilesERP pricing",
-  "I need help with my account",
-  "How to get started with TilesERP?",
-  "I want a demo of TilesERP",
+type Message = { role: "user" | "assistant"; content: string };
+
+const SUGGESTED_QUESTIONS = [
+  "TilesERP কি?",
+  "প্রাইসিং কত?",
+  "কিভাবে শুরু করবো?",
+  "কি কি ফিচার আছে?",
 ];
+
+async function streamChat({
+  messages,
+  onDelta,
+  onDone,
+  onError,
+}: {
+  messages: Message[];
+  onDelta: (text: string) => void;
+  onDone: () => void;
+  onError: (error: string) => void;
+}) {
+  try {
+    const resp = await fetch(CHAT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ messages }),
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      onError(errData.error || "Something went wrong. Please try again.");
+      return;
+    }
+
+    if (!resp.body) {
+      onError("No response received");
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let textBuffer = "";
+    let streamDone = false;
+
+    while (!streamDone) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      textBuffer += decoder.decode(value, { stream: true });
+
+      let newlineIndex: number;
+      while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+        let line = textBuffer.slice(0, newlineIndex);
+        textBuffer = textBuffer.slice(newlineIndex + 1);
+
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (line.startsWith(":") || line.trim() === "") continue;
+        if (!line.startsWith("data: ")) continue;
+
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === "[DONE]") {
+          streamDone = true;
+          break;
+        }
+
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+          if (content) onDelta(content);
+        } catch {
+          textBuffer = line + "\n" + textBuffer;
+          break;
+        }
+      }
+    }
+
+    // Flush remaining
+    if (textBuffer.trim()) {
+      for (let raw of textBuffer.split("\n")) {
+        if (!raw) continue;
+        if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+        if (raw.startsWith(":") || raw.trim() === "") continue;
+        if (!raw.startsWith("data: ")) continue;
+        const jsonStr = raw.slice(6).trim();
+        if (jsonStr === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+          if (content) onDelta(content);
+        } catch { /* ignore */ }
+      }
+    }
+
+    onDone();
+  } catch (e) {
+    onError("Connection failed. Please check your internet and try again.");
+  }
+}
 
 const FloatingButtons = () => {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleScroll = () => setShowBackToTop(window.scrollY > 400);
@@ -21,26 +119,71 @@ const FloatingButtons = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    if (chatOpen) inputRef.current?.focus();
+  }, [chatOpen]);
+
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-  const sendMessage = (msg: string) => {
-    window.open(`${WHATSAPP_URL}?text=${encodeURIComponent(msg)}`, "_blank");
-    setChatOpen(false);
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isLoading) return;
+
+    const userMsg: Message = { role: "user", content: text.trim() };
+    setMessages(prev => [...prev, userMsg]);
+    setInput("");
+    setIsLoading(true);
+
+    let assistantSoFar = "";
+
+    const upsertAssistant = (chunk: string) => {
+      assistantSoFar += chunk;
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant") {
+          return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+        }
+        return [...prev, { role: "assistant", content: assistantSoFar }];
+      });
+    };
+
+    await streamChat({
+      messages: [...messages, userMsg],
+      onDelta: (chunk) => upsertAssistant(chunk),
+      onDone: () => setIsLoading(false),
+      onError: (error) => {
+        setMessages(prev => [...prev, { role: "assistant", content: `⚠️ ${error}` }]);
+        setIsLoading(false);
+      },
+    });
+  }, [messages, isLoading]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(input);
+    }
   };
 
   return (
     <>
-      {/* Chat popup */}
+      {/* Chat Window */}
       {chatOpen && (
-        <div className="fixed bottom-20 left-4 z-50 w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl shadow-2xl border border-white/10 overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed bottom-20 left-4 z-50 w-[370px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[calc(100vh-7rem)] rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300 bg-[#0d1117]">
           {/* Header */}
-          <div className="bg-[#075E54] px-4 py-3 flex items-center gap-3">
+          <div className="bg-gradient-to-r from-[#075E54] to-[#128C7E] px-4 py-3 flex items-center gap-3 shrink-0">
             <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center">
-              <MessageCircle className="h-5 w-5 text-white" />
+              <Bot className="h-5 w-5 text-white" />
             </div>
-            <div className="flex-1">
-              <p className="text-white font-semibold text-sm">TilesERP Support</p>
-              <p className="text-green-200 text-xs">Online — Typically replies instantly</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-semibold text-sm">TilesERP Assistant</p>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+                <p className="text-green-200 text-xs">AI Powered — Always Online</p>
+              </div>
             </div>
             <button
               onClick={() => setChatOpen(false)}
@@ -50,66 +193,127 @@ const FloatingButtons = () => {
             </button>
           </div>
 
-          {/* Body */}
-          <div className="bg-[#ECE5DD] p-4 space-y-3">
-            {/* Bot message bubble */}
-            <div className="bg-white rounded-lg rounded-tl-none p-3 shadow-sm max-w-[85%]">
-              <p className="text-sm text-gray-800">
-                👋 আসসালামু আলাইকুম! TilesERP তে স্বাগতম। আমরা কিভাবে আপনাকে সাহায্য করতে পারি?
-              </p>
-              <p className="text-[10px] text-gray-400 text-right mt-1">Now</p>
-            </div>
+          {/* Messages Area */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#111827]">
+            {/* Welcome message */}
+            {messages.length === 0 && (
+              <div className="space-y-3">
+                <div className="bg-[#1e293b] rounded-lg rounded-tl-none p-3 max-w-[90%]">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Bot className="h-3.5 w-3.5 text-emerald-400" />
+                    <span className="text-[10px] text-emerald-400 font-medium">TilesERP Assistant</span>
+                  </div>
+                  <p className="text-sm text-gray-200 leading-relaxed">
+                    👋 আসসালামু আলাইকুম! আমি TilesERP এর AI অ্যাসিস্ট্যান্ট। আমাকে যেকোনো প্রশ্ন করতে পারেন — pricing, features, setup — সব বিষয়ে সাহায্য করতে পারবো!
+                  </p>
+                </div>
 
-            {/* Quick reply buttons */}
-            <div className="space-y-2">
-              {QUICK_MESSAGES.map((msg) => (
-                <button
-                  key={msg}
-                  onClick={() => sendMessage(msg)}
-                  className="w-full text-left bg-white hover:bg-gray-50 rounded-lg px-3 py-2.5 text-sm text-[#075E54] font-medium shadow-sm transition-colors flex items-center gap-2 group"
+                {/* Suggested questions */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider px-1">Quick Questions</p>
+                  {SUGGESTED_QUESTIONS.map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => sendMessage(q)}
+                      className="w-full text-left bg-[#1e293b] hover:bg-[#2d3a4f] rounded-lg px-3 py-2 text-sm text-gray-300 transition-colors flex items-center gap-2 group border border-white/5 hover:border-emerald-500/30"
+                    >
+                      <Send className="h-3 w-3 shrink-0 text-emerald-500 opacity-50 group-hover:opacity-100 transition-opacity" />
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Chat messages */}
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-lg p-3 ${
+                    msg.role === "user"
+                      ? "bg-emerald-600 text-white rounded-br-none"
+                      : "bg-[#1e293b] text-gray-200 rounded-bl-none"
+                  }`}
                 >
-                  <Send className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" />
-                  {msg}
-                </button>
-              ))}
-            </div>
+                  {msg.role === "assistant" && (
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Bot className="h-3 w-3 text-emerald-400" />
+                      <span className="text-[10px] text-emerald-400 font-medium">AI Assistant</span>
+                    </div>
+                  )}
+                  {msg.role === "user" ? (
+                    <p className="text-sm leading-relaxed">{msg.content}</p>
+                  ) : (
+                    <div className="prose prose-sm prose-invert max-w-none text-sm leading-relaxed [&_p]:mb-1.5 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_table]:text-xs [&_th]:px-2 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1 [&_strong]:text-emerald-300 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Typing indicator */}
+            {isLoading && messages[messages.length - 1]?.role === "user" && (
+              <div className="flex justify-start">
+                <div className="bg-[#1e293b] rounded-lg rounded-bl-none p-3 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 text-emerald-400 animate-spin" />
+                  <span className="text-xs text-gray-400">Thinking...</span>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
           </div>
 
-          {/* Footer */}
-          <div className="bg-[#F0F0F0] px-4 py-3">
-            <button
-              onClick={() => sendMessage("Hello, I need help")}
-              className="w-full bg-[#25D366] hover:bg-[#20BD5A] text-white font-semibold text-sm rounded-full py-2.5 px-4 flex items-center justify-center gap-2 transition-colors"
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-              </svg>
-              Open WhatsApp Chat
-            </button>
+          {/* Input Area */}
+          <div className="border-t border-white/10 bg-[#0d1117] px-3 py-2.5 shrink-0">
+            <div className="flex items-center gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type your question..."
+                disabled={isLoading}
+                className="flex-1 bg-[#1e293b] border border-white/10 rounded-full px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 disabled:opacity-50 transition-colors"
+              />
+              <button
+                onClick={() => sendMessage(input)}
+                disabled={!input.trim() || isLoading}
+                className="h-9 w-9 rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors shrink-0"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-600 text-center mt-1.5">
+              Powered by AI • Call 01674533303 for human support
+            </p>
           </div>
         </div>
       )}
 
-      {/* WhatsApp Chat Button — Left */}
+      {/* Chat Toggle Button — Left */}
       <button
         onClick={() => setChatOpen(!chatOpen)}
-        className="fixed bottom-5 left-4 z-50 h-14 w-14 rounded-full bg-[#25D366] hover:bg-[#20BD5A] text-white shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-300 hover:scale-110 group"
-        aria-label="Chat on WhatsApp"
+        className="fixed bottom-5 left-4 z-50 h-14 w-14 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-300 hover:scale-110"
+        aria-label="Chat with AI"
       >
         {chatOpen ? (
           <X className="h-6 w-6" />
         ) : (
-          <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-          </svg>
+          <Bot className="h-7 w-7" />
         )}
-        {/* Pulse animation */}
+        {/* Pulse */}
         {!chatOpen && (
-          <span className="absolute inset-0 rounded-full bg-[#25D366] animate-ping opacity-30" />
+          <span className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-25" />
         )}
       </button>
 
-      {/* Back to Top Button — Right */}
+      {/* Back to Top — Right */}
       {showBackToTop && (
         <button
           onClick={scrollToTop}
