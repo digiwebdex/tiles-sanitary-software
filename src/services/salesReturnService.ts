@@ -105,11 +105,11 @@ export const salesReturnService = {
     }
 
     // Update sale_item fulfillment if this product had backorder tracking
-    if (saleItemForValidation.fulfillment_status !== "fulfilled") {
+    if (!["in_stock", "fulfilled"].includes(saleItemForValidation.fulfillment_status)) {
       await backorderAllocationService.releaseAllocations(saleItemForValidation.id, input.dealer_id);
       const newBackorder = Math.max(0, Number(saleItemForValidation.backorder_qty) - input.qty);
       const newAllocated = Math.min(Number(saleItemForValidation.allocated_qty), newBackorder);
-      const newStatus = newBackorder <= 0 ? "fulfilled" : newAllocated >= newBackorder ? "ready_for_delivery" : newAllocated > 0 ? "partially_allocated" : "pending";
+      const newStatus = newBackorder <= 0 ? "in_stock" : newAllocated >= newBackorder ? "ready_for_delivery" : newAllocated > 0 ? "partially_allocated" : "pending";
       await supabase.from("sale_items").update({
         backorder_qty: newBackorder,
         allocated_qty: newAllocated,
