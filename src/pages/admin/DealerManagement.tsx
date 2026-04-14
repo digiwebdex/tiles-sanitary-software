@@ -21,7 +21,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Ban, CheckCircle, UserPlus, Eye, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Ban, CheckCircle, UserPlus, Eye } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 interface DealerForm {
