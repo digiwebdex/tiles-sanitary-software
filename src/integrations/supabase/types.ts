@@ -768,6 +768,33 @@ export type Database = {
           },
         ]
       }
+      login_attempts: {
+        Row: {
+          attempted_at: string
+          email: string
+          id: string
+          ip_address: string | null
+          is_locked: boolean
+          locked_until: string | null
+        }
+        Insert: {
+          attempted_at?: string
+          email: string
+          id?: string
+          ip_address?: string | null
+          is_locked?: boolean
+          locked_until?: string | null
+        }
+        Update: {
+          attempted_at?: string
+          email?: string
+          id?: string
+          ip_address?: string | null
+          is_locked?: boolean
+          locked_until?: string | null
+        }
+        Relationships: []
+      }
       notification_settings: {
         Row: {
           created_at: string
@@ -1827,6 +1854,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_account_locked: { Args: { _email: string }; Returns: Json }
       generate_next_challan_no: {
         Args: { _dealer_id: string }
         Returns: string
@@ -1845,6 +1873,11 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: never; Returns: boolean }
+      record_failed_login: {
+        Args: { _email: string; _ip?: string }
+        Returns: Json
+      }
+      record_successful_login: { Args: { _email: string }; Returns: undefined }
     }
     Enums: {
       app_role: "super_admin" | "dealer_admin" | "salesman"
