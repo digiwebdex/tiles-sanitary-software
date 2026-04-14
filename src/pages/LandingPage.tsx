@@ -11,7 +11,7 @@ import {
   CheckCircle2, Phone, Mail, MapPin, ArrowRight, Lock,
   Star, Zap, Server, Database, RefreshCw, UserCheck, Store,
   TrendingUp, LayoutDashboard, AlertCircle, Receipt, Sparkles,
-  Globe, ExternalLink, ChevronRight, Play, Box, Menu, X,
+  Globe, ExternalLink, ChevronRight, Play, Box, Menu, X, Building2,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -564,6 +564,71 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
               </div>
             );
           })}
+        </div>
+
+        {/* Payment Methods */}
+        <div className="mt-16 max-w-4xl mx-auto">
+          <h3 className="text-center text-lg font-bold text-white mb-6">পেমেন্ট মাধ্যম / Payment Methods</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Mobile Banking */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Phone className="h-5 w-5 text-orange-400" />
+                <h4 className="font-bold text-white text-base">মোবাইল ব্যাংকিং (Mobile Banking)</h4>
+              </div>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between bg-white/5 rounded-lg px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-pink-400">bKash / Nagad (Personal)</p>
+                    <p className="text-gray-400 text-xs mt-0.5">Send Money</p>
+                  </div>
+                  <span className="font-mono font-bold text-white text-base tracking-wide">01674533303</span>
+                </div>
+                <div className="flex items-center justify-between bg-white/5 rounded-lg px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-purple-400">Rocket</p>
+                    <p className="text-gray-400 text-xs mt-0.5">Send Money</p>
+                  </div>
+                  <span className="font-mono font-bold text-white text-base tracking-wide">01674533303<span className="text-orange-400">3</span></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bank Transfer */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Building2 className="h-5 w-5 text-orange-400" />
+                <h4 className="font-bold text-white text-base">ব্যাংক ট্রান্সফার (Bank Transfer)</h4>
+              </div>
+              <div className="bg-white/5 rounded-lg px-4 py-3 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Account Name</span>
+                  <span className="font-semibold text-white">Md. Iqbal Hossain</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Account Type</span>
+                  <span className="text-gray-300">Savings Account</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">A/C No.</span>
+                  <span className="font-mono font-bold text-white">2706101077904</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Routing No.</span>
+                  <span className="font-mono text-gray-300">175260162</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Bank</span>
+                  <span className="text-white font-semibold">Pubali Bank Limited</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Branch</span>
+                  <span className="text-gray-300 text-right text-xs">Asad Avenue, Mohammadpur, Dhaka-1207</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p className="text-center text-xs text-gray-500 mt-4">পেমেন্ট করার পর অবশ্যই Transaction ID সহ আমাদের জানান</p>
         </div>
 
         <p className="text-center text-sm text-gray-500 mt-8">

@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   CheckCircle2, XCircle, ArrowRight, Zap, Layers, Phone, Mail, MapPin,
   Users, Package, BarChart2, Bell, MessageCircle, ShieldCheck,
-  TrendingUp, Sparkles, GitBranch, HeadphonesIcon,
+  TrendingUp, Sparkles, GitBranch, HeadphonesIcon, Building2,
 } from "lucide-react";
 
 /* ─── NAV ─── */
@@ -307,6 +307,55 @@ const PricingPage = () => {
         </div>
       </section>
 
+      {/* Payment Methods */}
+      <section className="py-16 px-4 bg-muted/30">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">পেমেন্ট মাধ্যম / Payment Methods</h2>
+            <p className="text-muted-foreground">সাবস্ক্রিপশন পেমেন্ট করতে নিচের যেকোনো মাধ্যম ব্যবহার করুন</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="rounded-xl border border-border bg-card p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Phone className="h-5 w-5 text-primary" />
+                <h3 className="font-bold text-foreground">মোবাইল ব্যাংকিং</h3>
+              </div>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-foreground">bKash / Nagad (Personal)</p>
+                    <p className="text-muted-foreground text-xs">Send Money</p>
+                  </div>
+                  <span className="font-mono font-bold text-foreground text-base">01674533303</span>
+                </div>
+                <div className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-foreground">Rocket</p>
+                    <p className="text-muted-foreground text-xs">Send Money</p>
+                  </div>
+                  <span className="font-mono font-bold text-foreground text-base">016745333033</span>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Building2 className="h-5 w-5 text-primary" />
+                <h3 className="font-bold text-foreground">ব্যাংক ট্রান্সফার</h3>
+              </div>
+              <div className="bg-muted/50 rounded-lg px-4 py-3 space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Account Name</span><span className="font-semibold text-foreground">Md. Iqbal Hossain</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Account Type</span><span className="text-foreground">Savings Account</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">A/C No.</span><span className="font-mono font-bold text-foreground">2706101077904</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Routing No.</span><span className="font-mono text-foreground">175260162</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Bank</span><span className="font-semibold text-foreground">Pubali Bank Limited</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Branch</span><span className="text-foreground text-right text-xs">Asad Avenue, Mohammadpur, Dhaka-1207</span></div>
+              </div>
+            </div>
+          </div>
+          <p className="text-center text-xs text-muted-foreground mt-4">পেমেন্ট করার পর অবশ্যই Transaction ID সহ আমাদের জানান</p>
+        </div>
+      </section>
+
       {/* FAQ */}
       <section className="py-16 px-4">
         <div className="max-w-3xl mx-auto">
@@ -318,7 +367,7 @@ const PricingPage = () => {
               { q: "How does yearly billing work?", a: "When you choose yearly billing, you pay for 10 months and get 12 — effectively saving 2 months compared to monthly billing. Billed as a single annual payment." },
               { q: "Can I change plans later?", a: "Yes, you can upgrade or downgrade your plan at any time. Changes take effect at the start of the next billing period." },
               { q: "Is there a free trial?", a: "Yes! All plans come with a trial period so you can explore the system before committing." },
-              { q: "What payment methods are accepted?", a: "We accept cash, bank transfer, and mobile banking (bKash, Nagad). Contact us for other options." },
+              { q: "What payment methods are accepted?", a: "Mobile Banking: bKash/Nagad (Personal) — 01674533303, Rocket — 016745333033. Bank Transfer: Md. Iqbal Hossain, Savings A/C 2706101077904, Routing 175260162, Pubali Bank Ltd, Asad Avenue, Mohammadpur, Dhaka-1207." },
               { q: "What does Multi-branch ready mean?", a: "Pro plan supports managing multiple store locations or branches from a single dashboard, with consolidated reporting." },
               { q: "Is my data safe?", a: "Absolutely. All data is encrypted, backed up daily, and isolated per dealer account with role-based access control." },
             ].map((faq, i) => (
