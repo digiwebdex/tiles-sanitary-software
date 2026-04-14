@@ -184,7 +184,7 @@ const SASubscriptionStatusPage = () => {
         supabase.from("dealers").select("id, name, status").order("name"),
         supabase
           .from("subscriptions")
-          .select("id, dealer_id, status, start_date, end_date, plans(name, price_monthly)")
+          .select("id, dealer_id, status, start_date, end_date, subscription_plans!subscriptions_plan_id_fkey(name, monthly_price)")
           .order("start_date", { ascending: false }),
       ]);
 
@@ -213,8 +213,8 @@ const SASubscriptionStatusPage = () => {
           dealerName: d.name,
           dealerStatus: d.status,
           subId: sub?.id ?? null,
-          planName: (sub?.plans as any)?.name ?? null,
-          planMonthly: sub ? Number((sub?.plans as any)?.price_monthly ?? 0) : null,
+          planName: (sub?.subscription_plans as any)?.name ?? null,
+          planMonthly: sub ? Number((sub?.subscription_plans as any)?.monthly_price ?? 0) : null,
           subStatus: sub?.status ?? null,
           startDate: sub?.start_date ?? null,
           endDate: sub?.end_date ?? null,
