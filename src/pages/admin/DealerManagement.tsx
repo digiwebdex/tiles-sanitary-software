@@ -236,6 +236,45 @@ const DealerManagement = () => {
     },
   });
 
+  const changePlanMutation = useMutation({
+    mutationFn: async () => {
+      if (!changePlanForm.plan_id) throw new Error("Please select a plan");
+      if (changePlanHasExisting) {
+        // Update existing subscription
+        const { error } = await supabase
+          .from("subscriptions")
+          .update({
+            plan_id: changePlanForm.plan_id,
+            start_date: changePlanForm.start_date || todayStr,
+            end_date: changePlanForm.end_date || null,
+            status: "active" as any,
+          })
+          .eq("dealer_id", changePlanDealerId)
+          .order("start_date", { ascending: false })
+          .limit(1);
+        if (error) throw new Error(error.message);
+      } else {
+        // Create new subscription
+        const { error } = await supabase.from("subscriptions").insert({
+          dealer_id: changePlanDealerId,
+          plan_id: changePlanForm.plan_id,
+          start_date: changePlanForm.start_date || todayStr,
+          end_date: changePlanForm.end_date || null,
+          status: "active" as any,
+        });
+        if (error) throw new Error(error.message);
+      }
+    },
+    onSuccess: () => {
+      toast({ title: "Subscription plan updated for " + changePlanDealerName });
+      invalidateAll();
+      setChangePlanOpen(false);
+    },
+    onError: (e: Error) => {
+      toast({ variant: "destructive", title: "Error", description: e.message });
+    },
+  });
+
   // ─── Helpers ───
   const closeDialog = () => {
     setDialogOpen(false);
