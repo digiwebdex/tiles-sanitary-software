@@ -148,7 +148,7 @@ const SubscriptionManagement = () => {
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
   const [editSub, setEditSub] = useState<SubRow | null>(null);
-  const [editForm, setEditForm] = useState({ end_date: "", status: "", plan_id: "" });
+  const [editForm, setEditForm] = useState({ end_date: "", status: "", plan_id: "", duration_type: "1month" as "1month" | "1year" | "custom", custom_months: "3" });
 
   // Payment dialog
   const [payOpen, setPayOpen] = useState(false);
