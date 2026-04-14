@@ -267,7 +267,8 @@ Deno.serve(async (req) => {
 
     if (channel === "sms") {
       let message = "";
-      if (type === "sale_created") message = buildSaleMessage(payload, recipient);
+      if (payload._custom_message) message = payload._custom_message as string;
+      else if (type === "sale_created") message = buildSaleMessage(payload, recipient);
       else if (type === "daily_summary") message = buildDailySummaryMessage(payload);
       else if (type === "payment_reminder") message = buildPaymentReminderMessage(payload);
       else message = JSON.stringify(payload);
@@ -278,7 +279,17 @@ Deno.serve(async (req) => {
       console.log(`[SMS] Result for ${notification_id}:`, success ? "sent" : errorMessage);
 
     } else if (channel === "email") {
-      const { subject, body: emailBody } = buildEmailSubjectAndBody(type, payload, recipient);
+      let subject: string;
+      let emailBody: string;
+      if (payload._custom_message) {
+        const date = payload.date ?? new Date().toISOString().split("T")[0];
+        subject = type === "daily_summary" ? `Daily Business Summary - ${date}` : "Notification";
+        emailBody = payload._custom_message as string;
+      } else {
+        const result = buildEmailSubjectAndBody(type, payload, recipient);
+        subject = result.subject;
+        emailBody = result.body;
+      }
       try {
         await sendSmtpEmail({ from: Deno.env.get("SMTP_FROM") || Deno.env.get("SMTP_USER") || "", to: recipient, subject, body: emailBody });
         success = true;
