@@ -92,7 +92,7 @@ const App = () => (
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/get-started" element={<Navigate to="/login" replace />} />
+            <Route path="/get-started" element={<GetStartedPage />} />
             <Route path="/subscription-blocked" element={<SubscriptionBlockedPage />} />
 
             {/* Super Admin Panel — role guard inside layout */}
