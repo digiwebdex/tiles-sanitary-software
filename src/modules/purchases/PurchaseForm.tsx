@@ -87,7 +87,7 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
     queryFn: async () => {
       const { data } = await supabase
         .from("products")
-        .select("id, name, sku, unit_type, per_box_sft")
+        .select("id, name, sku, unit_type, per_box_sft, category")
         .eq("dealer_id", dealerId)
         .eq("active", true);
       return data ?? [];
