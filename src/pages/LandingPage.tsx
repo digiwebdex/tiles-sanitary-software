@@ -414,14 +414,21 @@ const PRICING_PLANS = [
     highlighted: false,
     monthlyPrice: 999,
     yearlyPrice: 10000,
-    features: ["Up to 2 users", "Inventory management", "Basic reports", "Customer ledger", "Email notifications"],
+    features: ["1 user", "Inventory management", "Basic reports", "Customer ledger", "Email notifications"],
   },
   {
     name: "Pro",
     highlighted: true,
     monthlyPrice: 1500,
     yearlyPrice: 20000,
-    features: ["Up to 5 users", "All Starter features", "Advanced analytics", "Multi-branch ready", "Priority support", "Email notifications", "SMS notifications"],
+    features: ["Up to 2 users", "All Starter features", "Advanced analytics", "Priority support", "Email notifications", "SMS notifications"],
+  },
+  {
+    name: "Business",
+    highlighted: false,
+    monthlyPrice: 2500,
+    yearlyPrice: 30000,
+    features: ["Up to 5 users", "All Pro features", "Multi-branch ready", "Dedicated support", "Custom reports", "Full API access"],
   },
 ];
 
@@ -451,7 +458,7 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch max-w-6xl mx-auto">
           {PRICING_PLANS.map((plan, i) => {
             const isTrial = (plan as any).isTrial;
             const price = isTrial ? 0 : (yearly ? plan.yearlyPrice : plan.monthlyPrice);
