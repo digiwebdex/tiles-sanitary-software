@@ -57,6 +57,7 @@ import SASystemPage from "./pages/super-admin/SASystemPage";
 import SASubscriptionStatusPage from "./pages/super-admin/SASubscriptionStatusPage";
 import SACmsPage from "./pages/super-admin/SACmsPage";
 import SABackupPage from "./pages/super-admin/SABackupPage";
+import SettingsPage from "./pages/settings/SettingsPage";
 
 const IS_PRODUCTION = import.meta.env.PROD;
 
