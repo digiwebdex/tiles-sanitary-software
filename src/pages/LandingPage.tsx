@@ -451,17 +451,20 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch max-w-3xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch max-w-5xl mx-auto">
           {PRICING_PLANS.map((plan, i) => {
-            const price = yearly ? plan.yearlyPrice : plan.monthlyPrice;
-            const period = yearly ? "/year" : "/month";
+            const isTrial = (plan as any).isTrial;
+            const price = isTrial ? 0 : (yearly ? plan.yearlyPrice : plan.monthlyPrice);
+            const period = isTrial ? "" : (yearly ? "/year" : "/month");
             return (
               <div
                 key={i}
                 className={`relative rounded-2xl border-2 p-8 flex flex-col gap-6 transition-all ${
                   plan.highlighted
                     ? "border-orange-500 bg-gradient-to-b from-orange-500/10 to-orange-600/5 shadow-2xl shadow-orange-500/10 scale-[1.02]"
-                    : "border-white/10 bg-white/[0.03]"
+                    : isTrial
+                      ? "border-emerald-500/30 bg-gradient-to-b from-emerald-500/5 to-emerald-600/[0.02]"
+                      : "border-white/10 bg-white/[0.03]"
                 }`}
               >
                 {plan.highlighted && (
@@ -469,14 +472,29 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
                     <Zap className="h-3 w-3 mr-1" /> Most Popular
                   </Badge>
                 )}
+                {isTrial && (
+                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs px-4 py-1 font-bold shadow-lg border-0">
+                    <Play className="h-3 w-3 mr-1" /> Try Free
+                  </Badge>
+                )}
                 <div>
-                  <p className={`text-sm font-semibold mb-2 ${plan.highlighted ? "text-orange-400" : "text-gray-500"}`}>{plan.name}</p>
+                  <p className={`text-sm font-semibold mb-2 ${
+                    plan.highlighted ? "text-orange-400" : isTrial ? "text-emerald-400" : "text-gray-500"
+                  }`}>{plan.name}</p>
                   <div className="flex items-end gap-1 mb-1">
-                    <span className="text-sm font-bold text-white">৳</span>
-                    <span className="text-5xl font-extrabold leading-none tracking-tight text-white">{price.toLocaleString()}</span>
-                    <span className="text-sm mb-1 text-gray-500">{period}</span>
+                    {isTrial ? (
+                      <span className="text-5xl font-extrabold leading-none tracking-tight text-white">Free</span>
+                    ) : (
+                      <>
+                        <span className="text-sm font-bold text-white">৳</span>
+                        <span className="text-5xl font-extrabold leading-none tracking-tight text-white">{price.toLocaleString()}</span>
+                        <span className="text-sm mb-1 text-gray-500">{period}</span>
+                      </>
+                    )}
                   </div>
-                  {yearly ? (
+                  {isTrial ? (
+                    <p className="text-xs mt-2 text-emerald-400/70 font-medium">3 days • No credit card required</p>
+                  ) : yearly ? (
                     <Badge className="mt-2 text-[10px] px-2 py-0.5 gap-1 bg-gradient-to-r from-amber-500 to-orange-600 text-white border-0">
                       <Sparkles className="h-3 w-3" /> Save 2 months
                     </Badge>
@@ -489,7 +507,9 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
                 <ul className="space-y-3 flex-1">
                   {plan.features.map((feat, fi) => (
                     <li key={fi} className="flex items-start gap-2.5 text-sm">
-                      <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${plan.highlighted ? "text-orange-400" : "text-orange-500/60"}`} />
+                      <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${
+                        plan.highlighted ? "text-orange-400" : isTrial ? "text-emerald-400" : "text-orange-500/60"
+                      }`} />
                       <span className="text-gray-300">{feat}</span>
                     </li>
                   ))}
@@ -498,9 +518,11 @@ const PricingSection = ({ cms }: { cms: typeof DEFAULTS.pricing & { extra_json: 
                   <Button className={`w-full h-12 rounded-xl font-semibold text-base border-0 ${
                     plan.highlighted
                       ? "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg shadow-orange-500/20"
-                      : "bg-white/10 hover:bg-white/15 text-white"
+                      : isTrial
+                        ? "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/20"
+                        : "bg-white/10 hover:bg-white/15 text-white"
                   }`}>
-                    Start Free Trial
+                    {isTrial ? "Start 3-Day Trial" : "Start Free Trial"}
                   </Button>
                 </Link>
               </div>
