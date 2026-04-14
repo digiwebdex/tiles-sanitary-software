@@ -106,7 +106,7 @@ const DealerManagement = () => {
   const { data: plans = [] } = useQuery({
     queryKey: ["admin-plans-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("plans").select("id, name, price_monthly, price_yearly").order("name");
+      const { data, error } = await supabase.from("subscription_plans").select("id, name, monthly_price, yearly_price").eq("is_active", true).order("monthly_price");
       if (error) throw new Error(error.message);
       return data;
     },
