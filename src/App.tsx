@@ -12,6 +12,7 @@ import PricingPage from "./pages/public/PricingPage";
 import PrivacyPolicyPage from "./pages/public/PrivacyPolicyPage";
 import TermsPage from "./pages/public/TermsPage";
 import ContactPage from "./pages/public/ContactPage";
+import GetStartedPage from "./pages/public/GetStartedPage";
 import SubscriptionBlockedPage from "./pages/auth/SubscriptionBlockedPage";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
