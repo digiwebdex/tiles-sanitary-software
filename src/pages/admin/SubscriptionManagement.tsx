@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { recordSubscriptionPayment } from "@/services/subscriptionPaymentService";
 import { Plus, CalendarPlus, Play, Pause, RefreshCw, Banknote, AlertCircle, CheckCircle2 } from "lucide-react";
-import { differenceInDays, parseISO, format } from "date-fns";
+import { differenceInDays, parseISO, format, addMonths, addYears } from "date-fns";
 import { checkYearlyDiscountEligibility } from "@/services/subscriptionPaymentService";
 
 interface SubRow {
@@ -148,7 +148,7 @@ const SubscriptionManagement = () => {
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
   const [editSub, setEditSub] = useState<SubRow | null>(null);
-  const [editForm, setEditForm] = useState({ end_date: "", status: "", plan_id: "" });
+  const [editForm, setEditForm] = useState({ end_date: "", status: "", plan_id: "", duration_type: "1month" as "1month" | "1year" | "custom", custom_months: "3" });
 
   // Payment dialog
   const [payOpen, setPayOpen] = useState(false);
@@ -218,6 +218,8 @@ const SubscriptionManagement = () => {
       end_date: sub.end_date ?? "",
       status: sub.status,
       plan_id: sub.plan_id,
+      duration_type: "1month",
+      custom_months: "3",
     });
     setEditOpen(true);
   };
@@ -404,8 +406,64 @@ const SubscriptionManagement = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>End Date (extend or set)</Label>
-              <Input type="date" value={editForm.end_date} onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })} />
+              <Label>Duration</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={editForm.duration_type === "1month" ? "default" : "outline"}
+                  onClick={() => {
+                    const base = editForm.end_date ? parseISO(editForm.end_date) : new Date();
+                    const newEnd = addMonths(base > new Date() ? base : new Date(), 1);
+                    setEditForm({ ...editForm, duration_type: "1month", end_date: format(newEnd, "yyyy-MM-dd") });
+                  }}
+                >
+                  1 Month
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={editForm.duration_type === "1year" ? "default" : "outline"}
+                  onClick={() => {
+                    const base = editForm.end_date ? parseISO(editForm.end_date) : new Date();
+                    const newEnd = addYears(base > new Date() ? base : new Date(), 1);
+                    setEditForm({ ...editForm, duration_type: "1year", end_date: format(newEnd, "yyyy-MM-dd") });
+                  }}
+                >
+                  1 Year
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={editForm.duration_type === "custom" ? "default" : "outline"}
+                  onClick={() => setEditForm({ ...editForm, duration_type: "custom" })}
+                >
+                  Custom
+                </Button>
+              </div>
+              {editForm.duration_type === "custom" && (
+                <div className="flex gap-2 items-end mt-2">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs">Months</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={editForm.custom_months}
+                      onChange={(e) => {
+                        const months = parseInt(e.target.value) || 1;
+                        const base = editForm.end_date ? parseISO(editForm.end_date) : new Date();
+                        const startBase = base > new Date() ? base : new Date();
+                        const newEnd = addMonths(startBase, months);
+                        setEditForm({ ...editForm, custom_months: e.target.value, end_date: format(newEnd, "yyyy-MM-dd") });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                End Date: {editForm.end_date ? format(parseISO(editForm.end_date), "dd MMM yyyy") : "Not set"}
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
