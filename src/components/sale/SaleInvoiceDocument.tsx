@@ -171,18 +171,24 @@ const SaleInvoiceDocument = ({
                 </tr>
               </thead>
               <tbody>
-                {items.filter((i: any) => Number(i.backorder_qty) > 0 || i.fulfillment_status !== "fulfilled").map((item: any) => {
+                {items.filter((i: any) => Number(i.backorder_qty) > 0 || !["in_stock", "fulfilled"].includes(i.fulfillment_status)).map((item: any) => {
                   const statusLabels: Record<string, string> = {
+                    in_stock: "In Stock",
                     fulfilled: "Fulfilled",
-                    pending: "Pending",
+                    pending: "Backordered",
                     partially_allocated: "Partially Allocated",
                     ready_for_delivery: "Ready for Delivery",
+                    partially_delivered: "Partially Delivered",
+                    cancelled: "Cancelled",
                   };
                   const statusColors: Record<string, string> = {
-                    fulfilled: "text-green-600",
+                    in_stock: "text-green-600",
+                    fulfilled: "text-green-700",
                     pending: "text-red-600",
                     partially_allocated: "text-amber-600",
                     ready_for_delivery: "text-blue-600",
+                    partially_delivered: "text-orange-600",
+                    cancelled: "text-muted-foreground",
                   };
                   return (
                     <tr key={item.id} className="border-t border-amber-200">

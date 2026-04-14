@@ -36,6 +36,12 @@ import {
   DeliveryStatusReport,
   StockMovementReport,
 } from "./AdditionalReports";
+import {
+  BackorderReport,
+  PendingFulfillmentReport,
+  ShortageDemandReport,
+  CustomerPendingDeliveryReport,
+} from "./BackorderReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -108,6 +114,16 @@ const reportGroups = [
     ],
   },
   {
+    label: "Backorder & Fulfillment",
+    icon: Layers,
+    items: [
+      { key: "backorder", label: "Backorder Report", icon: AlertTriangle },
+      { key: "pending-fulfillment", label: "Pending Fulfillment", icon: Clock },
+      { key: "shortage-demand", label: "Shortage Demand", icon: Tags },
+      { key: "customer-pending-delivery", label: "Customer Pending", icon: Users },
+    ],
+  },
+  {
     label: "Purchases & Expenses",
     icon: ShoppingCart,
     items: [
@@ -156,6 +172,10 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "pending-delivery": return <PendingDeliveryReport dealerId={dealerId} />;
       case "delivery-status": return <DeliveryStatusReport dealerId={dealerId} />;
       case "stock-movement": return <StockMovementReport dealerId={dealerId} />;
+      case "backorder": return <BackorderReport dealerId={dealerId} />;
+      case "pending-fulfillment": return <PendingFulfillmentReport dealerId={dealerId} />;
+      case "shortage-demand": return <ShortageDemandReport dealerId={dealerId} />;
+      case "customer-pending-delivery": return <CustomerPendingDeliveryReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };

@@ -242,7 +242,7 @@ export const salesService = {
         total_sft: itemSft,
         available_qty_at_sale: availableQty,
         backorder_qty: shortage,
-        fulfillment_status: shortage > 0 ? "pending" : "fulfilled",
+        fulfillment_status: shortage > 0 ? "pending" : "in_stock",
       };
     });
 
