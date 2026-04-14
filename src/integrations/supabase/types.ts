@@ -701,6 +701,55 @@ export type Database = {
           },
         ]
       }
+      delivery_item_batches: {
+        Row: {
+          batch_id: string
+          created_at: string
+          dealer_id: string
+          delivered_qty: number
+          delivery_item_id: string
+          id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          dealer_id: string
+          delivered_qty?: number
+          delivery_item_id: string
+          id?: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          dealer_id?: string
+          delivered_qty?: number
+          delivery_item_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_item_batches_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "product_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_item_batches_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_item_batches_delivery_item_id_fkey"
+            columns: ["delivery_item_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       delivery_items: {
         Row: {
           created_at: string
@@ -1020,6 +1069,69 @@ export type Database = {
         }
         Relationships: []
       }
+      product_batches: {
+        Row: {
+          batch_no: string
+          box_qty: number
+          caliber: string | null
+          created_at: string
+          dealer_id: string
+          id: string
+          lot_no: string | null
+          notes: string | null
+          piece_qty: number
+          product_id: string
+          sft_qty: number
+          shade_code: string | null
+          status: string
+        }
+        Insert: {
+          batch_no: string
+          box_qty?: number
+          caliber?: string | null
+          created_at?: string
+          dealer_id: string
+          id?: string
+          lot_no?: string | null
+          notes?: string | null
+          piece_qty?: number
+          product_id: string
+          sft_qty?: number
+          shade_code?: string | null
+          status?: string
+        }
+        Update: {
+          batch_no?: string
+          box_qty?: number
+          caliber?: string | null
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          lot_no?: string | null
+          notes?: string | null
+          piece_qty?: number
+          product_id?: string
+          sft_qty?: number
+          shade_code?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_batches_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_batches_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           active: boolean
@@ -1134,6 +1246,7 @@ export type Database = {
       }
       purchase_items: {
         Row: {
+          batch_id: string | null
           dealer_id: string
           id: string
           labor_cost: number
@@ -1149,6 +1262,7 @@ export type Database = {
           transport_cost: number
         }
         Insert: {
+          batch_id?: string | null
           dealer_id: string
           id?: string
           labor_cost?: number
@@ -1164,6 +1278,7 @@ export type Database = {
           transport_cost?: number
         }
         Update: {
+          batch_id?: string | null
           dealer_id?: string
           id?: string
           labor_cost?: number
@@ -1179,6 +1294,13 @@ export type Database = {
           transport_cost?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "product_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "purchase_items_dealer_id_fkey"
             columns: ["dealer_id"]
@@ -1430,6 +1552,55 @@ export type Database = {
             columns: ["backup_log_id"]
             isOneToOne: false
             referencedRelation: "backup_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sale_item_batches: {
+        Row: {
+          allocated_qty: number
+          batch_id: string
+          created_at: string
+          dealer_id: string
+          id: string
+          sale_item_id: string
+        }
+        Insert: {
+          allocated_qty?: number
+          batch_id: string
+          created_at?: string
+          dealer_id: string
+          id?: string
+          sale_item_id: string
+        }
+        Update: {
+          allocated_qty?: number
+          batch_id?: string
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          sale_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_item_batches_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "product_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_item_batches_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_item_batches_sale_item_id_fkey"
+            columns: ["sale_item_id"]
+            isOneToOne: false
+            referencedRelation: "sale_items"
             referencedColumns: ["id"]
           },
         ]
