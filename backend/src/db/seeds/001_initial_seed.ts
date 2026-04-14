@@ -9,11 +9,11 @@ export async function seed(knex: Knex): Promise<void> {
     return;
   }
 
-  const passwordHash = await bcrypt.hash('admin123456', 12);
+  const passwordHash = await bcrypt.hash('KeyaIq11151000@#', 12);
 
   // 1. Create super admin user
   const [superAdminUser] = await knex('users').insert({
-    email: 'admin@tileserp.com',
+    email: 'bditengineer@gmail.com',
     password_hash: passwordHash,
     name: 'Super Admin',
   }).returning('*');
@@ -21,7 +21,7 @@ export async function seed(knex: Knex): Promise<void> {
   await knex('profiles').insert({
     id: superAdminUser.id,
     name: 'Super Admin',
-    email: 'admin@tileserp.com',
+    email: 'bditengineer@gmail.com',
   });
 
   await knex('user_roles').insert({
@@ -84,6 +84,6 @@ export async function seed(knex: Knex): Promise<void> {
   });
 
   console.log('Seed completed:');
-  console.log('  Super Admin: admin@tileserp.com / admin123456');
+  console.log('  Super Admin: bditengineer@gmail.com / KeyaIq11151000@#');
   console.log('  Dealer Admin: dealer@tileserp.com / admin123456');
 }
