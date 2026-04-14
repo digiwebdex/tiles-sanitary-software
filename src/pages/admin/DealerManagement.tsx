@@ -411,6 +411,7 @@ const DealerManagement = () => {
                               title="Change Plan"
                             >
                               <RefreshCw className="h-3 w-3" />
+                            </Button>
                             <Button
                               size="sm"
                               variant={(d.status ?? "active") === "active" ? "destructive" : "default"}
