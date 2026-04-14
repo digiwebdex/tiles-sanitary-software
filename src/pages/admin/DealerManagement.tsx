@@ -511,7 +511,7 @@ const DealerManagement = () => {
                         <SelectContent>
                           {plans.map((p: any) => (
                             <SelectItem key={p.id} value={p.id}>
-                              {p.name} — {formatCurrency(p.price_monthly)}/mo
+                              {p.name} — {formatCurrency(p.monthly_price)}/mo
                             </SelectItem>
                           ))}
                         </SelectContent>
