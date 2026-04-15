@@ -368,6 +368,9 @@ export const salesService = {
     // For challan_mode: don't deduct stock or create ledger entries yet
     if (!isChallanMode) {
       // FIFO batch allocation + stock deduction for each item
+      // ATOMIC: Each item uses a server-side RPC that locks batch rows,
+      // deducts batches, inserts sale_item_batches, and updates aggregate stock
+      // in a single DB transaction. On failure, the entire transaction rolls back.
       for (const item of itemsCalc) {
         const deductQty = Math.min(item.quantity, item.available_qty_at_sale);
         if (deductQty <= 0) continue;
@@ -377,28 +380,24 @@ export const salesService = {
         const perBoxSft = product?.per_box_sft ?? null;
         const saleItemId = saleItemMap.get(item.product_id);
 
-        // Try FIFO batch allocation
         if (saleItemId) {
           const allocation = await batchService.planFIFOAllocation(
             item.product_id, input.dealer_id, deductQty, unitType
           );
 
           if (allocation.allocations.length > 0) {
-            // Execute batch-level deduction + create sale_item_batches
+            // Atomic: batch deduction + sale_item_batches + aggregate stock in one transaction
             await batchService.executeSaleAllocation(
-              saleItemId, input.dealer_id, allocation.allocations, unitType, perBoxSft
+              saleItemId, input.dealer_id, item.product_id, allocation.allocations, unitType, perBoxSft
             );
-
-            // Update allocated_qty on sale_item
-            const totalAllocated = allocation.allocations.reduce((s, a) => s + a.allocated_qty, 0);
-            await supabase.from("sale_items").update({
-              allocated_qty: totalAllocated,
-            } as any).eq("id", saleItemId);
+          } else {
+            // Legacy/unbatched product: deduct aggregate stock only (atomic RPC)
+            await batchService.deductStockUnbatched(item.product_id, input.dealer_id, deductQty, unitType, perBoxSft);
           }
+        } else {
+          // Fallback: deduct aggregate stock
+          await stockService.deductStock(item.product_id, deductQty, input.dealer_id);
         }
-
-        // Deduct from aggregate stock (always, regardless of batch availability)
-        await stockService.deductStock(item.product_id, deductQty, input.dealer_id);
       }
 
       await customerLedgerService.addEntry({
