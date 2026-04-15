@@ -801,26 +801,34 @@ export const salesService = {
 
     const items = (sale as any).sale_items ?? [];
 
-    // 5. Restore batch allocations atomically (handles batch + aggregate stock in one transaction)
+    // 5. Restore batch allocations atomically + handle unbatched remainder
     for (const item of items) {
       const { data: product } = await supabase.from("products").select("unit_type, per_box_sft").eq("id", item.product_id).single();
       const unitType = (product?.unit_type ?? "piece") as "box_sft" | "piece";
       const perBoxSft = product?.per_box_sft ?? null;
+
+      // Check batch-allocated amount before restoring (RPC deletes these records)
+      const { data: batchAllocs } = await supabase
+        .from("sale_item_batches")
+        .select("allocated_qty")
+        .eq("sale_item_id", item.id);
+      const batchAllocated = (batchAllocs ?? []).reduce((s: number, a: any) => s + Number(a.allocated_qty), 0);
+
+      // Atomic: restore batch quantities + aggregate stock for batched portion
       await batchService.restoreBatchAllocations(item.id, item.product_id, dealerId, unitType, perBoxSft);
+
+      // Restore unbatched portion separately
+      const deductedQty = Math.min(Number(item.quantity), Number(item.available_qty_at_sale || item.quantity));
+      const unbatchedQty = deductedQty - batchAllocated;
+      if (unbatchedQty > 0) {
+        await stockService.restoreStock(item.product_id, unbatchedQty, dealerId);
+      }
     }
 
-    // 6. Reverse stock effects based on sale type/status
+    // 6. Reverse reserved stock for challan-mode sales
     if (saleType === "challan_mode" && (saleStatus === "challan_created" || saleStatus === "delivered")) {
       for (const item of items) {
         await stockService.unreserveStock(item.product_id, Number(item.quantity), dealerId);
-      }
-    } else if (saleStatus === "invoiced") {
-      // Restore only the actually-deducted stock (not backorder qty)
-      for (const item of items) {
-        const deductedQty = Math.min(Number(item.quantity), Number(item.available_qty_at_sale || item.quantity));
-        if (deductedQty > 0) {
-          await stockService.restoreStock(item.product_id, deductedQty, dealerId);
-        }
       }
     }
 
