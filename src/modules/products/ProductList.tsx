@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
-  Plus, Search, AlertTriangle, Printer, Download, Upload,
+  Plus, Search, AlertTriangle, Printer, Download, Upload, Lock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BarcodePrintDialog from "./BarcodePrintDialog";
@@ -295,6 +295,11 @@ const ProductList = ({ dealerId }: ProductListProps) => {
           {selected.size > 0 && (
             <Button variant="outline" onClick={openBulkBarcode}>
               <Printer className="mr-2 h-4 w-4" /> Print Barcodes ({selected.size})
+            </Button>
+          )}
+          {reservationsEnabled && (
+            <Button variant="outline" onClick={() => setShowReservations(true)}>
+              <Lock className="mr-2 h-4 w-4" /> Reservations
             </Button>
           )}
           <Button onClick={() => navigate("/products/new")}>
