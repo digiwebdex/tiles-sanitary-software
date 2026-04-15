@@ -25,6 +25,13 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
     enabled: !!deliveryId,
   });
 
+  // Get batch breakdowns for delivery items
+  const { data: deliveryBatches = [] } = useQuery({
+    queryKey: ["delivery-batches", deliveryId],
+    queryFn: () => deliveryService.getDeliveryBatches(deliveryId!, dealerId),
+    enabled: !!deliveryId,
+  });
+
   // Get delivered qty for the whole sale (for progress)
   const saleId = (delivery as any)?.sale_id;
   const { data: deliveredQtyMap = {} } = useQuery({
@@ -49,6 +56,14 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
   // Use delivery_items if available, fall back to sale_items
   const displayItems = deliveryItems.length > 0 ? deliveryItems : saleItems;
   const isPartialTracking = deliveryItems.length > 0;
+
+  // Group delivery batches by delivery_item_id
+  const batchesByItem: Record<string, any[]> = {};
+  for (const db of deliveryBatches as any[]) {
+    const key = db.delivery_item_id;
+    if (!batchesByItem[key]) batchesByItem[key] = [];
+    batchesByItem[key].push(db);
+  }
 
   const statusLabel = delivery?.status === "delivered"
     ? "Delivered"
@@ -129,7 +144,7 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
 
             <Separator />
 
-            {/* Items */}
+            {/* Items with Batch Breakdown */}
             <div>
               <p className="font-semibold text-foreground mb-2">
                 {isPartialTracking ? "Delivery Items" : "Items"}
@@ -137,38 +152,46 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
               {displayItems.length === 0 ? (
                 <p className="text-muted-foreground text-xs">No items linked to this delivery.</p>
               ) : (
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-primary text-primary-foreground">
-                      <th className="px-3 py-2 text-left font-semibold w-10">No</th>
-                      <th className="px-3 py-2 text-left font-semibold">Description</th>
-                      <th className="px-3 py-2 text-center font-semibold">Box/Pcs</th>
-                      <th className="px-3 py-2 text-right font-semibold">Quantity</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayItems.map((item: any, idx: number) => {
-                      const product = item.products;
-                      const isBox = product?.unit_type === "box_sft";
-                      const qty = Number(item.quantity);
-                      const boxPcs = isBox ? `${qty} box` : `${qty} pc`;
+                <div className="space-y-2">
+                  {displayItems.map((item: any, idx: number) => {
+                    const product = item.products;
+                    const isBox = product?.unit_type === "box_sft";
+                    const qty = Number(item.quantity);
+                    const boxPcs = isBox ? `${qty} box` : `${qty} pc`;
+                    const itemBatches = batchesByItem[item.id] ?? [];
 
-                      return (
-                        <tr key={item.id} className={idx % 2 === 0 ? "bg-background" : "bg-muted/20"}>
-                          <td className="px-3 py-2 border-b text-muted-foreground">{idx + 1}</td>
-                          <td className="px-3 py-2 border-b">
+                    return (
+                      <div key={item.id} className="rounded-md border p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-xs text-muted-foreground mr-2">#{idx + 1}</span>
                             <span className="font-medium">{product?.name}</span>
                             {product?.sku && (
                               <span className="text-xs text-muted-foreground ml-1">({product.sku})</span>
                             )}
-                          </td>
-                          <td className="px-3 py-2 border-b text-center">{boxPcs}</td>
-                          <td className="px-3 py-2 border-b text-right">{boxPcs}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </div>
+                          <span className="font-bold">{boxPcs}</span>
+                        </div>
+                        {/* Batch breakdown */}
+                        {itemBatches.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {itemBatches.map((db: any, bi: number) => {
+                              const pb = db.product_batches;
+                              return (
+                                <span key={bi} className="inline-flex items-center gap-1 text-[10px] bg-primary/5 border border-primary/20 text-foreground px-2 py-0.5 rounded-full">
+                                  <span className="font-mono font-semibold">{pb?.batch_no ?? "—"}</span>
+                                  {pb?.shade_code && <span className="text-muted-foreground">S:{pb.shade_code}</span>}
+                                  {pb?.caliber && <span className="text-muted-foreground">C:{pb.caliber}</span>}
+                                  <span className="font-bold">×{Number(db.delivered_qty)}</span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
 

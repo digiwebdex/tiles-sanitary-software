@@ -42,6 +42,12 @@ import {
   ShortageDemandReport,
   CustomerPendingDeliveryReport,
 } from "./BackorderReports";
+import {
+  BatchStockReport,
+  MixedBatchSalesReport,
+  AgingBatchReport,
+  BatchMovementReport,
+} from "./BatchReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -50,7 +56,7 @@ import {
   BarChart3, Package, Layers, Tags, AlertTriangle,
   Receipt, CalendarDays, Calendar, CreditCard,
   ShoppingCart, DollarSign, Users, History, BookOpen, Clock, TrendingUp,
-  ChevronDown,
+  ChevronDown, GitBranch,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -124,6 +130,16 @@ const reportGroups = [
     ],
   },
   {
+    label: "Batch Tracking",
+    icon: GitBranch,
+    items: [
+      { key: "batch-stock", label: "Batch Stock", icon: Layers },
+      { key: "batch-movement", label: "Batch Movement", icon: GitBranch },
+      { key: "mixed-batch-sales", label: "Mixed Batch Sales", icon: AlertTriangle },
+      { key: "batch-aging", label: "Batch Aging", icon: Clock },
+    ],
+  },
+  {
     label: "Purchases & Expenses",
     icon: ShoppingCart,
     items: [
@@ -176,6 +192,10 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "pending-fulfillment": return <PendingFulfillmentReport dealerId={dealerId} />;
       case "shortage-demand": return <ShortageDemandReport dealerId={dealerId} />;
       case "customer-pending-delivery": return <CustomerPendingDeliveryReport dealerId={dealerId} />;
+      case "batch-stock": return <BatchStockReport dealerId={dealerId} />;
+      case "batch-movement": return <BatchMovementReport dealerId={dealerId} />;
+      case "mixed-batch-sales": return <MixedBatchSalesReport dealerId={dealerId} />;
+      case "batch-aging": return <AgingBatchReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };

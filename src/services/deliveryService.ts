@@ -95,6 +95,17 @@ export const deliveryService = {
           .insert(itemRows as any);
         if (itemError) throw new Error(itemError.message);
       }
+
+      // Populate delivery_item_batches atomically via DB function
+      try {
+        await supabase.rpc("execute_delivery_batches" as any, {
+          _delivery_id: data!.id,
+          _dealer_id: input.dealer_id,
+        });
+      } catch (e) {
+        // Non-fatal: legacy/unbatched deliveries proceed without batch tracking
+        console.warn("Delivery batch tracking skipped:", e);
+      }
     }
 
     await logAudit({
@@ -140,10 +151,30 @@ export const deliveryService = {
   },
 
   /**
+   * Get batch breakdown for delivery items
+   */
+  async getDeliveryBatches(deliveryId: string, dealerId: string) {
+    const { data, error } = await supabase
+      .from("delivery_item_batches")
+      .select("*, product_batches(batch_no, shade_code, caliber, lot_no)")
+      .eq("dealer_id", dealerId);
+    if (error) throw new Error(error.message);
+
+    // Filter by delivery_item_ids belonging to this delivery
+    const { data: diIds } = await supabase
+      .from("delivery_items")
+      .select("id")
+      .eq("delivery_id", deliveryId)
+      .eq("dealer_id", dealerId);
+
+    const idSet = new Set((diIds ?? []).map(d => d.id));
+    return (data ?? []).filter((dib: any) => idSet.has(dib.delivery_item_id));
+  },
+
+  /**
    * Get total delivered quantities per sale_item for a given sale
    */
   async getDeliveredQtyBySale(saleId: string, dealerId: string) {
-    // Get all deliveries for this sale
     const { data: deliveries, error: dErr } = await supabase
       .from("deliveries")
       .select("id")
@@ -160,7 +191,6 @@ export const deliveryService = {
       .in("delivery_id", deliveryIds);
     if (iErr) throw new Error(iErr.message);
 
-    // Aggregate quantities by sale_item_id
     const result: Record<string, number> = {};
     for (const item of (items as any[]) ?? []) {
       const key = item.sale_item_id;
@@ -191,7 +221,6 @@ export const deliveryService = {
    * Update sale status based on delivery progress
    */
   async updateSaleDeliveryStatus(saleId: string, dealerId: string) {
-    // Get sale items
     const { data: saleItems, error: siErr } = await supabase
       .from("sale_items")
       .select("id, quantity")
