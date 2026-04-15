@@ -421,6 +421,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                           onDuplicate={() => handleDuplicate(p)}
                           onDelete={() => setDeleteProduct(p)}
                           canDelete={!hasTx && permissions.canDeleteRecords}
+                          onReserve={() => setReserveProduct(p)}
+                          showReserve={reservationsEnabled}
                         />
                       </TableCell>
                     </TableRow>
