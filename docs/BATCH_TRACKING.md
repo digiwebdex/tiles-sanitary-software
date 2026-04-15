@@ -55,4 +55,12 @@ Track tile stock by batch/lot/shade/caliber so the system can prevent mixed-shad
 ## Implementation Batches
 - **Batch 1** (Done): Schema + Purchase flow + Batch stock summary
 - **Batch 2** (Done): Sale FIFO allocation + Mixed-shade warnings + sale_item_batches + batch deduction (atomic)
-- **Batch 3** (Planned): Delivery batch flow + Reports
+- **Batch 3** (Done): Delivery batch flow + Challan/delivery batch display + Batch reports (Stock, Movement, Mixed, Aging)
+
+### Batch 3 Details
+- `execute_delivery_batches` DB function: atomically populates `delivery_item_batches` from `sale_item_batches` during delivery creation
+- Delivery detail dialog shows per-item batch breakdown (batch_no, shade, caliber, qty)
+- Challan/delivery print document shows batch pills under each line item
+- 4 new reports in "Batch Tracking" group: Batch Stock, Batch Movement, Mixed Batch Sales, Batch Aging
+- Legacy/unbatched deliveries proceed gracefully (no crash)
+- All reports support export to Excel
