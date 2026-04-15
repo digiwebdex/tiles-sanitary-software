@@ -8,9 +8,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { Box, Layers, TrendingUp, TrendingDown, RotateCcw, DollarSign, BarChart3, Package } from "lucide-react";
+import { Box, Layers, TrendingUp, TrendingDown, RotateCcw, DollarSign, BarChart3, Package, Lock, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getProductReservations } from "@/services/reservationService";
 
 interface StockSummaryDialogProps {
   open: boolean;
@@ -113,7 +114,14 @@ const StockSummaryDialog = ({ open, onOpenChange, product, dealerId }: StockSumm
     enabled: open && !!productId,
   });
 
-  const isLoading = loadStock || loadPurch || loadSold || loadRet || loadLast || loadBatches;
+  // Active reservations for this product
+  const { data: reservations = [], isLoading: loadRes } = useQuery({
+    queryKey: ["stock-summary-reservations", productId, dealerId],
+    queryFn: () => getProductReservations(productId!, dealerId),
+    enabled: open && !!productId,
+  });
+
+  const isLoading = loadStock || loadPurch || loadSold || loadRet || loadLast || loadBatches || loadRes;
 
   if (!product) return null;
 
@@ -124,18 +132,23 @@ const StockSummaryDialog = ({ open, onOpenChange, product, dealerId }: StockSumm
   const reservedPiece = Number(stock?.reserved_piece_qty) || 0;
   const avgCost = Number(stock?.average_cost_per_unit) || 0;
 
+  const freeBox = boxQty - reservedBox;
+  const freePiece = pieceQty - reservedPiece;
+
   const rows: { icon: React.ReactNode; label: string; value: string }[] = [];
 
   if (isBoxSft) {
     rows.push(
-      { icon: <Box className="h-4 w-4 text-primary" />, label: "Available Box", value: `${boxQty} Box` },
-      { icon: <Box className="h-4 w-4 text-muted-foreground" />, label: "Reserved Box", value: `${reservedBox} Box` },
-      { icon: <Layers className="h-4 w-4 text-primary" />, label: "Available SFT", value: `${sftQty.toFixed(2)} Sft` },
+      { icon: <Box className="h-4 w-4 text-primary" />, label: "Total Stock", value: `${boxQty} Box` },
+      { icon: <Lock className="h-4 w-4 text-amber-500" />, label: "Reserved", value: `${reservedBox} Box` },
+      { icon: <ShieldCheck className="h-4 w-4 text-green-500" />, label: "Free Stock", value: `${freeBox} Box` },
+      { icon: <Layers className="h-4 w-4 text-primary" />, label: "Total SFT", value: `${sftQty.toFixed(2)} Sft` },
     );
   } else {
     rows.push(
-      { icon: <Box className="h-4 w-4 text-primary" />, label: "Available Pieces", value: `${pieceQty} Pcs` },
-      { icon: <Box className="h-4 w-4 text-muted-foreground" />, label: "Reserved Pieces", value: `${reservedPiece} Pcs` },
+      { icon: <Box className="h-4 w-4 text-primary" />, label: "Total Stock", value: `${pieceQty} Pcs` },
+      { icon: <Lock className="h-4 w-4 text-amber-500" />, label: "Reserved", value: `${reservedPiece} Pcs` },
+      { icon: <ShieldCheck className="h-4 w-4 text-green-500" />, label: "Free Stock", value: `${freePiece} Pcs` },
     );
   }
 
@@ -181,6 +194,9 @@ const StockSummaryDialog = ({ open, onOpenChange, product, dealerId }: StockSumm
               <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
               <TabsTrigger value="batches" className="flex-1">
                 Batches {activeBatches.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] px-1">{activeBatches.length}</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="holds" className="flex-1">
+                Holds {reservations.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] px-1">{reservations.length}</Badge>}
               </TabsTrigger>
             </TabsList>
 
@@ -265,6 +281,60 @@ const StockSummaryDialog = ({ open, onOpenChange, product, dealerId }: StockSumm
                 </div>
               )}
             </TabsContent>
+            <TabsContent value="holds">
+              {reservations.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Lock className="mx-auto h-8 w-8 mb-2" />
+                  <p className="text-sm">No active reservations</p>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-xs">Customer</TableHead>
+                        <TableHead className="text-xs">Batch</TableHead>
+                        <TableHead className="text-xs text-right">Held</TableHead>
+                        <TableHead className="text-xs">Expiry</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reservations.map((r: any) => {
+                        const remaining = Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
+                        const expiresAt = r.expires_at ? new Date(r.expires_at) : null;
+                        const daysLeft = expiresAt
+                          ? Math.ceil((expiresAt.getTime() - Date.now()) / 86400000)
+                          : null;
+                        return (
+                          <TableRow key={r.id}>
+                            <TableCell className="py-2 text-xs font-medium">
+                              {r.customers?.name ?? "—"}
+                            </TableCell>
+                            <TableCell className="py-2 text-xs">
+                              {r.product_batches?.batch_no ?? "—"}
+                              {r.product_batches?.shade_code && (
+                                <span className="text-muted-foreground ml-1">({r.product_batches.shade_code})</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="py-2 text-xs text-right font-semibold">
+                              {remaining} {isBoxSft ? "Box" : "Pcs"}
+                            </TableCell>
+                            <TableCell className="py-2 text-xs">
+                              {daysLeft === null
+                                ? "No expiry"
+                                : daysLeft < 0
+                                  ? <span className="text-destructive">Expired</span>
+                                  : `${daysLeft}d left`}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+
           </Tabs>
         )}
 
