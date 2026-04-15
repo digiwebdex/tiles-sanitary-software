@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
-  Plus, Search, AlertTriangle, Printer, Download, Upload,
+  Plus, Search, AlertTriangle, Printer, Download, Upload, Lock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BarcodePrintDialog from "./BarcodePrintDialog";
@@ -32,7 +32,10 @@ import UpdateCostPriceDialog from "./UpdateCostPriceDialog";
 import ChangeBarcodeDialog from "./ChangeBarcodeDialog";
 import SetReorderLevelDialog from "./SetReorderLevelDialog";
 import StockSummaryDialog from "./StockSummaryDialog";
+import CreateReservationDialog from "./CreateReservationDialog";
+import ReservationListDialog from "./ReservationListDialog";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useDealerInfo } from "@/hooks/useDealerInfo";
 import { exportToExcel } from "@/lib/exportUtils";
 
 interface ProductListProps {
@@ -43,6 +46,8 @@ const PAGE_SIZE = 25;
 
 const ProductList = ({ dealerId }: ProductListProps) => {
   const permissions = usePermissions();
+  const { data: dealerInfo } = useDealerInfo();
+  const reservationsEnabled = dealerInfo?.enable_reservations ?? false;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -60,6 +65,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const [barcodeChangeProduct, setBarcodeChangeProduct] = useState<typeof products[0] | null>(null);
   const [reorderProduct, setReorderProduct] = useState<typeof products[0] | null>(null);
   const [stockSummaryProduct, setStockSummaryProduct] = useState<typeof products[0] | null>(null);
+  const [reserveProduct, setReserveProduct] = useState<typeof products[0] | null>(null);
+  const [showReservations, setShowReservations] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -75,14 +82,16 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     queryFn: async () => {
       const { data } = await supabase
         .from("stock")
-        .select("product_id, box_qty, sft_qty, piece_qty")
+        .select("product_id, box_qty, sft_qty, piece_qty, reserved_box_qty, reserved_piece_qty")
         .eq("dealer_id", dealerId);
-      const map = new Map<string, { total: number; box: number; sft: number; piece: number }>();
+      const map = new Map<string, { total: number; box: number; sft: number; piece: number; reservedBox: number; reservedPiece: number }>();
       for (const s of data ?? []) {
         const box = Number(s.box_qty) || 0;
         const sft = Number(s.sft_qty) || 0;
         const piece = Number(s.piece_qty) || 0;
-        map.set(s.product_id, { total: box + piece, box, sft, piece });
+        const reservedBox = Number(s.reserved_box_qty) || 0;
+        const reservedPiece = Number(s.reserved_piece_qty) || 0;
+        map.set(s.product_id, { total: box + piece, box, sft, piece, reservedBox, reservedPiece });
       }
       return map;
     },
@@ -230,7 +239,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
       return;
     }
     const exportData = products.map((p) => {
-      const si = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0 };
+      const si = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0, reservedBox: 0, reservedPiece: 0 };
       const avgCost = costData?.get(p.id) ?? 0;
       return {
         sku: p.sku,
@@ -288,6 +297,11 @@ const ProductList = ({ dealerId }: ProductListProps) => {
               <Printer className="mr-2 h-4 w-4" /> Print Barcodes ({selected.size})
             </Button>
           )}
+          {reservationsEnabled && (
+            <Button variant="outline" onClick={() => setShowReservations(true)}>
+              <Lock className="mr-2 h-4 w-4" /> Reservations
+            </Button>
+          )}
           <Button onClick={() => navigate("/products/new")}>
             <Plus className="mr-2 h-4 w-4" /> Add Product
           </Button>
@@ -339,7 +353,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
               </TableHeader>
               <TableBody>
                 {products.map((p) => {
-                  const stockInfo = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0 };
+                  const stockInfo = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0, reservedBox: 0, reservedPiece: 0 };
                   const qty = stockInfo.total;
                   const costPerUnit = Math.max(0, costData?.get(p.id) ?? 0);
                   const reorder = p.reorder_level ?? 0;
@@ -414,6 +428,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                           onDuplicate={() => handleDuplicate(p)}
                           onDelete={() => setDeleteProduct(p)}
                           canDelete={!hasTx && permissions.canDeleteRecords}
+                          onReserve={() => setReserveProduct(p)}
+                          showReserve={reservationsEnabled}
                         />
                       </TableCell>
                     </TableRow>
@@ -423,7 +439,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                 {products.length > 0 && (() => {
                   const totals = products.reduce(
                     (acc, p) => {
-                      const si = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0 };
+                      const si = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0, reservedBox: 0, reservedPiece: 0 };
                       acc.box += si.box;
                       acc.sft += si.sft;
                       acc.piece += si.piece;
@@ -581,6 +597,21 @@ const ProductList = ({ dealerId }: ProductListProps) => {
           queryClient.invalidateQueries({ queryKey: ["products"] });
           return result;
         }}
+      />
+
+      {reserveProduct && (
+        <CreateReservationDialog
+          open={!!reserveProduct}
+          onOpenChange={(open) => { if (!open) setReserveProduct(null); }}
+          product={reserveProduct}
+          dealerId={dealerId}
+        />
+      )}
+
+      <ReservationListDialog
+        open={showReservations}
+        onOpenChange={setShowReservations}
+        dealerId={dealerId}
       />
     </div>
   );

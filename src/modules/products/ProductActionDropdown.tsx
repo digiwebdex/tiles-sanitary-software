@@ -4,7 +4,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MoreHorizontal, Eye, Pencil, Copy, Trash2 } from "lucide-react";
+import { MoreHorizontal, Eye, Pencil, Copy, Trash2, Lock } from "lucide-react";
 
 export interface ProductActionHandlers {
   onViewDetails: () => void;
@@ -12,10 +12,12 @@ export interface ProductActionHandlers {
   onDuplicate: () => void;
   onDelete: () => void;
   canDelete: boolean;
+  onReserve?: () => void;
+  showReserve?: boolean;
 }
 
 const ProductActionDropdown = ({
-  onViewDetails, onEdit, onDuplicate, onDelete, canDelete,
+  onViewDetails, onEdit, onDuplicate, onDelete, canDelete, onReserve, showReserve,
 }: ProductActionHandlers) => {
   return (
     <DropdownMenu>
@@ -35,6 +37,14 @@ const ProductActionDropdown = ({
         <DropdownMenuItem onClick={onDuplicate}>
           <Copy className="mr-2 h-4 w-4" /> Duplicate Product
         </DropdownMenuItem>
+        {showReserve && onReserve && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onReserve}>
+              <Lock className="mr-2 h-4 w-4" /> Reserve Stock
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         {canDelete ? (
           <DropdownMenuItem

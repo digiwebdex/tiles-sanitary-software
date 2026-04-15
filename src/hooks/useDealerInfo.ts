@@ -7,6 +7,7 @@ export interface DealerInfo {
   phone: string | null;
   address: string | null;
   challan_template: string;
+  enable_reservations: boolean;
 }
 
 export function useDealerInfo() {
@@ -17,7 +18,7 @@ export function useDealerInfo() {
     queryFn: async (): Promise<DealerInfo> => {
       const { data, error } = await supabase
         .from("dealers")
-        .select("name, phone, address, challan_template")
+        .select("name, phone, address, challan_template, enable_reservations")
         .eq("id", dealerId)
         .single();
       if (error) throw new Error(error.message);

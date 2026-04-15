@@ -604,6 +604,7 @@ export type Database = {
           allow_backorder: boolean
           challan_template: string
           created_at: string
+          enable_reservations: boolean
           id: string
           name: string
           phone: string | null
@@ -614,6 +615,7 @@ export type Database = {
           allow_backorder?: boolean
           challan_template?: string
           created_at?: string
+          enable_reservations?: boolean
           id?: string
           name: string
           phone?: string | null
@@ -624,6 +626,7 @@ export type Database = {
           allow_backorder?: boolean
           challan_template?: string
           created_at?: string
+          enable_reservations?: boolean
           id?: string
           name?: string
           phone?: string | null
@@ -1081,6 +1084,8 @@ export type Database = {
           notes: string | null
           piece_qty: number
           product_id: string
+          reserved_box_qty: number
+          reserved_piece_qty: number
           sft_qty: number
           shade_code: string | null
           status: string
@@ -1096,6 +1101,8 @@ export type Database = {
           notes?: string | null
           piece_qty?: number
           product_id: string
+          reserved_box_qty?: number
+          reserved_piece_qty?: number
           sft_qty?: number
           shade_code?: string | null
           status?: string
@@ -1111,6 +1118,8 @@ export type Database = {
           notes?: string | null
           piece_qty?: number
           product_id?: string
+          reserved_box_qty?: number
+          reserved_piece_qty?: number
           sft_qty?: number
           shade_code?: string | null
           status?: string
@@ -1895,6 +1904,95 @@ export type Database = {
           },
         ]
       }
+      stock_reservations: {
+        Row: {
+          batch_id: string | null
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          dealer_id: string
+          expires_at: string | null
+          fulfilled_qty: number
+          id: string
+          product_id: string
+          reason: string | null
+          release_reason: string | null
+          released_qty: number
+          reserved_qty: number
+          source_id: string | null
+          source_type: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          dealer_id: string
+          expires_at?: string | null
+          fulfilled_qty?: number
+          id?: string
+          product_id: string
+          reason?: string | null
+          release_reason?: string | null
+          released_qty?: number
+          reserved_qty?: number
+          source_id?: string | null
+          source_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          dealer_id?: string
+          expires_at?: string | null
+          fulfilled_qty?: number
+          id?: string
+          product_id?: string
+          reason?: string | null
+          release_reason?: string | null
+          released_qty?: number
+          reserved_qty?: number
+          source_id?: string | null
+          source_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_reservations_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "product_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_reservations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_reservations_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_reservations_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_payments: {
         Row: {
           amount: number
@@ -2221,6 +2319,20 @@ export type Database = {
         Returns: undefined
       }
       check_account_locked: { Args: { _email: string }; Returns: Json }
+      create_stock_reservation: {
+        Args: {
+          _batch_id: string
+          _created_by?: string
+          _customer_id: string
+          _dealer_id: string
+          _expires_at?: string
+          _product_id: string
+          _qty: number
+          _reason?: string
+          _unit_type: string
+        }
+        Returns: string
+      }
       deduct_stock_unbatched: {
         Args: {
           _dealer_id: string
@@ -2234,6 +2346,10 @@ export type Database = {
       execute_delivery_batches: {
         Args: { _dealer_id: string; _delivery_id: string }
         Returns: undefined
+      }
+      expire_stale_reservations: {
+        Args: { _dealer_id: string }
+        Returns: number
       }
       generate_next_challan_no: {
         Args: { _dealer_id: string }
@@ -2258,6 +2374,14 @@ export type Database = {
         Returns: Json
       }
       record_successful_login: { Args: { _email: string }; Returns: undefined }
+      release_stock_reservation: {
+        Args: {
+          _dealer_id: string
+          _release_reason: string
+          _reservation_id: string
+        }
+        Returns: undefined
+      }
       restore_sale_batches: {
         Args: {
           _dealer_id: string
