@@ -307,7 +307,12 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
       });
 
       if (tileItems.length > 0) {
-        const preview = await previewBatchAllocation(dealerId, tileItems);
+        const validItems = tileItems.map(i => ({
+          product_id: i.product_id!,
+          quantity: i.quantity!,
+          sale_rate: i.sale_rate ?? 0,
+        }));
+        const preview = await previewBatchAllocation(dealerId, validItems);
         if (preview.has_mixed_shade || preview.has_mixed_caliber) {
           setMixedBatchInfo({
             has_mixed_shade: preview.has_mixed_shade,
