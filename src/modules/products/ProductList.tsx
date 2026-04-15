@@ -82,14 +82,16 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     queryFn: async () => {
       const { data } = await supabase
         .from("stock")
-        .select("product_id, box_qty, sft_qty, piece_qty")
+        .select("product_id, box_qty, sft_qty, piece_qty, reserved_box_qty, reserved_piece_qty")
         .eq("dealer_id", dealerId);
-      const map = new Map<string, { total: number; box: number; sft: number; piece: number }>();
+      const map = new Map<string, { total: number; box: number; sft: number; piece: number; reservedBox: number; reservedPiece: number }>();
       for (const s of data ?? []) {
         const box = Number(s.box_qty) || 0;
         const sft = Number(s.sft_qty) || 0;
         const piece = Number(s.piece_qty) || 0;
-        map.set(s.product_id, { total: box + piece, box, sft, piece });
+        const reservedBox = Number(s.reserved_box_qty) || 0;
+        const reservedPiece = Number(s.reserved_piece_qty) || 0;
+        map.set(s.product_id, { total: box + piece, box, sft, piece, reservedBox, reservedPiece });
       }
       return map;
     },
