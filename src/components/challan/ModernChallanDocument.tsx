@@ -1,5 +1,6 @@
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 interface EditDataType {
   challan_date: string;
@@ -20,6 +21,14 @@ interface EditItemType {
   per_box_sft: number;
 }
 
+interface BatchBreakdown {
+  batch_no: string;
+  shade_code: string | null;
+  caliber: string | null;
+  lot_no: string | null;
+  qty: number;
+}
+
 interface ModernChallanDocumentProps {
   sale: any;
   items: any[];
@@ -32,9 +41,11 @@ interface ModernChallanDocumentProps {
   onEditChange?: (data: EditDataType) => void;
   editItems?: EditItemType[];
   onEditItemChange?: (items: EditItemType[]) => void;
+  /** Batch breakdown per sale_item_id for print display */
+  batchBreakdowns?: Record<string, BatchBreakdown[]>;
 }
 
-const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo, isEditing, editData, onEditChange, editItems, onEditItemChange }: ModernChallanDocumentProps) => {
+const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInfo, isEditing, editData, onEditChange, editItems, onEditItemChange, batchBreakdowns }: ModernChallanDocumentProps) => {
   const challanDate = isEditing && editData ? editData.challan_date : (challan ? (challan as any).challan_date : sale.sale_date);
   const challanNo = challan ? (challan as any).challan_no : "—";
   const status = challan ? (challan as any).status : null;
@@ -212,24 +223,47 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
                 </tr>
               ))
             ) : (
-              items.map((item: any, idx: number) => (
-                <tr key={item.id} className={`border-b border-border last:border-0 ${idx % 2 === 0 ? "bg-background" : "bg-muted/30"}`}>
-                  <td className="px-3 py-2.5 text-muted-foreground text-center">{idx + 1}</td>
-                  <td className="px-3 py-2.5">
-                    <p className="font-semibold text-foreground leading-tight">{item.products?.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.products?.sku}</p>
-                  </td>
-                  <td className="px-3 py-2.5 text-center font-bold text-foreground">{item.quantity}</td>
-                  <td className="px-3 py-2.5 text-center text-muted-foreground text-[11px]">{item.products?.unit_type === "box_sft" ? "Box" : "Pc"}</td>
-                  <td className="px-3 py-2.5 text-center text-foreground">{item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}</td>
-                  {showPrices && (
-                    <td className="px-3 py-2.5 text-right text-foreground">{formatCurrency(item.sale_rate)}</td>
-                  )}
-                  {showPrices && (
-                    <td className="px-3 py-2.5 text-right font-bold text-foreground">{formatCurrency(item.total)}</td>
-                  )}
-                </tr>
-              ))
+              items.map((item: any, idx: number) => {
+                const itemBatches = batchBreakdowns?.[item.id] ?? [];
+                return (
+                  <>
+                    <tr key={item.id} className={`border-b border-border last:border-0 ${idx % 2 === 0 ? "bg-background" : "bg-muted/30"}`}>
+                      <td className="px-3 py-2.5 text-muted-foreground text-center">{idx + 1}</td>
+                      <td className="px-3 py-2.5">
+                        <p className="font-semibold text-foreground leading-tight">{item.products?.name}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.products?.sku}</p>
+                      </td>
+                      <td className="px-3 py-2.5 text-center font-bold text-foreground">{item.quantity}</td>
+                      <td className="px-3 py-2.5 text-center text-muted-foreground text-[11px]">{item.products?.unit_type === "box_sft" ? "Box" : "Pc"}</td>
+                      <td className="px-3 py-2.5 text-center text-foreground">{item.total_sft ? Number(item.total_sft).toFixed(2) : "—"}</td>
+                      {showPrices && (
+                        <td className="px-3 py-2.5 text-right text-foreground">{formatCurrency(item.sale_rate)}</td>
+                      )}
+                      {showPrices && (
+                        <td className="px-3 py-2.5 text-right font-bold text-foreground">{formatCurrency(item.total)}</td>
+                      )}
+                    </tr>
+                    {/* Batch breakdown sub-rows */}
+                    {itemBatches.length > 0 && (
+                      <tr key={`${item.id}-batches`} className="bg-muted/10">
+                        <td></td>
+                        <td colSpan={showPrices ? 6 : 4} className="px-3 py-1.5">
+                          <div className="flex flex-wrap gap-2 text-[10px]">
+                            {itemBatches.map((b, bi) => (
+                              <span key={bi} className="inline-flex items-center gap-1 bg-primary/5 border border-primary/20 text-foreground px-2 py-0.5 rounded-full">
+                                <span className="font-mono font-semibold">{b.batch_no}</span>
+                                {b.shade_code && <span className="text-muted-foreground">S:{b.shade_code}</span>}
+                                {b.caliber && <span className="text-muted-foreground">C:{b.caliber}</span>}
+                                <span className="font-bold">×{b.qty}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })
             )}
           </tbody>
         </table>
