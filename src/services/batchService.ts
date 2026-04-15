@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import { logAudit } from "@/services/auditService";
 
 export interface BatchInput {
   dealer_id: string;
@@ -52,6 +51,10 @@ function generateAutoBatchNo(): string {
  * Find or create a product batch.
  * Merge rule: same product + batch_no + shade + caliber + lot + dealer → top-up existing batch.
  * Different shade/caliber/lot → new batch.
+ *
+ * NULL-SAFE MATCHING:
+ * - null and empty string ("") are treated as equivalent for shade_code, caliber, lot_no
+ * - This prevents duplicate batch rows for the same logical identity
  */
 export const batchService = {
   generateAutoBatchNo,
@@ -62,34 +65,37 @@ export const batchService = {
     unitType: "box_sft" | "piece",
     perBoxSft: number | null
   ): Promise<BatchStockResult> {
-    // Try to find existing batch with same identity (including depleted for reactivation)
+    const shade = input.shade_code?.trim() || null;
+    const caliber = input.caliber?.trim() || null;
+    const lotNo = input.lot_no?.trim() || null;
+    const batchNo = input.batch_no.trim();
+
+    // Build query with null-safe matching
     let query = supabase
       .from("product_batches")
       .select("id, box_qty, piece_qty, sft_qty, status")
       .eq("dealer_id", input.dealer_id)
-      .eq("product_id", input.product_id);
+      .eq("product_id", input.product_id)
+      .eq("batch_no", batchNo);
 
-    // Match shade/caliber/lot — treat null/empty as same
-    if (input.shade_code?.trim()) {
-      query = query.eq("shade_code", input.shade_code.trim());
+    // Null-safe: if value is null, match IS NULL; if value exists, match exact
+    if (shade !== null) {
+      query = query.eq("shade_code", shade);
     } else {
-      query = query.or("shade_code.is.null,shade_code.eq.");
+      query = query.is("shade_code", null);
     }
 
-    if (input.caliber?.trim()) {
-      query = query.eq("caliber", input.caliber.trim());
+    if (caliber !== null) {
+      query = query.eq("caliber", caliber);
     } else {
-      query = query.or("caliber.is.null,caliber.eq.");
+      query = query.is("caliber", null);
     }
 
-    if (input.lot_no?.trim()) {
-      query = query.eq("lot_no", input.lot_no.trim());
+    if (lotNo !== null) {
+      query = query.eq("lot_no", lotNo);
     } else {
-      query = query.or("lot_no.is.null,lot_no.eq.");
+      query = query.is("lot_no", null);
     }
-
-    // Also match batch_no for exact merge
-    query = query.eq("batch_no", input.batch_no.trim());
 
     const { data: existing } = await query.limit(1);
 
@@ -112,10 +118,10 @@ export const batchService = {
     const newBatchData: any = {
       dealer_id: input.dealer_id,
       product_id: input.product_id,
-      batch_no: input.batch_no.trim(),
-      lot_no: input.lot_no?.trim() || null,
-      shade_code: input.shade_code?.trim() || null,
-      caliber: input.caliber?.trim() || null,
+      batch_no: batchNo,
+      lot_no: lotNo,
+      shade_code: shade,
+      caliber: caliber,
       notes: input.notes?.trim() || null,
       box_qty: 0,
       piece_qty: 0,
@@ -143,7 +149,7 @@ export const batchService = {
 
   /**
    * FIFO allocation: allocate requested qty from oldest active batches.
-   * Returns allocation plan without modifying data.
+   * Returns allocation plan without modifying data (preview only).
    */
   async planFIFOAllocation(
     productId: string,
@@ -152,6 +158,21 @@ export const batchService = {
     unitType: "box_sft" | "piece"
   ): Promise<FIFOAllocationResult> {
     const batches = await this.getActiveBatches(productId, dealerId);
+
+    // LEGACY STOCK RULE:
+    // If zero active batches exist for this product, return empty allocations.
+    // The caller (salesService) will fall back to aggregate-only stock deduction
+    // via deduct_stock_unbatched RPC. No batch records are created retroactively.
+    if (batches.length === 0) {
+      return {
+        allocations: [],
+        unallocated_qty: requestedQty,
+        has_mixed_shade: false,
+        has_mixed_caliber: false,
+        shade_codes: [],
+        calibers: [],
+      };
+    }
 
     const allocations: BatchAllocation[] = [];
     let remaining = requestedQty;
@@ -194,74 +215,81 @@ export const batchService = {
   },
 
   /**
-   * Execute batch allocation: deduct from product_batches and create sale_item_batches.
+   * Execute batch allocation ATOMICALLY via server-side DB function.
+   * Transaction boundary: the allocate_sale_batches RPC.
+   * Inside: batch deduction (FOR UPDATE lock) → sale_item_batches insert → aggregate stock update → sale_item.allocated_qty update.
+   * On failure: entire transaction rolls back — no partial state.
    */
   async executeSaleAllocation(
     saleItemId: string,
     dealerId: string,
+    productId: string,
     allocations: BatchAllocation[],
     unitType: "box_sft" | "piece",
     perBoxSft: number | null
   ): Promise<void> {
-    for (const alloc of allocations) {
-      // Deduct from batch
-      const { data: batch } = await supabase
-        .from("product_batches")
-        .select("box_qty, piece_qty, sft_qty")
-        .eq("id", alloc.batch_id)
-        .single();
+    if (allocations.length === 0) return;
 
-      if (!batch) continue;
+    const { error } = await supabase.rpc("allocate_sale_batches", {
+      _dealer_id: dealerId,
+      _sale_item_id: saleItemId,
+      _product_id: productId,
+      _unit_type: unitType,
+      _per_box_sft: perBoxSft ?? 0,
+      _allocations: allocations.map(a => ({
+        batch_id: a.batch_id,
+        allocated_qty: a.allocated_qty,
+      })),
+    });
 
-      const updates = this._calcBatchQtyDeduct(batch, alloc.allocated_qty, unitType, perBoxSft);
-
-      await supabase
-        .from("product_batches")
-        .update(updates)
-        .eq("id", alloc.batch_id);
-
-      // Create sale_item_batches record
-      await supabase.from("sale_item_batches").insert({
-        sale_item_id: saleItemId,
-        batch_id: alloc.batch_id,
-        dealer_id: dealerId,
-        allocated_qty: alloc.allocated_qty,
-      });
-
-      // Check if depleted
-      await this.checkAndMarkDepleted(alloc.batch_id);
-    }
+    if (error) throw new Error(`Atomic batch allocation failed: ${error.message}`);
   },
 
   /**
-   * Restore batch quantities (for sale cancellation).
+   * Restore batch quantities ATOMICALLY via server-side DB function.
+   * Used for sale cancellation/edit reversal.
+   * Transaction: restore_sale_batches RPC.
+   * Inside: batch qty restore (FOR UPDATE lock) → delete sale_item_batches → aggregate stock restore.
+   * On failure: entire transaction rolls back.
    */
-  async restoreBatchAllocations(saleItemId: string, unitType: "box_sft" | "piece", perBoxSft: number | null): Promise<void> {
-    const { data: allocations } = await supabase
-      .from("sale_item_batches")
-      .select("batch_id, allocated_qty")
-      .eq("sale_item_id", saleItemId);
+  async restoreBatchAllocations(
+    saleItemId: string,
+    productId: string,
+    dealerId: string,
+    unitType: "box_sft" | "piece",
+    perBoxSft: number | null
+  ): Promise<void> {
+    const { error } = await supabase.rpc("restore_sale_batches", {
+      _sale_item_id: saleItemId,
+      _product_id: productId,
+      _dealer_id: dealerId,
+      _unit_type: unitType,
+      _per_box_sft: perBoxSft ?? 0,
+    });
 
-    if (!allocations || allocations.length === 0) return;
+    if (error) throw new Error(`Atomic batch restoration failed: ${error.message}`);
+  },
 
-    for (const alloc of allocations) {
-      const { data: batch } = await supabase
-        .from("product_batches")
-        .select("box_qty, piece_qty, sft_qty")
-        .eq("id", alloc.batch_id)
-        .single();
+  /**
+   * Deduct aggregate stock only (no batch involvement).
+   * Used for legacy/unbatched products.
+   */
+  async deductStockUnbatched(
+    productId: string,
+    dealerId: string,
+    quantity: number,
+    unitType: "box_sft" | "piece",
+    perBoxSft: number | null
+  ): Promise<void> {
+    const { error } = await supabase.rpc("deduct_stock_unbatched", {
+      _product_id: productId,
+      _dealer_id: dealerId,
+      _unit_type: unitType,
+      _per_box_sft: perBoxSft ?? 0,
+      _quantity: quantity,
+    });
 
-      if (!batch) continue;
-
-      const updates = this._calcBatchQtyAdd(batch, Number(alloc.allocated_qty), unitType, perBoxSft);
-      await supabase
-        .from("product_batches")
-        .update(updates)
-        .eq("id", alloc.batch_id);
-    }
-
-    // Delete the allocation records
-    await supabase.from("sale_item_batches").delete().eq("sale_item_id", saleItemId);
+    if (error) throw new Error(`Unbatched stock deduction failed: ${error.message}`);
   },
 
   /**
@@ -295,27 +323,6 @@ export const batchService = {
     return data ?? [];
   },
 
-  /**
-   * Mark a batch as depleted if all quantities are zero.
-   */
-  async checkAndMarkDepleted(batchId: string) {
-    const { data } = await supabase
-      .from("product_batches")
-      .select("box_qty, piece_qty, sft_qty")
-      .eq("id", batchId)
-      .single();
-
-    if (!data) return;
-
-    const totalQty = Number(data.box_qty) + Number(data.piece_qty);
-    if (totalQty <= 0) {
-      await supabase
-        .from("product_batches")
-        .update({ status: "depleted" })
-        .eq("id", batchId);
-    }
-  },
-
   _calcBatchQtyAdd(
     current: { box_qty: number; piece_qty: number; sft_qty: number },
     quantity: number,
@@ -333,24 +340,6 @@ export const batchService = {
     return {
       piece_qty: Number(current.piece_qty) + quantity,
       status: "active",
-    };
-  },
-
-  _calcBatchQtyDeduct(
-    current: { box_qty: number; piece_qty: number; sft_qty: number },
-    quantity: number,
-    unitType: "box_sft" | "piece",
-    perBoxSft: number | null
-  ) {
-    if (unitType === "box_sft") {
-      const newBox = Math.max(0, Number(current.box_qty) - quantity);
-      return {
-        box_qty: newBox,
-        sft_qty: newBox * (perBoxSft ?? 0),
-      };
-    }
-    return {
-      piece_qty: Math.max(0, Number(current.piece_qty) - quantity),
     };
   },
 };
