@@ -2231,6 +2231,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      execute_delivery_batches: {
+        Args: { _dealer_id: string; _delivery_id: string }
+        Returns: undefined
+      }
       generate_next_challan_no: {
         Args: { _dealer_id: string }
         Returns: string
