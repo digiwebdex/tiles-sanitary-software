@@ -69,16 +69,29 @@ export function ApprovalHistoryReport({ dealerId }: Props) {
 
   const handleExport = () => {
     const exportData = rows.map((r) => ({
-      Date: new Date(r.created_at).toLocaleString(),
-      Type: APPROVAL_TYPE_LABELS[r.approval_type as ApprovalType] ?? r.approval_type,
-      Status: APPROVAL_STATUS_LABELS[r.status as ApprovalStatus] ?? r.status,
-      Customer: (r.context_data as any)?.customer_name ?? "—",
-      Reason: r.reason ?? "—",
-      "Decision Note": r.decision_note ?? "—",
-      "Decided At": r.decided_at ? new Date(r.decided_at).toLocaleString() : "—",
-      "Consumed At": r.consumed_at ? new Date(r.consumed_at).toLocaleString() : "—",
+      date: new Date(r.created_at).toLocaleString(),
+      type: APPROVAL_TYPE_LABELS[r.approval_type as ApprovalType] ?? r.approval_type,
+      status: APPROVAL_STATUS_LABELS[r.status as ApprovalStatus] ?? r.status,
+      customer: (r.context_data as any)?.customer_name ?? "—",
+      reason: r.reason ?? "—",
+      decision_note: r.decision_note ?? "—",
+      decided_at: r.decided_at ? new Date(r.decided_at).toLocaleString() : "—",
+      consumed_at: r.consumed_at ? new Date(r.consumed_at).toLocaleString() : "—",
     }));
-    exportToExcel(exportData, "approval-history");
+    exportToExcel(
+      exportData,
+      [
+        { header: "Date", key: "date" },
+        { header: "Type", key: "type" },
+        { header: "Status", key: "status" },
+        { header: "Customer", key: "customer" },
+        { header: "Reason", key: "reason" },
+        { header: "Decision Note", key: "decision_note" },
+        { header: "Decided At", key: "decided_at" },
+        { header: "Consumed At", key: "consumed_at" },
+      ],
+      "approval-history"
+    );
   };
 
   return (
