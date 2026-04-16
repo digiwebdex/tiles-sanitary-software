@@ -1,9 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { QuotationFormInput, QuotationItemInput } from "@/modules/quotations/quotationSchema";
 
-// Until types.ts regenerates, we cast supabase.from for new tables.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sb: any = supabase;
+// Types for `quotations` / `quotation_items` are now in generated types.ts.
+// We still alias to a loose handle for ergonomic chained queries.
+const sb = supabase;
 
 export type QuotationStatus =
   | "draft"
