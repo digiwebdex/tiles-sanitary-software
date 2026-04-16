@@ -201,25 +201,6 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
     });
   };
 
-  const addBlankLine = () => {
-    append({
-      product_id: null,
-      product_name_snapshot: "",
-      product_sku_snapshot: null,
-      unit_type: "piece",
-      per_box_sft: null,
-      quantity: 1,
-      rate: 0,
-      discount_value: 0,
-      line_total: 0,
-      preferred_shade_code: null,
-      preferred_caliber: null,
-      preferred_batch_no: null,
-      notes: null,
-      sort_order: fields.length,
-      measurement_snapshot: null,
-    });
-  };
 
   const handleAreaInsert = (payload: AreaCalculatorInsertPayload) => {
     const { product, final_boxes, snapshot } = payload;
