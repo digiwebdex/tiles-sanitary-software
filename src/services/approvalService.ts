@@ -297,7 +297,7 @@ export async function findValidApproval(
     .from("approval_requests")
     .select("*")
     .eq("dealer_id", dealerId)
-    .eq("approval_type", approvalType as string)
+    .eq("approval_type", approvalType)
     .eq("action_hash", actionHash)
     .in("status", ["approved", "auto_approved"])
     .is("consumed_at", null)
