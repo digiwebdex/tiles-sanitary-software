@@ -38,6 +38,10 @@ export interface CreateSaleInput {
   mixed_batch_acknowledged?: boolean;
   /** Explicit reservation selections: { product_id → [{ reservation_id, consume_qty }] } */
   reservation_selections?: Record<string, Array<{ reservation_id: string; consume_qty: number }>>;
+  /** Optional project link (Project / Site-wise Sales). */
+  project_id?: string | null;
+  /** Optional delivery site under the chosen project. */
+  site_id?: string | null;
 }
 
 const PAGE_SIZE = 25;
@@ -353,6 +357,8 @@ export const salesService = {
         sale_type: input.sale_type || "direct_invoice",
         sale_status: isChallanMode ? "draft" : "invoiced",
         has_backorder: hasBackorder,
+        project_id: input.project_id ?? null,
+        site_id: input.site_id ?? null,
       } as any)
       .select()
       .single();
