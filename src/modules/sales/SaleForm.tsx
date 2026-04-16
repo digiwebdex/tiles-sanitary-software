@@ -213,12 +213,15 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     return null;
   };
 
-  // Get available stock for a product
+  // Get available FREE stock for a product (total - reserved)
   const getAvailableStock = (productId: string): number => {
     const stock = fullStockMap.get(productId);
     if (!stock) return 0;
     const product = getProduct(productId);
-    return product?.unit_type === "box_sft" ? Number(stock.box_qty ?? 0) : Number(stock.piece_qty ?? 0);
+    if (product?.unit_type === "box_sft") {
+      return Number(stock.box_qty ?? 0) - Number((stock as any).reserved_box_qty ?? 0);
+    }
+    return Number(stock.piece_qty ?? 0) - Number((stock as any).reserved_piece_qty ?? 0);
   };
 
   // Check if any item has shortage
