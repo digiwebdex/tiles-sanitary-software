@@ -240,7 +240,7 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
                             {" · Per box "}{Number(s.per_box_sft_snapshot ?? 0).toFixed(2)} sft
                           </div>
                           {s.manual_override ? (
-                            <div className="text-amber-600 dark:text-amber-400">
+                            <div className="text-destructive">
                               ⚠ Manual override: calc {String(s.calculated_boxes)} → final {String(s.final_boxes)}
                               {s.override_reason ? ` · ${String(s.override_reason)}` : ""}
                             </div>
