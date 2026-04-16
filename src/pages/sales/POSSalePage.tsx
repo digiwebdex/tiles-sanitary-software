@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useDealerId } from "@/hooks/useDealerId";
 import { useAuth } from "@/contexts/AuthContext";
 import { salesService } from "@/services/salesService";
+import { pricingTierService, type RateSource } from "@/services/pricingTierService";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useNavigate } from "react-router-dom";
+import RateSourceBadge from "@/components/RateSourceBadge";
 
 interface CartItem {
   product_id: string;
@@ -25,6 +27,8 @@ interface CartItem {
   default_sale_rate: number;
   quantity: number;
   sale_rate: number;
+  rate_source: RateSource;
+  tier_id: string | null;
 }
 
 const POSSalePage = () => {
@@ -82,13 +86,16 @@ const POSSalePage = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("customers")
-        .select("id, name")
+        .select("id, name, price_tier_id")
         .eq("dealer_id", dealerId)
         .eq("status", "active")
         .order("name");
       return data ?? [];
     },
   });
+
+  const selectedCustomer = customers.find((c) => c.id === customerId);
+  const customerTierId = (selectedCustomer as { price_tier_id?: string | null } | undefined)?.price_tier_id ?? null;
 
   // Auto-select walk-in customer
   useEffect(() => {
@@ -98,7 +105,48 @@ const POSSalePage = () => {
     }
   }, [customers, customerId]);
 
-  const addToCart = useCallback((product: any) => {
+  // Re-price cart when customer changes; preserve manual overrides
+  useEffect(() => {
+    if (!dealerId) return;
+    if (cart.length === 0) return;
+    void (async () => {
+      const productIds = cart.map((c) => c.product_id);
+      const resolved = await pricingTierService.resolvePricesBatch(dealerId, productIds, customerTierId);
+      let changedCount = 0;
+      let keptManual = 0;
+      setCart((prev) =>
+        prev.map((c) => {
+          if (c.rate_source === "manual") { keptManual += 1; return c; }
+          const r = resolved.get(c.product_id);
+          if (!r) return c;
+          if (c.sale_rate === r.rate && c.rate_source === r.source) return c;
+          changedCount += 1;
+          return { ...c, sale_rate: r.rate, rate_source: r.source, tier_id: r.tier_id };
+        })
+      );
+      if (changedCount > 0 || keptManual > 0) {
+        const parts: string[] = [];
+        if (changedCount > 0) parts.push(`Re-priced ${changedCount}`);
+        if (keptManual > 0) parts.push(`${keptManual} manual kept`);
+        toast({ title: parts.join(" · ") });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, customerTierId, dealerId]);
+
+  const addToCart = useCallback(async (product: any) => {
+    // Resolve rate via tier
+    let resolvedRate = Number(product.default_sale_rate);
+    let source: RateSource = "default";
+    let tierId: string | null = null;
+    try {
+      const r = await pricingTierService.resolvePrice(dealerId, product.id, customerTierId);
+      resolvedRate = r.rate;
+      source = r.source;
+      tierId = r.tier_id;
+    } catch {
+      // fallback already set
+    }
     setCart((prev) => {
       const existing = prev.find((c) => c.product_id === product.id);
       if (existing) {
@@ -114,10 +162,12 @@ const POSSalePage = () => {
         per_box_sft: product.per_box_sft,
         default_sale_rate: Number(product.default_sale_rate),
         quantity: 1,
-        sale_rate: Number(product.default_sale_rate),
+        sale_rate: resolvedRate,
+        rate_source: source,
+        tier_id: tierId,
       }];
     });
-  }, []);
+  }, [dealerId, customerTierId]);
 
   // Scan-to-add: on Enter in barcode field, match exact barcode/sku and add
   const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -163,8 +213,8 @@ const POSSalePage = () => {
       return;
     }
 
-    const selectedCustomer = customers.find((c) => c.id === customerId);
-    if (!selectedCustomer) {
+    const selected = customers.find((c) => c.id === customerId);
+    if (!selected) {
       toast({ title: "Please select a customer", variant: "destructive" });
       return;
     }
@@ -173,7 +223,7 @@ const POSSalePage = () => {
     try {
       await salesService.create({
         dealer_id: dealerId,
-        customer_name: selectedCustomer.name,
+        customer_name: selected.name,
         sale_date: new Date().toISOString().split("T")[0],
         sale_type: "direct_invoice",
         paid_amount: grandTotal,
@@ -188,6 +238,8 @@ const POSSalePage = () => {
           product_id: c.product_id,
           quantity: c.quantity,
           sale_rate: c.sale_rate,
+          rate_source: c.rate_source,
+          tier_id: c.tier_id,
         })),
       });
       toast({ title: "Sale completed!" });
@@ -289,7 +341,10 @@ const POSSalePage = () => {
                 {cart.map((item) => (
                   <div key={item.product_id} className="flex items-center gap-2 px-3 py-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs sm:text-sm font-medium truncate">{item.name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs sm:text-sm font-medium truncate">{item.name}</p>
+                        <RateSourceBadge source={item.rate_source} className="text-[9px] px-1 py-0 h-4 shrink-0" />
+                      </div>
                       <p className="text-[10px] text-muted-foreground">
                         {formatCurrency(item.sale_rate)} × {item.quantity}
                         {item.unit_type === "box_sft" && item.per_box_sft ? ` × ${item.per_box_sft} sft` : ""}
