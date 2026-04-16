@@ -2718,6 +2718,10 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: never; Returns: boolean }
+      link_quotation_to_sale: {
+        Args: { _dealer_id: string; _quotation_id: string; _sale_id: string }
+        Returns: undefined
+      }
       record_failed_login: {
         Args: { _email: string; _ip?: string }
         Returns: Json
@@ -2740,6 +2744,10 @@ export type Database = {
           _unit_type: string
         }
         Returns: undefined
+      }
+      revise_quotation: {
+        Args: { _dealer_id: string; _quotation_id: string }
+        Returns: string
       }
     }
     Enums: {
