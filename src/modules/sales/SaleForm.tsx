@@ -67,6 +67,12 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
       allocation: FIFOAllocationResult;
     }>;
   } | null>(null);
+  // Reservation selections: product_id → [{ reservation_id, consume_qty }]
+  const [reservationSelections, setReservationSelections] = useState<
+    Record<string, Array<{ reservation_id: string; consume_qty: number }>>
+  >({});
+  const { data: dealerInfo } = useDealerInfo();
+  const reservationsEnabled = dealerInfo?.enable_reservations === true;
 
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
