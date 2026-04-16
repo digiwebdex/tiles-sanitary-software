@@ -89,7 +89,7 @@ export async function checkStockAvailability(
 
   const [productsRes, stockRes] = await Promise.all([
     supabase.from("products").select("id, name, unit_type").in("id", productIds),
-    supabase.from("stock").select("product_id, box_qty, piece_qty").eq("dealer_id", dealerId).in("product_id", productIds),
+    supabase.from("stock").select("product_id, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty").eq("dealer_id", dealerId).in("product_id", productIds),
   ]);
 
   const productMap = new Map((productsRes.data ?? []).map(p => [p.id, p]));
