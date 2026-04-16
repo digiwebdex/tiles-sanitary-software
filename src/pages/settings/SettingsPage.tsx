@@ -125,12 +125,12 @@ const SettingsPage = () => {
               </div>
 
               {dealer?.allow_backorder && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-2">
+                <div className="rounded-md border border-warning/40 bg-warning-muted p-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    <span className="text-sm font-medium text-amber-700 dark:text-amber-400">Backorder Mode is Active</span>
+                    <AlertTriangle className="h-4 w-4 text-warning" />
+                    <span className="text-sm font-medium text-warning">Backorder Mode is Active</span>
                   </div>
-                  <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1 list-disc pl-5">
+                  <ul className="text-xs text-warning space-y-1 list-disc pl-5">
                     <li>Sales can be created for quantities above current stock</li>
                     <li>Shortage quantities are tracked as "Backordered"</li>
                     <li>New purchases auto-allocate to oldest pending backorders (FIFO)</li>
@@ -155,12 +155,12 @@ const SettingsPage = () => {
                     Sales are blocked when requested quantity exceeds available stock.
                   </p>
                 </div>
-                <div className={`rounded-md border p-4 ${dealer?.allow_backorder ? "border-amber-400 bg-amber-50/50 dark:bg-amber-950/10" : "border-border"}`}>
+                <div className={`rounded-md border p-4 ${dealer?.allow_backorder ? "border-warning/40 bg-warning-muted" : "border-border"}`}>
                   <div className="flex items-center gap-2 mb-2">
-                    <Package className="h-4 w-4 text-amber-600" />
+                    <Package className="h-4 w-4 text-warning" />
                     <span className="text-sm font-semibold">Backorder Mode</span>
                     {dealer?.allow_backorder && (
-                      <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600">Active</Badge>
+                      <Badge variant="outline" className="text-[10px] border-warning/40 text-warning">Active</Badge>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
