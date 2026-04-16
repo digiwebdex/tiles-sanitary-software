@@ -67,6 +67,14 @@ export function QuotationListReport({ dealerId }: Props) {
         valid_until: r.valid_until,
         total: Number(r.total_amount),
       })),
+      [
+        { header: "Quote No", key: "quote_no" },
+        { header: "Customer", key: "customer" },
+        { header: "Status", key: "status" },
+        { header: "Date", key: "date" },
+        { header: "Valid Until", key: "valid_until" },
+        { header: "Total", key: "total", format: "currency" },
+      ],
       "quotation-list"
     );
   };
