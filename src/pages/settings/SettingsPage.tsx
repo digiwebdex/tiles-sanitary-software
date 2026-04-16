@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useDealerId } from "@/hooks/useDealerId";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Settings, AlertTriangle, Package, ShieldCheck, Calculator } from "lucide-react";
+import { Settings, AlertTriangle, Package, ShieldCheck, Calculator, Tags, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/usePermissions";
 import { ApprovalSettingsCard } from "@/components/approval/ApprovalSettingsCard";
@@ -18,6 +19,7 @@ const SettingsPage = () => {
   const { isDealerAdmin } = usePermissions();
   const dealerId = useDealerId();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: dealer, isLoading } = useQuery({
     queryKey: ["dealer-settings", dealerId],
@@ -209,6 +211,25 @@ const SettingsPage = () => {
               <p className="text-xs text-muted-foreground">
                 Industry standard for tile cuts is 10%. Salesman overrides are recorded in the measurement snapshot.
               </p>
+            </CardContent>
+          </Card>
+
+          {/* Pricing Tiers */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Tags className="h-4 w-4" />
+                Pricing Tiers
+              </CardTitle>
+              <CardDescription>
+                Define named price levels (Retail, Wholesale, Contractor, Project) and per-product rates.
+                Customers linked to a tier get those rates auto-filled in quotations and sales.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" onClick={() => navigate("/settings/pricing-tiers")}>
+                Manage Pricing Tiers <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
             </CardContent>
           </Card>
 

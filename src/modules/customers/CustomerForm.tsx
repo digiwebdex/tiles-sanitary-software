@@ -1,10 +1,11 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { customerService, type Customer } from "@/services/customerService";
+import { pricingTierService } from "@/services/pricingTierService";
 import { useDealerId } from "@/hooks/useDealerId";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
+const NO_TIER = "__none";
 
 const schema = z.object({
   name:             z.string().min(1, "Customer name is required").max(100),
@@ -30,21 +31,27 @@ const schema = z.object({
   status:           z.enum(["active", "inactive"]).default("active"),
   credit_limit:     z.coerce.number().min(0, "Credit limit cannot be negative").default(0),
   max_overdue_days: z.coerce.number().int().min(0, "Must be 0 or more").default(0),
+  price_tier_id:    z.string().nullable().default(null),
 });
 
 type FormValues = z.infer<typeof schema>;
 
 interface CustomerFormProps {
-  customer?: Customer & { credit_limit?: number; max_overdue_days?: number };
+  customer?: Customer;
 }
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 const CustomerForm = ({ customer }: CustomerFormProps) => {
   const dealerId = useDealerId();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isEdit = !!customer;
+
+  const { data: tiers = [] } = useQuery({
+    queryKey: ["price-tiers", dealerId],
+    queryFn: () => pricingTierService.listTiers(dealerId),
+    enabled: !!dealerId,
+  });
+  const activeTiers = tiers.filter((t) => t.status === "active" || t.id === customer?.price_tier_id);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -59,36 +66,29 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
       status:          (customer?.status as "active" | "inactive") ?? "active",
       credit_limit:    customer?.credit_limit ?? 0,
       max_overdue_days: customer?.max_overdue_days ?? 0,
+      price_tier_id:   customer?.price_tier_id ?? null,
     },
   });
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      const payload = {
+        name: values.name,
+        type: values.type,
+        phone: values.phone,
+        email: values.email,
+        address: values.address,
+        reference_name: values.reference_name,
+        opening_balance: values.opening_balance,
+        status: values.status,
+        credit_limit: values.credit_limit,
+        max_overdue_days: values.max_overdue_days,
+        price_tier_id: values.price_tier_id,
+      };
       if (isEdit) {
-        await customerService.update(customer!.id, {
-          name: values.name,
-          type: values.type,
-          phone: values.phone,
-          email: values.email,
-          address: values.address,
-          reference_name: values.reference_name,
-          status: values.status,
-          credit_limit: values.credit_limit,
-          max_overdue_days: values.max_overdue_days,
-        });
+        await customerService.update(customer!.id, payload);
       } else {
-        await customerService.create(dealerId, {
-          name: values.name,
-          type: values.type,
-          phone: values.phone,
-          email: values.email,
-          address: values.address,
-          reference_name: values.reference_name,
-          opening_balance: values.opening_balance,
-          status: values.status,
-          credit_limit: values.credit_limit,
-          max_overdue_days: values.max_overdue_days,
-        });
+        await customerService.create(dealerId, payload);
       }
     },
     onSuccess: () => {
@@ -102,8 +102,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-5">
-
-        {/* Row 1: Name + Type */}
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -111,9 +109,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Customer Name <span className="text-destructive">*</span></FormLabel>
-                <FormControl>
-                  <Input placeholder="Customer name" {...field} />
-                </FormControl>
+                <FormControl><Input placeholder="Customer name" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -125,11 +121,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               <FormItem>
                 <FormLabel>Customer Type <span className="text-destructive">*</span></FormLabel>
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
+                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                   <SelectContent>
                     <SelectItem value="retailer">Retailer</SelectItem>
                     <SelectItem value="customer">Regular</SelectItem>
@@ -142,7 +134,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
           />
         </div>
 
-        {/* Row 2: Phone + Email */}
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -150,9 +141,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Phone</FormLabel>
-                <FormControl>
-                  <Input placeholder="+880 1700-000000" {...field} />
-                </FormControl>
+                <FormControl><Input placeholder="+880 1700-000000" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -163,46 +152,37 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input type="email" placeholder="customer@example.com" {...field} />
-                </FormControl>
+                <FormControl><Input type="email" placeholder="customer@example.com" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
         </div>
 
-        {/* Row 3: Reference Name */}
         <FormField
           control={form.control}
           name="reference_name"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Reference Name</FormLabel>
-              <FormControl>
-                <Input placeholder="Who referred this customer?" {...field} />
-              </FormControl>
+              <FormControl><Input placeholder="Who referred this customer?" {...field} /></FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Row 4: Address */}
         <FormField
           control={form.control}
           name="address"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Address</FormLabel>
-              <FormControl>
-                <Textarea placeholder="Street, City, Country" rows={2} {...field} />
-              </FormControl>
+              <FormControl><Textarea placeholder="Street, City, Country" rows={2} {...field} /></FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Row 5: Opening Balance + Status */}
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -237,11 +217,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               <FormItem>
                 <FormLabel>Status</FormLabel>
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
+                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                   <SelectContent>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
@@ -255,7 +231,39 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
 
         <Separator />
 
-        {/* Credit Control Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-1">Pricing Tier</h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            Auto-fills product rates in quotations and sales for this customer. Leave empty to use default rates.
+          </p>
+          <FormField
+            control={form.control}
+            name="price_tier_id"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Assigned Tier</FormLabel>
+                <Select
+                  value={field.value ?? NO_TIER}
+                  onValueChange={(v) => field.onChange(v === NO_TIER ? null : v)}
+                >
+                  <FormControl><SelectTrigger><SelectValue placeholder="No tier (use default rates)" /></SelectTrigger></FormControl>
+                  <SelectContent>
+                    <SelectItem value={NO_TIER}>No tier (default rates)</SelectItem>
+                    {activeTiers.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}{t.status === "inactive" ? " (inactive)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <Separator />
+
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-1">Credit Control</h3>
           <p className="text-xs text-muted-foreground mb-4">
@@ -268,9 +276,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Credit Limit (৳)</FormLabel>
-                  <FormControl>
-                    <Input type="number" min={0} step="0.01" placeholder="0 = no limit" {...field} />
-                  </FormControl>
+                  <FormControl><Input type="number" min={0} step="0.01" placeholder="0 = no limit" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -281,9 +287,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Max Overdue Days</FormLabel>
-                  <FormControl>
-                    <Input type="number" min={0} step="1" placeholder="0 = no restriction" {...field} />
-                  </FormControl>
+                  <FormControl><Input type="number" min={0} step="1" placeholder="0 = no restriction" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -291,7 +295,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex gap-3 pt-2">
           <Button type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? "Saving…" : isEdit ? "Update Customer" : "Create Customer"}

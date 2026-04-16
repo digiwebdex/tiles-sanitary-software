@@ -62,6 +62,7 @@ import SASubscriptionStatusPage from "./pages/super-admin/SASubscriptionStatusPa
 import SACmsPage from "./pages/super-admin/SACmsPage";
 import SABackupPage from "./pages/super-admin/SABackupPage";
 import SettingsPage from "./pages/settings/SettingsPage";
+import PricingTiersPage from "./pages/settings/PricingTiersPage";
 
 const IS_PRODUCTION = import.meta.env.PROD;
 
@@ -120,6 +121,7 @@ const App = () => (
             <Route path="/reports" element={<ProtectedRoute allowReadonly><AppLayout><ReportsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/reports/credit" element={<ProtectedRoute allowReadonly><AppLayout><CreditReportPage /></AppLayout></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><AppLayout><SettingsPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/settings/pricing-tiers" element={<ProtectedRoute><AppLayout><PricingTiersPage /></AppLayout></ProtectedRoute>} />
 
             {/* Full-access routes */}
             <Route path="/products" element={<ProtectedRoute><AppLayout><ProductsPage /></AppLayout></ProtectedRoute>} />
