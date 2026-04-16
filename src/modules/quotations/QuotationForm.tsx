@@ -383,12 +383,18 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
                           </div>
                           <Input {...form.register(`items.${idx}.notes`)} placeholder="Line note (optional)" className="text-xs" />
                           {snap && (
-                            <div className="flex items-center gap-1 text-xs text-primary">
+                            <button
+                              type="button"
+                              onClick={() => openEditMeasurement(idx)}
+                              className="flex items-center gap-1 text-xs text-primary hover:underline"
+                              title="Edit measurement"
+                            >
                               <Ruler className="h-3 w-3" />
                               <span>
                                 {snap.room_name || "Area"} · {Number(snap.final_area_sft ?? 0).toFixed(2)} sft → {snap.final_boxes} boxes
                               </span>
-                            </div>
+                              <span className="text-muted-foreground">(edit)</span>
+                            </button>
                           )}
                         </td>
                         <td className="py-2 px-2">
