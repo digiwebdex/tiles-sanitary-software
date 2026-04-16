@@ -144,6 +144,9 @@ const SettingsPage = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Approval Workflow */}
+          <ApprovalSettingsCard />
         </>
       )}
     </div>
