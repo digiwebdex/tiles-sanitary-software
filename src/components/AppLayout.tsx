@@ -23,6 +23,7 @@ const navItems = [
   { path: "/purchase-returns", label: "Purchase Returns", icon: Undo2 },
   { path: "/ledger", label: "Ledger", icon: BookOpen },
   { path: "/collections", label: "Payments", icon: Wallet },
+  { path: "/approvals", label: "Approvals", icon: ShieldCheck },
   { path: "/campaigns", label: "Campaigns", icon: Gift },
   { path: "/reports", label: "Reports", icon: BarChart3, readonlyAllowed: true },
   { path: "/reports/credit", label: "Credit Report", icon: ShieldCheck, readonlyAllowed: true },
