@@ -16,6 +16,7 @@ export interface Customer {
   created_at: string;
   credit_limit: number;
   max_overdue_days: number;
+  price_tier_id: string | null;
 }
 
 export interface CustomerWithBalance extends Customer {
@@ -33,6 +34,7 @@ export interface CustomerFormData {
   status: "active" | "inactive";
   credit_limit: number;
   max_overdue_days: number;
+  price_tier_id: string | null;
 }
 
 const PAGE_SIZE = 25;
@@ -106,6 +108,7 @@ export const customerService = {
         status: form.status,
         credit_limit: form.credit_limit ?? 0,
         max_overdue_days: form.max_overdue_days ?? 0,
+        price_tier_id: form.price_tier_id ?? null,
       })
       .select()
       .single();
@@ -127,6 +130,7 @@ export const customerService = {
     if (form.status !== undefined) payload.status = form.status;
     if (form.credit_limit !== undefined) payload.credit_limit = form.credit_limit;
     if (form.max_overdue_days !== undefined) payload.max_overdue_days = form.max_overdue_days;
+    if (form.price_tier_id !== undefined) payload.price_tier_id = form.price_tier_id;
     // opening_balance intentionally NOT editable after creation
 
     const { error } = await supabase.from("customers").update(payload).eq("id", id);
