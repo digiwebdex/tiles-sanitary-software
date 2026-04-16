@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Search, Eye, Pencil, X, FileText } from "lucide-react";
+import { Plus, Search, Eye, Pencil, X, FileText, GitBranch, ShoppingCart } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,8 +45,50 @@ const QuotationList = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const reviseMutation = useMutation({
+    mutationFn: (id: string) => quotationService.revise(id, dealerId),
+    onSuccess: (newId) => {
+      toast.success("Revision created");
+      qc.invalidateQueries({ queryKey: ["quotations"] });
+      navigate(`/quotations/${newId}/edit`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const handleConvert = async (id: string) => {
+    try {
+      const prefill = await quotationService.prepareConversionPrefill(id, dealerId);
+      if (prefill.blockers.length > 0) {
+        toast.error(prefill.blockers[0], {
+          description: prefill.blockers.length > 1 ? `+${prefill.blockers.length - 1} more` : undefined,
+        });
+        return;
+      }
+      navigate("/sales/new", {
+        state: {
+          quotation_id: id,
+          customer_name: prefill.customer_name,
+          discount: prefill.discount,
+          notes: prefill.notes,
+          items: prefill.items,
+        },
+      });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  // Listen to revision-history "view" clicks from the detail dialog
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.id) setDetailId(detail.id);
+    };
+    window.addEventListener("open-quotation-detail", handler);
+    return () => window.removeEventListener("open-quotation-detail", handler);
+  }, []);
+
   const total = data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / 25));
 
   return (
     <div className="space-y-4">
@@ -115,6 +157,8 @@ const QuotationList = () => {
                   const customerName = q.customers?.name ?? q.customer_name_text ?? "—";
                   const isDraft = q.status === "draft";
                   const canCancel = ["draft", "active", "expired"].includes(q.status);
+                  const canRevise = q.status === "active" || q.status === "expired";
+                  const canConvert = q.status === "active";
                   return (
                     <tr key={q.id} className="border-t hover:bg-accent/30">
                       <td className="px-3 py-2 font-mono">{formatQuotationDisplayNo(q)}</td>
@@ -131,6 +175,21 @@ const QuotationList = () => {
                           {isDraft && (
                             <Button variant="ghost" size="icon" onClick={() => navigate(`/quotations/${q.id}/edit`)} title="Edit draft">
                               <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canConvert && (
+                            <Button variant="ghost" size="icon" title="Convert to Sale" onClick={() => handleConvert(q.id)}>
+                              <ShoppingCart className="h-4 w-4 text-primary" />
+                            </Button>
+                          )}
+                          {canRevise && (
+                            <Button
+                              variant="ghost" size="icon" title="Revise"
+                              onClick={() => {
+                                if (confirm("Create a new revision of this quote?")) reviseMutation.mutate(q.id);
+                              }}
+                            >
+                              <GitBranch className="h-4 w-4" />
                             </Button>
                           )}
                           {canCancel && (

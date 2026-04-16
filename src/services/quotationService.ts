@@ -295,4 +295,113 @@ export const quotationService = {
     const { error } = await sb.from("quotations").delete().eq("id", quotationId).eq("status", "draft");
     if (error) throw new Error(error.message);
   },
+
+  /**
+   * Revise an active or expired quotation.
+   * Marks the parent as `revised` and creates a new active row with revision_no+1
+   * sharing the same base quotation_no and pointing to the root via parent_quotation_id.
+   * Returns the new quotation id.
+   */
+  async revise(quotationId: string, dealerId: string): Promise<string> {
+    const { data, error } = await sb.rpc("revise_quotation", {
+      _quotation_id: quotationId,
+      _dealer_id: dealerId,
+    });
+    if (error) throw new Error(error.message);
+    return String(data);
+  },
+
+  /**
+   * Validate a quotation before conversion. Re-checks:
+   *  - status must be 'active'
+   *  - every item must have a product_id (custom lines block conversion)
+   *  - every product must still exist and be active
+   * Returns prefill payload for SaleForm on success; throws with a friendly message on failure.
+   */
+  async prepareConversionPrefill(quotationId: string, dealerId: string): Promise<{
+    quotation: Quotation;
+    customer_name: string;
+    items: Array<{ product_id: string; quantity: number; sale_rate: number }>;
+    discount: number;
+    notes: string;
+    blockers: string[];
+  }> {
+    const quote = await this.getById(quotationId);
+    const items = await this.listItems(quotationId);
+
+    const blockers: string[] = [];
+    if (quote.dealer_id !== dealerId) blockers.push("Quotation belongs to a different dealer.");
+    if (quote.status !== "active") blockers.push(`Quotation is ${quote.status} — only active quotes can be converted.`);
+
+    // Custom lines (no product_id) cannot be converted directly
+    const customLines = items.filter((it) => !it.product_id);
+    if (customLines.length > 0) {
+      blockers.push(`${customLines.length} custom line(s) without a product link. Revise the quote and pick real products.`);
+    }
+
+    // Validate live products
+    const productIds = items.map((it) => it.product_id).filter(Boolean) as string[];
+    if (productIds.length > 0) {
+      const { data: prods, error } = await sb
+        .from("products")
+        .select("id, name, active")
+        .eq("dealer_id", dealerId)
+        .in("id", productIds);
+      if (error) throw new Error(error.message);
+      const liveMap = new Map((prods ?? []).map((p) => [p.id, p]));
+      for (const it of items) {
+        if (!it.product_id) continue;
+        const p = liveMap.get(it.product_id);
+        if (!p) {
+          blockers.push(`Product "${it.product_name_snapshot}" no longer exists. Revise to replace it.`);
+        } else if (!p.active) {
+          blockers.push(`Product "${p.name}" is inactive. Revise to replace it.`);
+        }
+      }
+    }
+
+    const customerName =
+      quote.customers?.name?.trim() ||
+      quote.customer_name_text?.trim() ||
+      "";
+
+    if (!customerName) {
+      blockers.push("Quotation has no customer name. Revise and add one.");
+    }
+
+    // Build sale-form items (1 row per quote line). For box_sft products SaleForm
+    // multiplies by per_box_sft internally, so we pass quantity as box-count.
+    const saleItems = items
+      .filter((it) => !!it.product_id)
+      .map((it) => ({
+        product_id: it.product_id!,
+        quantity: Number(it.quantity ?? 0),
+        sale_rate: Number(it.rate ?? 0),
+      }));
+
+    // Compute total discount amount from the quote header
+    const discountAmount =
+      quote.discount_type === "percent"
+        ? Math.round((Number(quote.subtotal) * Number(quote.discount_value)) / 100 * 100) / 100
+        : Number(quote.discount_value);
+
+    return {
+      quotation: quote,
+      customer_name: customerName,
+      items: saleItems,
+      discount: discountAmount,
+      notes: [quote.notes, `From quotation ${formatQuotationDisplayNo(quote)}`].filter(Boolean).join(" · "),
+      blockers,
+    };
+  },
+
+  /** Mark quote as converted and link the new sale id (called after sale insert). */
+  async linkToSale(quotationId: string, saleId: string, dealerId: string): Promise<void> {
+    const { error } = await sb.rpc("link_quotation_to_sale", {
+      _quotation_id: quotationId,
+      _sale_id: saleId,
+      _dealer_id: dealerId,
+    });
+    if (error) throw new Error(error.message);
+  },
 };
