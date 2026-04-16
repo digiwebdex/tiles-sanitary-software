@@ -29,6 +29,7 @@ interface CartItem {
   sale_rate: number;
   rate_source: RateSource;
   tier_id: string | null;
+  original_resolved_rate?: number;
 }
 
 const POSSalePage = () => {
@@ -135,7 +136,6 @@ const POSSalePage = () => {
   }, [customerId, customerTierId, dealerId]);
 
   const addToCart = useCallback(async (product: any) => {
-    // Resolve rate via tier
     let resolvedRate = Number(product.default_sale_rate);
     let source: RateSource = "default";
     let tierId: string | null = null;
@@ -144,9 +144,7 @@ const POSSalePage = () => {
       resolvedRate = r.rate;
       source = r.source;
       tierId = r.tier_id;
-    } catch {
-      // fallback already set
-    }
+    } catch { /* fallback */ }
     setCart((prev) => {
       const existing = prev.find((c) => c.product_id === product.id);
       if (existing) {
@@ -165,7 +163,8 @@ const POSSalePage = () => {
         sale_rate: resolvedRate,
         rate_source: source,
         tier_id: tierId,
-      }];
+        original_resolved_rate: resolvedRate,
+      } as CartItem & { original_resolved_rate: number }];
     });
   }, [dealerId, customerTierId]);
 
@@ -240,6 +239,7 @@ const POSSalePage = () => {
           sale_rate: c.sale_rate,
           rate_source: c.rate_source,
           tier_id: c.tier_id,
+          original_resolved_rate: c.original_resolved_rate ?? c.sale_rate,
         })),
       });
       toast({ title: "Sale completed!" });
