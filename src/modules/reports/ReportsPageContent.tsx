@@ -214,6 +214,11 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "batch-movement": return <BatchMovementReport dealerId={dealerId} />;
       case "mixed-batch-sales": return <MixedBatchSalesReport dealerId={dealerId} />;
       case "batch-aging": return <AgingBatchReport dealerId={dealerId} />;
+      case "reserved-stock": return <ReservedStockReport dealerId={dealerId} />;
+      case "free-vs-reserved": return <FreeVsReservedReport dealerId={dealerId} />;
+      case "expiring-reservations": return <ExpiringReservationsReport dealerId={dealerId} />;
+      case "customer-reserved": return <CustomerReservedStockReport dealerId={dealerId} />;
+      case "batch-reserved": return <BatchReservedStockReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
