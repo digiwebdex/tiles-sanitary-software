@@ -20,7 +20,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { customerService } from "@/services/customerService";
 import { productService } from "@/services/productService";
 import { quotationService, type Quotation, type QuotationItem } from "@/services/quotationService";
-import { quotationFormSchema, type QuotationFormInput } from "./quotationSchema";
+import { quotationFormSchema, type QuotationFormInput, type QuotationItemInput } from "./quotationSchema";
+import type { MeasurementSnapshot } from "@/lib/areaCalculator";
 import { formatCurrency } from "@/lib/utils";
 
 interface Props {
@@ -89,7 +90,8 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
   });
 
   const [calcOpen, setCalcOpen] = useState(false);
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const { fields, append, remove, update } = useFieldArray({ control: form.control, name: "items" });
   const watchedItems = form.watch("items");
   const watchedDiscountType = form.watch("discount_type");
   const watchedDiscountValue = form.watch("discount_value");
@@ -160,6 +162,31 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
   const handleAreaInsert = (payload: AreaCalculatorInsertPayload) => {
     const { product, final_boxes, snapshot } = payload;
     const roomLabel = snapshot.room_name ? `Room: ${snapshot.room_name}` : "Area Calculator";
+
+    if (editingIdx != null) {
+      // EDIT existing line — preserve user-edited rate/discount but refresh qty + snapshot
+      const existing = watchedItems?.[editingIdx] as QuotationItemInput | undefined;
+      const rate = Number(existing?.rate ?? product.default_sale_rate);
+      const discount = Number(existing?.discount_value ?? 0);
+      update(editingIdx, {
+        ...(existing as QuotationItemInput),
+        product_id: product.id,
+        product_name_snapshot: product.name,
+        product_sku_snapshot: product.sku,
+        unit_type: "box_sft",
+        per_box_sft: product.per_box_sft,
+        quantity: final_boxes,
+        rate,
+        discount_value: discount,
+        line_total: Math.max(0, final_boxes * rate - discount),
+        notes: existing?.notes || roomLabel,
+        measurement_snapshot: snapshot,
+      });
+      setEditingIdx(null);
+      toast.success(`${snapshot.room_name || "Room"}: updated to ${final_boxes} boxes`);
+      return;
+    }
+
     append({
       product_id: product.id,
       product_name_snapshot: product.name,
@@ -178,6 +205,11 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
       measurement_snapshot: snapshot,
     });
     toast.success(`${snapshot.room_name || "Room"}: ${final_boxes} boxes added`);
+  };
+
+  const openEditMeasurement = (idx: number) => {
+    setEditingIdx(idx);
+    setCalcOpen(true);
   };
 
   const saveDraftMutation = useMutation({
@@ -351,12 +383,18 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
                           </div>
                           <Input {...form.register(`items.${idx}.notes`)} placeholder="Line note (optional)" className="text-xs" />
                           {snap && (
-                            <div className="flex items-center gap-1 text-xs text-primary">
+                            <button
+                              type="button"
+                              onClick={() => openEditMeasurement(idx)}
+                              className="flex items-center gap-1 text-xs text-primary hover:underline"
+                              title="Edit measurement"
+                            >
                               <Ruler className="h-3 w-3" />
                               <span>
                                 {snap.room_name || "Area"} · {Number(snap.final_area_sft ?? 0).toFixed(2)} sft → {snap.final_boxes} boxes
                               </span>
-                            </div>
+                              <span className="text-muted-foreground">(edit)</span>
+                            </button>
                           )}
                         </td>
                         <td className="py-2 px-2">
@@ -449,8 +487,20 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
 
       <AreaCalculatorDialog
         open={calcOpen}
-        onOpenChange={setCalcOpen}
+        onOpenChange={(o) => {
+          setCalcOpen(o);
+          if (!o) setEditingIdx(null);
+        }}
         onInsert={handleAreaInsert}
+        initialSnapshot={
+          editingIdx != null
+            ? ((watchedItems?.[editingIdx] as { measurement_snapshot?: MeasurementSnapshot | null } | undefined)
+                ?.measurement_snapshot ?? null)
+            : null
+        }
+        initialProductId={
+          editingIdx != null ? (watchedItems?.[editingIdx]?.product_id ?? null) : null
+        }
       />
     </div>
   );

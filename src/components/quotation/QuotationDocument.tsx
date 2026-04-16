@@ -7,6 +7,8 @@ interface Props {
   items: QuotationItem[];
   customer?: { name?: string | null; phone?: string | null; address?: string | null } | null;
   dealerInfo?: { name: string; phone: string | null; address: string | null } | null;
+  /** When true, render compact measurement breakdown for lines that have a snapshot. */
+  showMeasurements?: boolean;
 }
 
 const fmtDate = (d: string) => {
@@ -14,7 +16,10 @@ const fmtDate = (d: string) => {
   return dt ? dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : d;
 };
 
-const QuotationDocument = ({ quotation, items, customer, dealerInfo }: Props) => {
+const QuotationDocument = ({ quotation, items, customer, dealerInfo, showMeasurements = true }: Props) => {
+  const measuredItems = showMeasurements
+    ? items.filter((it) => (it as { measurement_snapshot?: unknown }).measurement_snapshot)
+    : [];
   const businessName = dealerInfo?.name ?? "Your Business Name";
   const customerName = customer?.name ?? quotation.customer_name_text ?? "—";
   const customerPhone = customer?.phone ?? quotation.customer_phone_text ?? null;
@@ -142,6 +147,60 @@ const QuotationDocument = ({ quotation, items, customer, dealerInfo }: Props) =>
           <Row label={`Total (${CURRENCY_CODE})`} value={formatCurrency(quotation.total_amount)} bold />
         </div>
       </div>
+
+      {/* Measurement summary (Area Calculator) */}
+      {measuredItems.length > 0 && (
+        <div className="px-6 mb-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+            Measurement Summary
+          </p>
+          <table className="w-full text-[11px] border-collapse border border-border">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="px-2 py-1 text-left">Room / Product</th>
+                <th className="px-2 py-1 text-left">Type</th>
+                <th className="px-2 py-1 text-right">Gross</th>
+                <th className="px-2 py-1 text-right">Deduct</th>
+                <th className="px-2 py-1 text-right">Net</th>
+                <th className="px-2 py-1 text-right">Wast.%</th>
+                <th className="px-2 py-1 text-right">Final sft</th>
+                <th className="px-2 py-1 text-right">Per box</th>
+                <th className="px-2 py-1 text-right">Calc</th>
+                <th className="px-2 py-1 text-right">Final</th>
+              </tr>
+            </thead>
+            <tbody>
+              {measuredItems.map((it) => {
+                const s = (it as { measurement_snapshot: Record<string, unknown> }).measurement_snapshot;
+                const room = (s.room_name as string) || it.product_name_snapshot;
+                return (
+                  <tr key={`m-${it.id}`} className="border-t border-border">
+                    <td className="px-2 py-1">
+                      <span className="font-medium">{room}</span>
+                      <span className="text-muted-foreground"> · {it.product_name_snapshot}</span>
+                      {Boolean(s.manual_override) && s.override_reason ? (
+                        <div className="text-[10px] text-destructive">⚠ Override: {String(s.override_reason)}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-2 py-1">{String(s.measurement_type)}</td>
+                    <td className="px-2 py-1 text-right">{Number(s.gross_area_sft ?? 0).toFixed(2)}</td>
+                    <td className="px-2 py-1 text-right">{Number(s.deduction_area_sft ?? 0).toFixed(2)}</td>
+                    <td className="px-2 py-1 text-right">{Number(s.net_area_sft ?? 0).toFixed(2)}</td>
+                    <td className="px-2 py-1 text-right">{Number(s.wastage_pct ?? 0)}%</td>
+                    <td className="px-2 py-1 text-right">{Number(s.final_area_sft ?? 0).toFixed(2)}</td>
+                    <td className="px-2 py-1 text-right">{Number(s.per_box_sft_snapshot ?? 0).toFixed(2)}</td>
+                    <td className="px-2 py-1 text-right">{String(s.calculated_boxes ?? "—")}</td>
+                    <td className="px-2 py-1 text-right font-semibold">{String(s.final_boxes ?? "—")}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Areas in sft. Linear inputs (ft/m) and direct area (sft/sqm) are normalized internally.
+          </p>
+        </div>
+      )}
 
       {/* Notes / Terms */}
       {(quotation.notes || quotation.terms_text) && (
