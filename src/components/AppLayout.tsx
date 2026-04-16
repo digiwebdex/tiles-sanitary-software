@@ -38,7 +38,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   let dealerIdForBadge = "";
   try { dealerIdForBadge = useDealerId(); } catch { /* super admin without dealer */ }
-  const location = useLocation();
 
   const isReadonly = accessLevel === "readonly";
   const isGrace = accessLevel === "grace";
