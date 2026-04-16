@@ -1640,6 +1640,7 @@ export type Database = {
           discount_value: number
           id: string
           line_total: number
+          measurement_snapshot: Json | null
           notes: string | null
           per_box_sft: number | null
           preferred_batch_no: string | null
@@ -1660,6 +1661,7 @@ export type Database = {
           discount_value?: number
           id?: string
           line_total?: number
+          measurement_snapshot?: Json | null
           notes?: string | null
           per_box_sft?: number | null
           preferred_batch_no?: string | null
@@ -1680,6 +1682,7 @@ export type Database = {
           discount_value?: number
           id?: string
           line_total?: number
+          measurement_snapshot?: Json | null
           notes?: string | null
           per_box_sft?: number | null
           preferred_batch_no?: string | null
