@@ -349,7 +349,7 @@ export async function listApprovals(
     query = query.eq("status", filters.status);
   }
   if (filters?.type) {
-    query = query.eq("approval_type", filters.type);
+    query = query.eq("approval_type", filters.type as ApprovalType);
   }
 
   const { data, error } = await query;
