@@ -60,6 +60,13 @@ import {
   ApprovalTypeSummaryReport,
   UserApprovalStatsReport,
 } from "./ApprovalReports";
+import {
+  QuotationListReport,
+  QuotationConversionReport,
+  ExpiredQuotationsReport,
+  SalesmanQuotationPerformance,
+  TopQuotedProductsReport,
+} from "./QuotationReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -69,6 +76,7 @@ import {
   Receipt, CalendarDays, Calendar, CreditCard,
   ShoppingCart, DollarSign, Users, History, BookOpen, Clock, TrendingUp,
   ChevronDown, GitBranch, Shield, Lock, ShieldCheck, FileBarChart, UserCheck,
+  FileSignature,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -172,6 +180,17 @@ const reportGroups = [
     ],
   },
   {
+    label: "Quotations",
+    icon: FileSignature,
+    items: [
+      { key: "quotation-list", label: "Quotation List", icon: FileSignature },
+      { key: "quotation-conversion", label: "Conversion Report", icon: TrendingUp },
+      { key: "quotation-expired", label: "Expired Quotations", icon: Clock },
+      { key: "quotation-salesman", label: "Salesman Performance", icon: Users },
+      { key: "quotation-top-products", label: "Top Quoted Products", icon: Tags },
+    ],
+  },
+  {
     label: "Purchases & Expenses",
     icon: ShoppingCart,
     items: [
@@ -236,6 +255,11 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "approval-history": return <ApprovalHistoryReport dealerId={dealerId} />;
       case "approval-type-summary": return <ApprovalTypeSummaryReport dealerId={dealerId} />;
       case "approval-user-stats": return <UserApprovalStatsReport dealerId={dealerId} />;
+      case "quotation-list": return <QuotationListReport dealerId={dealerId} />;
+      case "quotation-conversion": return <QuotationConversionReport dealerId={dealerId} />;
+      case "quotation-expired": return <ExpiredQuotationsReport dealerId={dealerId} />;
+      case "quotation-salesman": return <SalesmanQuotationPerformance dealerId={dealerId} />;
+      case "quotation-top-products": return <TopQuotedProductsReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };

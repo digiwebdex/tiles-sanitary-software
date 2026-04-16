@@ -28,6 +28,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useState } from "react";
 import { ReservationDashboardWidgets } from "./ReservationDashboardWidgets";
 import { ApprovalDashboardWidgets } from "@/components/approval/ApprovalDashboardWidgets";
+import { QuotationDashboardWidgets } from "@/components/quotation/QuotationDashboardWidgets";
 
 interface OwnerDashboardProps {
   dealerId: string;
@@ -535,6 +536,9 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
 
       {/* Approval Workflow Widgets */}
       <ApprovalDashboardWidgets dealerId={dealerId} />
+
+      {/* Quotation Pipeline Widgets */}
+      <QuotationDashboardWidgets dealerId={dealerId} />
 
       {/* Top Overdue Customers Widget */}
       {topOverdue.length > 0 && (
