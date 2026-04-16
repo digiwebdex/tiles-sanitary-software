@@ -34,12 +34,15 @@ async function generateChallanNumber(dealerId: string): Promise<string> {
 }
 
 export const challanService = {
-  async list(dealerId: string) {
-    const { data, error } = await supabase
+  async list(dealerId: string, opts: { projectId?: string | null; siteId?: string | null } = {}) {
+    let q = supabase
       .from("challans")
-      .select("*, sales(invoice_number, customer_id, customers(name))")
+      .select("*, sales(invoice_number, customer_id, customers(name)), projects:projects(id, project_name, project_code), project_sites:project_sites(id, site_name, address)")
       .eq("dealer_id", dealerId)
       .order("created_at", { ascending: false });
+    if (opts.projectId) q = q.eq("project_id", opts.projectId);
+    if (opts.siteId) q = q.eq("site_id", opts.siteId);
+    const { data, error } = await q;
     if (error) throw new Error(error.message);
     return data ?? [];
   },
@@ -78,6 +81,8 @@ export const challanService = {
       .eq("id", input.sale_id)
       .single();
     if (saleErr || !sale) throw new Error("Sale not found");
+    const saleProjectId = (sale as any).project_id ?? null;
+    const saleSiteId = (sale as any).site_id ?? null;
     if ((sale as any).sale_type !== "challan_mode") throw new Error("Sale is not in challan mode");
     if ((sale as any).sale_status !== "draft") throw new Error("Challan already created for this sale");
 
@@ -105,6 +110,8 @@ export const challanService = {
         delivery_status: "pending",
         created_by: input.created_by || null,
         show_price: input.show_price ?? false,
+        project_id: saleProjectId,
+        site_id: saleSiteId,
       } as any)
       .select()
       .single();
