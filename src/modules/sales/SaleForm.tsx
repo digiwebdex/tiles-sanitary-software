@@ -738,6 +738,72 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
                       </span>
                     </div>
                   )}
+
+                  {/* Reservation picker — show when customer has active holds for this product */}
+                  {reservationsEnabled && selectedProduct && watchItems[idx]?.product_id && (() => {
+                    const productReservations = reservationsByProduct.get(watchItems[idx].product_id) ?? [];
+                    if (productReservations.length === 0) return null;
+                    const selectedForProduct = reservationSelections[watchItems[idx].product_id] ?? [];
+                    const selectedIds = new Set(selectedForProduct.map(s => s.reservation_id));
+
+                    return (
+                      <div className="mt-2 ml-2 rounded-md border border-primary/20 bg-primary/5 p-2.5">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Lock className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs font-semibold text-foreground">
+                            Active Reservations for {matchedCustomer?.name}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          {productReservations.map((res: any) => {
+                            const remaining = Number(res.reserved_qty) - Number(res.fulfilled_qty) - Number(res.released_qty);
+                            if (remaining <= 0) return null;
+                            const isSelected = selectedIds.has(res.id);
+                            const batchInfo = res.product_batches;
+
+                            return (
+                              <label
+                                key={res.id}
+                                className="flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted/50 cursor-pointer"
+                              >
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={(checked) => {
+                                    const pid = watchItems[idx].product_id;
+                                    setReservationSelections(prev => {
+                                      const current = [...(prev[pid] ?? [])];
+                                      if (checked) {
+                                        current.push({ reservation_id: res.id, consume_qty: remaining });
+                                      } else {
+                                        const filtered = current.filter(s => s.reservation_id !== res.id);
+                                        return { ...prev, [pid]: filtered };
+                                      }
+                                      return { ...prev, [pid]: current };
+                                    });
+                                  }}
+                                />
+                                <div className="flex-1">
+                                  <span className="font-medium">{remaining} {selectedProduct.unit_type === "box_sft" ? "Box" : "Pcs"}</span>
+                                  {batchInfo && (
+                                    <span className="text-muted-foreground ml-1">
+                                      · Batch: {batchInfo.batch_no}
+                                      {batchInfo.shade_code && ` · Shade: ${batchInfo.shade_code}`}
+                                      {batchInfo.caliber && ` · Cal: ${batchInfo.caliber}`}
+                                    </span>
+                                  )}
+                                  {res.reason && <span className="text-muted-foreground ml-1">· {res.reason}</span>}
+                                </div>
+                                {isSelected && <CheckCircle className="h-3.5 w-3.5 text-primary" />}
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Select reservations to consume with this sale. Unselected holds stay active.
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
