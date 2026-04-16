@@ -21,6 +21,10 @@ export const saleSchema = z.object({
   fitter_reference: z.string().trim().max(100).optional().or(z.literal("")),
   paid_amount: z.coerce.number().min(0).default(0),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
+  /** Optional project link (Project / Site-wise Sales). */
+  project_id: z.string().nullable().optional(),
+  /** Optional site link under the chosen project. */
+  site_id: z.string().nullable().optional(),
   items: z.array(saleItemSchema).min(1, "At least one item is required"),
 });
 

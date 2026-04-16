@@ -1489,6 +1489,159 @@ export type Database = {
           },
         ]
       }
+      project_code_sequences: {
+        Row: {
+          dealer_id: string
+          next_project_no: number
+        }
+        Insert: {
+          dealer_id: string
+          next_project_no?: number
+        }
+        Update: {
+          dealer_id?: string
+          next_project_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_code_sequences_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: true
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_sites: {
+        Row: {
+          address: string | null
+          contact_person: string | null
+          contact_phone: string | null
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          dealer_id: string
+          id: string
+          notes: string | null
+          project_id: string
+          site_name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          contact_person?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          dealer_id: string
+          id?: string
+          notes?: string | null
+          project_id: string
+          site_name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          contact_person?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          dealer_id?: string
+          id?: string
+          notes?: string | null
+          project_id?: string
+          site_name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_sites_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_sites_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_sites_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          dealer_id: string
+          expected_end_date: string | null
+          id: string
+          notes: string | null
+          project_code: string
+          project_name: string
+          start_date: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          dealer_id: string
+          expected_end_date?: string | null
+          id?: string
+          notes?: string | null
+          project_code: string
+          project_name: string
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          dealer_id?: string
+          expected_end_date?: string | null
+          id?: string
+          notes?: string | null
+          project_code?: string
+          project_name?: string
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_items: {
         Row: {
           batch_id: string | null
@@ -1860,9 +2013,11 @@ export type Database = {
           id: string
           notes: string | null
           parent_quotation_id: string | null
+          project_id: string | null
           quotation_no: string
           quote_date: string
           revision_no: number
+          site_id: string | null
           status: string
           subtotal: number
           terms_text: string | null
@@ -1886,9 +2041,11 @@ export type Database = {
           id?: string
           notes?: string | null
           parent_quotation_id?: string | null
+          project_id?: string | null
           quotation_no: string
           quote_date?: string
           revision_no?: number
+          site_id?: string | null
           status?: string
           subtotal?: number
           terms_text?: string | null
@@ -1912,9 +2069,11 @@ export type Database = {
           id?: string
           notes?: string | null
           parent_quotation_id?: string | null
+          project_id?: string | null
           quotation_no?: string
           quote_date?: string
           revision_no?: number
+          site_id?: string | null
           status?: string
           subtotal?: number
           terms_text?: string | null
@@ -1942,6 +2101,20 @@ export type Database = {
             columns: ["parent_quotation_id"]
             isOneToOne: false
             referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotations_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "project_sites"
             referencedColumns: ["id"]
           },
         ]
@@ -2161,9 +2334,11 @@ export type Database = {
           paid_amount: number
           payment_mode: string | null
           profit: number
+          project_id: string | null
           sale_date: string
           sale_status: string
           sale_type: string
+          site_id: string | null
           total_amount: number
           total_box: number
           total_piece: number
@@ -2189,9 +2364,11 @@ export type Database = {
           paid_amount?: number
           payment_mode?: string | null
           profit?: number
+          project_id?: string | null
           sale_date?: string
           sale_status?: string
           sale_type?: string
+          site_id?: string | null
           total_amount?: number
           total_box?: number
           total_piece?: number
@@ -2217,9 +2394,11 @@ export type Database = {
           paid_amount?: number
           payment_mode?: string | null
           profit?: number
+          project_id?: string | null
           sale_date?: string
           sale_status?: string
           sale_type?: string
+          site_id?: string | null
           total_amount?: number
           total_box?: number
           total_piece?: number
@@ -2238,6 +2417,20 @@ export type Database = {
             columns: ["dealer_id"]
             isOneToOne: false
             referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "project_sites"
             referencedColumns: ["id"]
           },
         ]
@@ -2849,6 +3042,7 @@ export type Database = {
         Args: { _dealer_id: string }
         Returns: string
       }
+      get_next_project_code: { Args: { p_dealer_id: string }; Returns: string }
       get_user_dealer_id: { Args: { _user_id: string }; Returns: string }
       has_active_subscription: { Args: never; Returns: boolean }
       has_role: {

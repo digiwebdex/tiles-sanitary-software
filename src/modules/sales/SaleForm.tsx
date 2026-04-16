@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { pricingTierService } from "@/services/pricingTierService";
 import RateSourceBadge from "@/components/RateSourceBadge";
+import { ProjectSitePicker } from "@/components/project/ProjectSitePicker";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
@@ -113,6 +114,8 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
       fitter_reference: dv?.fitter_reference ?? "",
       paid_amount: dv?.paid_amount ?? 0,
       notes: dv?.notes ?? "",
+      project_id: dv?.project_id ?? null,
+      site_id: dv?.site_id ?? null,
       items: dv?.items?.length ? dv.items : [{ product_id: "", quantity: 0, sale_rate: 0 }],
     },
   });
