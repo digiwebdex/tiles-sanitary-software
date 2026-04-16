@@ -1033,16 +1033,19 @@ export type Database = {
           dealer_id: string
           next_challan_no: number
           next_invoice_no: number
+          next_quotation_no: number
         }
         Insert: {
           dealer_id: string
           next_challan_no?: number
           next_invoice_no?: number
+          next_quotation_no?: number
         }
         Update: {
           dealer_id?: string
           next_challan_no?: number
           next_invoice_no?: number
+          next_quotation_no?: number
         }
         Relationships: [
           {
@@ -1626,6 +1629,194 @@ export type Database = {
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotation_items: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          discount_value: number
+          id: string
+          line_total: number
+          notes: string | null
+          per_box_sft: number | null
+          preferred_batch_no: string | null
+          preferred_caliber: string | null
+          preferred_shade_code: string | null
+          product_id: string | null
+          product_name_snapshot: string
+          product_sku_snapshot: string | null
+          quantity: number
+          quotation_id: string
+          rate: number
+          sort_order: number
+          unit_type: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          discount_value?: number
+          id?: string
+          line_total?: number
+          notes?: string | null
+          per_box_sft?: number | null
+          preferred_batch_no?: string | null
+          preferred_caliber?: string | null
+          preferred_shade_code?: string | null
+          product_id?: string | null
+          product_name_snapshot: string
+          product_sku_snapshot?: string | null
+          quantity?: number
+          quotation_id: string
+          rate?: number
+          sort_order?: number
+          unit_type?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          discount_value?: number
+          id?: string
+          line_total?: number
+          notes?: string | null
+          per_box_sft?: number | null
+          preferred_batch_no?: string | null
+          preferred_caliber?: string | null
+          preferred_shade_code?: string | null
+          product_id?: string | null
+          product_name_snapshot?: string
+          product_sku_snapshot?: string | null
+          quantity?: number
+          quotation_id?: string
+          rate?: number
+          sort_order?: number
+          unit_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotation_items_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_items_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotations: {
+        Row: {
+          converted_at: string | null
+          converted_by: string | null
+          converted_sale_id: string | null
+          created_at: string
+          created_by: string | null
+          customer_address_text: string | null
+          customer_id: string | null
+          customer_name_text: string | null
+          customer_phone_text: string | null
+          dealer_id: string
+          discount_type: string
+          discount_value: number
+          id: string
+          notes: string | null
+          parent_quotation_id: string | null
+          quotation_no: string
+          quote_date: string
+          revision_no: number
+          status: string
+          subtotal: number
+          terms_text: string | null
+          total_amount: number
+          updated_at: string
+          valid_until: string
+        }
+        Insert: {
+          converted_at?: string | null
+          converted_by?: string | null
+          converted_sale_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_address_text?: string | null
+          customer_id?: string | null
+          customer_name_text?: string | null
+          customer_phone_text?: string | null
+          dealer_id: string
+          discount_type?: string
+          discount_value?: number
+          id?: string
+          notes?: string | null
+          parent_quotation_id?: string | null
+          quotation_no: string
+          quote_date?: string
+          revision_no?: number
+          status?: string
+          subtotal?: number
+          terms_text?: string | null
+          total_amount?: number
+          updated_at?: string
+          valid_until?: string
+        }
+        Update: {
+          converted_at?: string | null
+          converted_by?: string | null
+          converted_sale_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_address_text?: string | null
+          customer_id?: string | null
+          customer_name_text?: string | null
+          customer_phone_text?: string | null
+          dealer_id?: string
+          discount_type?: string
+          discount_value?: number
+          id?: string
+          notes?: string | null
+          parent_quotation_id?: string | null
+          quotation_no?: string
+          quote_date?: string
+          revision_no?: number
+          status?: string
+          subtotal?: number
+          terms_text?: string | null
+          total_amount?: number
+          updated_at?: string
+          valid_until?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotations_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotations_parent_quotation_id_fkey"
+            columns: ["parent_quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
             referencedColumns: ["id"]
           },
         ]
@@ -2500,6 +2691,7 @@ export type Database = {
         Returns: undefined
       }
       expire_stale_approvals: { Args: { _dealer_id: string }; Returns: number }
+      expire_stale_quotations: { Args: { _dealer_id: string }; Returns: number }
       expire_stale_reservations: {
         Args: { _dealer_id: string }
         Returns: number
@@ -2509,6 +2701,10 @@ export type Database = {
         Returns: string
       }
       generate_next_invoice_no: {
+        Args: { _dealer_id: string }
+        Returns: string
+      }
+      generate_next_quotation_no: {
         Args: { _dealer_id: string }
         Returns: string
       }
