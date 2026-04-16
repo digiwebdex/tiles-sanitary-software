@@ -17,8 +17,8 @@ import {
   APPROVAL_STATUS_LABELS,
   decideApprovalRequest,
 } from "@/services/approvalService";
-import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
+import { ApprovalContextSummary } from "./ApprovalContextSummary";
 
 interface ApprovalDecisionDialogProps {
   open: boolean;
@@ -38,7 +38,6 @@ export function ApprovalDecisionDialog({
 
   if (!request) return null;
 
-  const ctx = request.context_data as Record<string, any>;
   const isHighRisk = ["credit_override", "sale_cancel", "stock_adjustment"].includes(
     request.approval_type
   );
@@ -91,55 +90,7 @@ export function ApprovalDecisionDialog({
             </Badge>
           </div>
 
-          {/* Context summary */}
-          <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
-            {ctx.customer_name && (
-              <p>
-                <span className="font-medium">Customer:</span> {ctx.customer_name}
-              </p>
-            )}
-            {ctx.shortage_qty != null && (
-              <p>
-                <span className="font-medium">Shortage:</span> {ctx.shortage_qty} units
-              </p>
-            )}
-            {ctx.mixed_shades?.length > 0 && (
-              <p>
-                <span className="font-medium">Mixed Shades:</span>{" "}
-                {ctx.mixed_shades.join(", ")}
-              </p>
-            )}
-            {ctx.mixed_calibers?.length > 0 && (
-              <p>
-                <span className="font-medium">Mixed Calibers:</span>{" "}
-                {ctx.mixed_calibers.join(", ")}
-              </p>
-            )}
-            {ctx.discount_pct != null && (
-              <p>
-                <span className="font-medium">Discount:</span> {ctx.discount_pct}%
-              </p>
-            )}
-            {ctx.outstanding != null && (
-              <p>
-                <span className="font-medium">Outstanding:</span>{" "}
-                {formatCurrency(ctx.outstanding)}
-                {ctx.credit_limit != null && ` / Limit: ${formatCurrency(ctx.credit_limit)}`}
-              </p>
-            )}
-            {ctx.items?.length > 0 && (
-              <div>
-                <span className="font-medium">Items:</span>
-                <ul className="list-disc list-inside ml-2">
-                  {ctx.items.map((item: any, i: number) => (
-                    <li key={i}>
-                      {item.product_name ?? item.product_id}: {item.quantity} units
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+          <ApprovalContextSummary context={request.context_data} />
 
           {request.reason && (
             <div className="text-sm">
@@ -150,7 +101,7 @@ export function ApprovalDecisionDialog({
 
           <div className="space-y-1">
             <label className="text-sm font-medium">
-              Decision Note {isHighRisk || "rejected" ? "(Required for rejection)" : "(Optional)"}
+              Decision Note {isHighRisk ? "(Required for approval/rejection)" : "(Required for rejection)"}
             </label>
             <Textarea
               value={note}

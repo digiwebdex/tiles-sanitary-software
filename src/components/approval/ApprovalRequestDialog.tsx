@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, ShieldAlert } from "lucide-react";
 import type { ApprovalType, ApprovalContextData } from "@/services/approvalService";
 import { APPROVAL_TYPE_LABELS } from "@/services/approvalService";
-import { formatCurrency } from "@/lib/utils";
+import { ApprovalContextSummary } from "./ApprovalContextSummary";
 
 interface ApprovalRequestDialogProps {
   open: boolean;
@@ -45,43 +45,6 @@ export function ApprovalRequestDialog({
     }
   };
 
-  const renderContextDetails = () => {
-    const details: string[] = [];
-
-    if (context.customer_name) {
-      details.push(`Customer: ${context.customer_name}`);
-    }
-    if (context.shortage_qty != null) {
-      details.push(`Stock shortage: ${context.shortage_qty} units`);
-    }
-    if (context.mixed_shades?.length) {
-      details.push(`Mixed shades: ${context.mixed_shades.join(", ")}`);
-    }
-    if (context.mixed_calibers?.length) {
-      details.push(`Mixed calibers: ${context.mixed_calibers.join(", ")}`);
-    }
-    if (context.discount_pct != null) {
-      details.push(`Discount: ${context.discount_pct}%`);
-    }
-    if (context.outstanding != null && context.credit_limit != null) {
-      details.push(
-        `Outstanding: ${formatCurrency(context.outstanding)} / Limit: ${formatCurrency(context.credit_limit)}`
-      );
-    }
-    if (context.overdue_days != null) {
-      details.push(`Overdue: ${context.overdue_days} days`);
-    }
-    if (context.items?.length) {
-      for (const item of context.items) {
-        details.push(`${item.product_name ?? item.product_id}: ${item.quantity} units`);
-      }
-    }
-
-    return details;
-  };
-
-  const contextDetails = renderContextDetails();
-
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
@@ -103,13 +66,7 @@ export function ApprovalRequestDialog({
             </Badge>
           </div>
 
-          {contextDetails.length > 0 && (
-            <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
-              {contextDetails.map((detail, i) => (
-                <p key={i} className="text-muted-foreground">{detail}</p>
-              ))}
-            </div>
-          )}
+          <ApprovalContextSummary context={context} />
 
           <div className="space-y-1">
             <label className="text-sm font-medium">Reason / Note</label>
