@@ -134,6 +134,62 @@ export async function extendReservation(
 }
 
 /**
+ * Consume reservation qty during sale creation.
+ * Calls the atomic consume_reservation_for_sale RPC.
+ */
+export async function consumeReservation(
+  reservationId: string,
+  dealerId: string,
+  saleItemId: string,
+  consumeQty: number
+): Promise<void> {
+  const { error } = await supabase.rpc("consume_reservation_for_sale", {
+    _reservation_id: reservationId,
+    _dealer_id: dealerId,
+    _sale_item_id: saleItemId,
+    _consume_qty: consumeQty,
+  });
+
+  if (error) throw new Error(error.message);
+
+  await logAudit({
+    dealer_id: dealerId,
+    action: "RESERVATION_CONSUMED",
+    table_name: "stock_reservations",
+    record_id: reservationId,
+    new_data: {
+      sale_item_id: saleItemId,
+      consumed_qty: consumeQty,
+    } as any,
+  });
+}
+
+/**
+ * Get active reservations for a customer+product combination.
+ * Used by SaleForm reservation picker.
+ */
+export async function getCustomerProductReservations(
+  customerId: string,
+  productId: string,
+  dealerId: string
+): Promise<Reservation[]> {
+  const { data, error } = await supabase
+    .from("stock_reservations")
+    .select(`
+      *,
+      product_batches:batch_id (batch_no, shade_code, caliber)
+    `)
+    .eq("customer_id", customerId)
+    .eq("product_id", productId)
+    .eq("dealer_id", dealerId)
+    .eq("status", "active")
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as Reservation[];
+}
+
+/**
  * Expire stale reservations for a dealer.
  */
 export async function expireStaleReservations(dealerId: string): Promise<number> {

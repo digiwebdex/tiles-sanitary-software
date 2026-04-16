@@ -7,6 +7,7 @@ import { assertDealerId } from "@/lib/tenancy";
 import { rateLimits } from "@/lib/rateLimit";
 import { notificationService } from "@/services/notificationService";
 import { batchService, type FIFOAllocationResult } from "@/services/batchService";
+import { consumeReservation } from "@/services/reservationService";
 
 export interface SaleItemInput {
   product_id: string;
