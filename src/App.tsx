@@ -46,6 +46,9 @@ import POSSalePage from "./pages/sales/POSSalePage";
 import CampaignsPage from "./pages/campaigns/CampaignsPage";
 import CollectionsPage from "./pages/collections/CollectionsPage";
 import ApprovalsPage from "./pages/approvals/ApprovalsPage";
+import QuotationsPage from "./pages/quotations/QuotationsPage";
+import CreateQuotation from "./pages/quotations/CreateQuotation";
+import EditQuotation from "./pages/quotations/EditQuotation";
 
 // Super Admin
 import SuperAdminLayout from "./pages/super-admin/SuperAdminLayout";
@@ -147,6 +150,9 @@ const App = () => (
             <Route path="/campaigns" element={<ProtectedRoute><AppLayout><CampaignsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/collections" element={<ProtectedRoute><AppLayout><CollectionsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/approvals" element={<ProtectedRoute><AppLayout><ApprovalsPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/quotations" element={<ProtectedRoute><AppLayout><QuotationsPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/quotations/new" element={<ProtectedRoute><AppLayout><CreateQuotation /></AppLayout></ProtectedRoute>} />
+            <Route path="/quotations/:id/edit" element={<ProtectedRoute><AppLayout><EditQuotation /></AppLayout></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>
