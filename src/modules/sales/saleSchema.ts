@@ -6,6 +6,8 @@ export const saleItemSchema = z.object({
   sale_rate: z.coerce.number().min(0, "Rate must be ≥ 0"),
   rate_source: z.enum(["default", "tier", "manual"]).optional().default("default"),
   tier_id: z.string().nullable().optional(),
+  /** Resolved rate (default or tier) before any manual override; null when no override. */
+  original_resolved_rate: z.coerce.number().nullable().optional(),
 });
 
 export const saleSchema = z.object({

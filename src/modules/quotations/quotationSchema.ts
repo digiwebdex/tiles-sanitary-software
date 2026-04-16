@@ -19,6 +19,8 @@ export const quotationItemSchema = z.object({
   measurement_snapshot: z.any().nullable().optional(),
   rate_source: z.enum(["default", "tier", "manual"]).default("default"),
   tier_id: z.string().nullable().optional(),
+  /** Resolved rate (default or tier) before any manual override; null when no override. */
+  original_resolved_rate: z.coerce.number().nullable().optional(),
 });
 
 export const quotationFormSchema = z
