@@ -20,9 +20,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { customerService } from "@/services/customerService";
 import { productService } from "@/services/productService";
 import { quotationService, type Quotation, type QuotationItem } from "@/services/quotationService";
+import { pricingTierService } from "@/services/pricingTierService";
 import { quotationFormSchema, type QuotationFormInput, type QuotationItemInput } from "./quotationSchema";
 import type { MeasurementSnapshot } from "@/lib/areaCalculator";
 import { formatCurrency } from "@/lib/utils";
+import RateSourceBadge from "@/components/RateSourceBadge";
 
 interface Props {
   initialQuotation?: Quotation;
@@ -85,6 +87,8 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
           notes: it.notes,
           sort_order: it.sort_order,
           measurement_snapshot: (it as { measurement_snapshot?: unknown }).measurement_snapshot ?? null,
+          rate_source: ((it as { rate_source?: string }).rate_source as "default" | "tier" | "manual") ?? "default",
+          tier_id: (it as { tier_id?: string | null }).tier_id ?? null,
         })) ?? [],
     },
   });
@@ -108,19 +112,53 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
 
   const customerId = form.watch("customer_id");
   const selectedCustomer = customers.find((c) => c.id === customerId);
+  const tierId = selectedCustomer?.price_tier_id ?? null;
 
-  // When customer chosen from list, autofill walk-in fields
+  // Pre-load tier rates for products currently in the form (used for re-pricing on customer change)
+  const formItems = form.watch("items");
+
+  // When customer chosen from list, autofill walk-in fields and re-price default/tier lines (preserve manual)
   useEffect(() => {
     if (selectedCustomer) {
       form.setValue("customer_name_text", selectedCustomer.name);
       form.setValue("customer_phone_text", selectedCustomer.phone ?? "");
       form.setValue("customer_address_text", selectedCustomer.address ?? "");
     }
-  }, [selectedCustomer]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Re-price lines (skip manual)
+    void (async () => {
+      const current = form.getValues("items");
+      const productIds = current.map((it) => it.product_id).filter((id): id is string => !!id);
+      if (productIds.length === 0) return;
+      const resolved = await pricingTierService.resolvePricesBatch(dealerId, productIds, tierId);
+      let changedCount = 0;
+      let keptManual = 0;
+      current.forEach((it, idx) => {
+        if (!it.product_id) return;
+        if (it.rate_source === "manual") { keptManual += 1; return; }
+        const r = resolved.get(it.product_id);
+        if (!r) return;
+        if (Number(it.rate) === r.rate && it.rate_source === r.source) return;
+        form.setValue(`items.${idx}.rate`, r.rate);
+        form.setValue(`items.${idx}.rate_source`, r.source);
+        form.setValue(`items.${idx}.tier_id`, r.tier_id);
+        const qty = Number(it.quantity || 0);
+        const disc = Number(it.discount_value || 0);
+        form.setValue(`items.${idx}.line_total`, Math.max(0, qty * r.rate - disc));
+        changedCount += 1;
+      });
+      if (changedCount > 0 || keptManual > 0) {
+        const parts: string[] = [];
+        if (changedCount > 0) parts.push(`Re-priced ${changedCount} line${changedCount === 1 ? "" : "s"}`);
+        if (keptManual > 0) parts.push(`${keptManual} manual rate${keptManual === 1 ? "" : "s"} kept`);
+        toast.message(parts.join(" · "));
+      }
+    })();
+  }, [customerId, tierId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addProductLine = (productId: string) => {
+  const addProductLine = async (productId: string) => {
     const p = products.find((x) => x.id === productId);
     if (!p) return;
+    const resolved = await pricingTierService.resolvePrice(dealerId, p.id, tierId);
     append({
       product_id: p.id,
       product_name_snapshot: p.name,
@@ -128,14 +166,38 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
       unit_type: p.unit_type as "box_sft" | "piece",
       per_box_sft: p.per_box_sft,
       quantity: 1,
-      rate: Number(p.default_sale_rate ?? 0),
+      rate: resolved.rate,
       discount_value: 0,
-      line_total: Number(p.default_sale_rate ?? 0),
+      line_total: resolved.rate,
       preferred_shade_code: null,
       preferred_caliber: null,
       preferred_batch_no: null,
       notes: null,
       sort_order: fields.length,
+      rate_source: resolved.source,
+      tier_id: resolved.tier_id,
+    });
+  };
+
+  const addBlankLine = () => {
+    append({
+      product_id: null,
+      product_name_snapshot: "",
+      product_sku_snapshot: null,
+      unit_type: "piece",
+      per_box_sft: null,
+      quantity: 1,
+      rate: 0,
+      discount_value: 0,
+      line_total: 0,
+      preferred_shade_code: null,
+      preferred_caliber: null,
+      preferred_batch_no: null,
+      notes: null,
+      sort_order: fields.length,
+      measurement_snapshot: null,
+      rate_source: "default",
+      tier_id: null,
     });
   };
 
