@@ -33,6 +33,8 @@ export interface CreateSaleInput {
   allow_backorder?: boolean;
   /** If true, user has acknowledged mixed shade/caliber warning */
   mixed_batch_acknowledged?: boolean;
+  /** Explicit reservation selections: { product_id → [{ reservation_id, consume_qty }] } */
+  reservation_selections?: Record<string, Array<{ reservation_id: string; consume_qty: number }>>;
 }
 
 const PAGE_SIZE = 25;
