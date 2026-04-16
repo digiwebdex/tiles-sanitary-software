@@ -35,16 +35,25 @@ export default function ProjectList() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "">("");
+  const [customerFilter, setCustomerFilter] = useState<string>("");
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [siteDialogOpen, setSiteDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<ProjectSite | null>(null);
   const [siteDialogProject, setSiteDialogProject] = useState<{ id: string; customerId: string } | null>(null);
+  const [historySiteId, setHistorySiteId] = useState<string | null>(null);
+
+  const customersQ = useQuery({
+    queryKey: ["customers-filter", dealerId],
+    queryFn: () => customerService.list(dealerId),
+    enabled: !!dealerId,
+  });
+  const customers = customersQ.data ?? [];
 
   const projectsQ = useQuery({
-    queryKey: ["projects", dealerId, search, statusFilter],
-    queryFn: () => projectService.list(dealerId, { search, status: statusFilter }),
+    queryKey: ["projects", dealerId, search, statusFilter, customerFilter],
+    queryFn: () => projectService.list(dealerId, { search, status: statusFilter, customerId: customerFilter || undefined }),
   });
   const projects = projectsQ.data ?? [];
 
@@ -115,6 +124,15 @@ export default function ProjectList() {
               <SelectItem value="on_hold">On hold</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={customerFilter || "__all"} onValueChange={(v) => setCustomerFilter(v === "__all" ? "" : v)}>
+            <SelectTrigger><SelectValue placeholder="All customers" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">All customers</SelectItem>
+              {customers.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </CardContent>
@@ -232,30 +250,41 @@ export default function ProjectList() {
                                     </div>
                                   )}
                                 </div>
-                                {canManage && (
-                                  <div className="flex">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => {
-                                        setEditingSite(s);
-                                        setSiteDialogProject({ id: p.id, customerId: p.customer_id });
-                                        setSiteDialogOpen(true);
-                                      }}
-                                    >
-                                      <Pencil className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => handleDeleteSite(s)}
-                                    >
-                                      <Trash2 className="h-4 w-4 text-destructive" />
-                                    </Button>
-                                  </div>
-                                )}
+                                <div className="flex">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    title="View site history"
+                                    onClick={() => setHistorySiteId(s.id)}
+                                  >
+                                    <History className="h-4 w-4" />
+                                  </Button>
+                                  {canManage && (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => {
+                                          setEditingSite(s);
+                                          setSiteDialogProject({ id: p.id, customerId: p.customer_id });
+                                          setSiteDialogOpen(true);
+                                        }}
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleDeleteSite(s)}
+                                      >
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -290,6 +319,12 @@ export default function ProjectList() {
           initial={editingSite}
         />
       )}
+      <SiteHistoryDialog
+        open={!!historySiteId}
+        onOpenChange={(o) => { if (!o) setHistorySiteId(null); }}
+        dealerId={dealerId}
+        siteId={historySiteId}
+      />
     </div>
   );
 }
