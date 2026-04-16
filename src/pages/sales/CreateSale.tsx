@@ -15,7 +15,7 @@ const CreateSalePage = () => {
   const dealerId = useDealerId();
 
   const mutation = useMutation({
-    mutationFn: async (values: SaleFormValues & { allow_backorder?: boolean }) => {
+    mutationFn: async (values: SaleFormValues & { allow_backorder?: boolean; reservation_selections?: Record<string, Array<{ reservation_id: string; consume_qty: number }>> }) => {
       const result = await salesService.create({
         dealer_id: dealerId,
         customer_name: values.customer_name,
@@ -29,6 +29,7 @@ const CreateSalePage = () => {
         notes: values.notes,
         items: values.items as SaleItemInput[],
         allow_backorder: values.allow_backorder,
+        reservation_selections: values.reservation_selections,
       });
       return { id: result!.id, sale_type: values.sale_type };
     },

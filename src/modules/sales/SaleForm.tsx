@@ -387,7 +387,8 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
   const handleMixedBatchConfirm = async () => {
     setMixedBatchDialogOpen(false);
     if (pendingValues) {
-      await onSubmit({ ...pendingValues, mixed_batch_acknowledged: true } as any);
+      const hasReservations = Object.values(reservationSelections).some(arr => arr.length > 0);
+      await onSubmit({ ...pendingValues, mixed_batch_acknowledged: true, ...(hasReservations ? { reservation_selections: reservationSelections } : {}) } as any);
       setPendingValues(null);
       setMixedBatchInfo(null);
     }
