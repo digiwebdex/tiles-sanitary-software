@@ -270,10 +270,14 @@ export const salesService = {
       let itemTotal: number;
       let itemSft: number | null = null;
 
-      // Calculate available qty
-      const availableQty = unitType === "box_sft"
+      // Calculate available qty (FREE stock = total - reserved)
+      const totalQty = unitType === "box_sft"
         ? Number(stock?.box_qty ?? 0)
         : Number(stock?.piece_qty ?? 0);
+      const reservedQty = unitType === "box_sft"
+        ? Number((stock as any)?.reserved_box_qty ?? 0)
+        : Number((stock as any)?.reserved_piece_qty ?? 0);
+      const availableQty = totalQty - reservedQty;
       const shortage = Math.max(0, item.quantity - availableQty);
 
       if (shortage > 0 && !backorderEnabled) {
