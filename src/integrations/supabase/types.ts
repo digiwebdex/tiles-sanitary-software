@@ -404,8 +404,10 @@ export type Database = {
           driver_name: string | null
           id: string
           notes: string | null
+          project_id: string | null
           sale_id: string
           show_price: boolean
+          site_id: string | null
           status: string
           transport_name: string | null
           vehicle_no: string | null
@@ -420,8 +422,10 @@ export type Database = {
           driver_name?: string | null
           id?: string
           notes?: string | null
+          project_id?: string | null
           sale_id: string
           show_price?: boolean
+          site_id?: string | null
           status?: string
           transport_name?: string | null
           vehicle_no?: string | null
@@ -436,8 +440,10 @@ export type Database = {
           driver_name?: string | null
           id?: string
           notes?: string | null
+          project_id?: string | null
           sale_id?: string
           show_price?: boolean
+          site_id?: string | null
           status?: string
           transport_name?: string | null
           vehicle_no?: string | null
@@ -451,10 +457,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "challans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "challans_sale_id_fkey"
             columns: ["sale_id"]
             isOneToOne: false
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challans_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "project_sites"
             referencedColumns: ["id"]
           },
         ]
@@ -785,9 +805,11 @@ export type Database = {
           delivery_no: string | null
           id: string
           notes: string | null
+          project_id: string | null
           receiver_name: string | null
           receiver_phone: string | null
           sale_id: string | null
+          site_id: string | null
           status: string | null
         }
         Insert: {
@@ -800,9 +822,11 @@ export type Database = {
           delivery_no?: string | null
           id?: string
           notes?: string | null
+          project_id?: string | null
           receiver_name?: string | null
           receiver_phone?: string | null
           sale_id?: string | null
+          site_id?: string | null
           status?: string | null
         }
         Update: {
@@ -815,9 +839,11 @@ export type Database = {
           delivery_no?: string | null
           id?: string
           notes?: string | null
+          project_id?: string | null
           receiver_name?: string | null
           receiver_phone?: string | null
           sale_id?: string | null
+          site_id?: string | null
           status?: string | null
         }
         Relationships: [
@@ -836,10 +862,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "deliveries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "deliveries_sale_id_fkey"
             columns: ["sale_id"]
             isOneToOne: false
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deliveries_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "project_sites"
             referencedColumns: ["id"]
           },
         ]
