@@ -2319,6 +2319,15 @@ export type Database = {
         Returns: undefined
       }
       check_account_locked: { Args: { _email: string }; Returns: Json }
+      consume_reservation_for_sale: {
+        Args: {
+          _consume_qty: number
+          _dealer_id: string
+          _reservation_id: string
+          _sale_item_id: string
+        }
+        Returns: undefined
+      }
       create_stock_reservation: {
         Args: {
           _batch_id: string
