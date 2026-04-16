@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { salesService } from "@/services/salesService";
+import { projectService } from "@/services/projectService";
 import { supabase } from "@/integrations/supabase/client";
 import { customerLedgerService, cashLedgerService } from "@/services/ledgerService";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,14 @@ const InvoicePage = () => {
     enabled: !!id,
   });
 
+  // Fetch optional project / site for header display
+  const projectId = (sale as { project_id?: string | null } | undefined)?.project_id ?? null;
+  const siteId = (sale as { site_id?: string | null } | undefined)?.site_id ?? null;
+  const { data: projectSite } = useQuery({
+    queryKey: ["sale-project-site", id, projectId, siteId],
+    queryFn: () => projectService.getProjectAndSite(dealerId, projectId, siteId),
+    enabled: !!sale && (!!projectId || !!siteId),
+  });
   const paymentMutation = useMutation({
     mutationFn: async ({ amount, note }: { amount: number; note: string }) => {
       const customerId = sale?.customer_id;
@@ -192,6 +201,8 @@ const InvoicePage = () => {
             isDealerAdmin={isDealerAdmin}
             dealerInfo={dealerInfo}
             salesReturns={salesReturns}
+            project={projectSite?.project ?? null}
+            site={projectSite?.site ?? null}
           />
         </div>
       </div>
@@ -210,6 +221,8 @@ const InvoicePage = () => {
           isDealerAdmin={isDealerAdmin}
           dealerInfo={dealerInfo}
           salesReturns={salesReturns}
+          project={projectSite?.project ?? null}
+          site={projectSite?.site ?? null}
         />
       </div>
 

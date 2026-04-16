@@ -17,6 +17,8 @@ interface QuotationPrefillState {
   discount?: number;
   notes?: string;
   items?: Array<{ product_id: string; quantity: number; sale_rate: number }>;
+  project_id?: string | null;
+  site_id?: string | null;
 }
 
 const CreateSalePage = () => {
@@ -43,6 +45,8 @@ const CreateSalePage = () => {
         items: values.items as SaleItemInput[],
         allow_backorder: values.allow_backorder,
         reservation_selections: values.reservation_selections,
+        project_id: values.project_id ?? null,
+        site_id: values.site_id ?? null,
       });
       // Link back to quotation if applicable
       if (fromQuotation && prefill.quotation_id && result?.id) {
@@ -101,6 +105,8 @@ const CreateSalePage = () => {
                 customer_name: prefill.customer_name ?? "",
                 discount: prefill.discount ?? 0,
                 notes: prefill.notes ?? "",
+                project_id: prefill.project_id ?? null,
+                site_id: prefill.site_id ?? null,
                 items:
                   prefill.items && prefill.items.length > 0
                     ? prefill.items

@@ -36,6 +36,10 @@ export interface Quotation {
   converted_at: string | null;
   converted_by: string | null;
   created_by: string | null;
+  /** Optional project link (Project / Site-wise Sales). */
+  project_id: string | null;
+  /** Optional site link under the chosen project. */
+  site_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -195,6 +199,8 @@ export const quotationService = {
         total_amount: totals.total_amount,
         notes: form.notes?.trim() || null,
         terms_text: form.terms_text?.trim() || null,
+        project_id: form.project_id || null,
+        site_id: form.site_id || null,
         created_by: userId,
       })
       .select()
@@ -257,6 +263,8 @@ export const quotationService = {
         total_amount: totals.total_amount,
         notes: form.notes?.trim() || null,
         terms_text: form.terms_text?.trim() || null,
+        project_id: form.project_id || null,
+        site_id: form.site_id || null,
       })
       .eq("id", quotationId);
     if (upErr) throw new Error(upErr.message);
@@ -332,6 +340,8 @@ export const quotationService = {
     items: Array<{ product_id: string; quantity: number; sale_rate: number }>;
     discount: number;
     notes: string;
+    project_id: string | null;
+    site_id: string | null;
     blockers: string[];
   }> {
     const quote = await this.getById(quotationId);
@@ -399,6 +409,8 @@ export const quotationService = {
       items: saleItems,
       discount: discountAmount,
       notes: [quote.notes, `From quotation ${formatQuotationDisplayNo(quote)}`].filter(Boolean).join(" · "),
+      project_id: (quote as { project_id?: string | null }).project_id ?? null,
+      site_id: (quote as { site_id?: string | null }).site_id ?? null,
       blockers,
     };
   },

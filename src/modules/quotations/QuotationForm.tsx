@@ -25,6 +25,7 @@ import { quotationFormSchema, type QuotationFormInput, type QuotationItemInput }
 import type { MeasurementSnapshot } from "@/lib/areaCalculator";
 import { formatCurrency } from "@/lib/utils";
 import RateSourceBadge from "@/components/RateSourceBadge";
+import { ProjectSitePicker } from "@/components/project/ProjectSitePicker";
 
 interface Props {
   initialQuotation?: Quotation;
@@ -69,6 +70,8 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
       discount_value: Number(initialQuotation?.discount_value ?? 0),
       notes: initialQuotation?.notes ?? "",
       terms_text: initialQuotation?.terms_text ?? "",
+      project_id: (initialQuotation as { project_id?: string | null } | undefined)?.project_id ?? null,
+      site_id: (initialQuotation as { site_id?: string | null } | undefined)?.site_id ?? null,
       items:
         initialItems?.map((it) => ({
           id: it.id,
@@ -369,6 +372,31 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
           <div>
             <Label>Valid Until</Label>
             <Input type="date" {...form.register("valid_until")} />
+          </div>
+          <div className="md:col-span-2">
+            <Controller
+              control={form.control}
+              name="project_id"
+              render={({ field: projectField }) => (
+                <Controller
+                  control={form.control}
+                  name="site_id"
+                  render={({ field: siteField }) => (
+                    <ProjectSitePicker
+                      dealerId={dealerId}
+                      customerId={customerId ?? null}
+                      projectId={projectField.value ?? null}
+                      siteId={siteField.value ?? null}
+                      onChange={({ projectId, siteId }) => {
+                        projectField.onChange(projectId);
+                        siteField.onChange(siteId);
+                      }}
+                      disabled={!!isLockedForEdit}
+                    />
+                  )}
+                />
+              )}
+            />
           </div>
         </CardContent>
       </Card>

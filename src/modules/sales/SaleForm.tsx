@@ -804,6 +804,40 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
                   )}
                 />
               </div>
+
+              {/* Project / Site (optional) */}
+              <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Project / Site (optional)
+                </p>
+                <FormField
+                  control={form.control}
+                  name="project_id"
+                  render={({ field: projectField }) => (
+                    <FormField
+                      control={form.control}
+                      name="site_id"
+                      render={({ field: siteField }) => (
+                        <ProjectSitePicker
+                          dealerId={dealerId}
+                          customerId={matchedCustomer?.id ?? null}
+                          projectId={projectField.value ?? null}
+                          siteId={siteField.value ?? null}
+                          onChange={({ projectId, siteId }) => {
+                            projectField.onChange(projectId);
+                            siteField.onChange(siteId);
+                          }}
+                        />
+                      )}
+                    />
+                  )}
+                />
+                {!matchedCustomer && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Pick or create a customer above first to attach a project / site.
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
 

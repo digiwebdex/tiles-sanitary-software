@@ -16,6 +16,10 @@ interface SaleInvoiceDocumentProps {
   isDealerAdmin: boolean;
   dealerInfo?: { name: string; phone: string | null; address: string | null } | null;
   salesReturns?: any[];
+  /** Optional Project link details (Project / Site-wise Sales). */
+  project?: { project_name: string; project_code: string } | null;
+  /** Optional delivery Site under the project. Address overrides billing address when present. */
+  site?: { site_name: string; address: string | null; contact_person: string | null; contact_phone: string | null } | null;
 }
 
 const SaleInvoiceDocument = ({
@@ -30,11 +34,15 @@ const SaleInvoiceDocument = ({
   isDealerAdmin,
   dealerInfo,
   salesReturns = [],
+  project,
+  site,
 }: SaleInvoiceDocumentProps) => {
   const paymentStatus =
     dueAmount <= 0 ? "Paid" : paidAmount > 0 ? "Partial" : "Pending";
 
   const businessName = dealerInfo?.name ?? "Your Business Name";
+  // When a site address is present, use it as the delivery address override.
+  const billingAddress = site?.address ?? customer?.address ?? null;
 
   return (
     <div className="text-sm text-foreground">
@@ -88,7 +96,25 @@ const SaleInvoiceDocument = ({
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">To:</p>
           <p className="font-bold text-foreground">{customer?.name ?? "—"}</p>
-          {customer?.address && <p className="text-xs text-muted-foreground mt-0.5">{customer.address}</p>}
+          {project && (
+            <p className="text-xs text-foreground mt-0.5">
+              <span className="text-muted-foreground">Project: </span>
+              <span className="font-mono">{project.project_code}</span> · {project.project_name}
+            </p>
+          )}
+          {site && (
+            <p className="text-xs text-foreground mt-0.5">
+              <span className="text-muted-foreground">Site: </span>
+              <span className="font-medium">{site.site_name}</span>
+              {site.contact_person ? ` · ${site.contact_person}` : ""}
+              {site.contact_phone ? ` · ${site.contact_phone}` : ""}
+            </p>
+          )}
+          {billingAddress && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {site?.address ? "Delivery: " : ""}{billingAddress}
+            </p>
+          )}
           {customer?.phone && (
             <p className="text-xs text-muted-foreground mt-0.5">
               Tel: {customer.phone}

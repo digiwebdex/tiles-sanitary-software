@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { quotationService, formatQuotationDisplayNo } from "@/services/quotationService";
+import { projectService } from "@/services/projectService";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
 import { useDealerId } from "@/hooks/useDealerId";
 import QuotationDocument from "@/components/quotation/QuotationDocument";
@@ -52,6 +53,14 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
     enabled: open && !!quotation,
   });
 
+  const projectId = (quotation as { project_id?: string | null } | undefined)?.project_id ?? null;
+  const siteId = (quotation as { site_id?: string | null } | undefined)?.site_id ?? null;
+  const { data: projectSite } = useQuery({
+    queryKey: ["quotation-project-site", quotationId, projectId, siteId],
+    queryFn: () => projectService.getProjectAndSite(dealerId, projectId, siteId),
+    enabled: open && !!quotation && (!!projectId || !!siteId),
+  });
+
   const reviseMutation = useMutation({
     mutationFn: () => quotationService.revise(quotationId, dealerId),
     onSuccess: (newId) => {
@@ -81,6 +90,8 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
           discount: prefill.discount,
           notes: prefill.notes,
           items: prefill.items,
+          project_id: prefill.project_id,
+          site_id: prefill.site_id,
         },
       });
     } catch (e) {
@@ -261,6 +272,8 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
               items={items}
               customer={quotation.customers ?? undefined}
               dealerInfo={dealerInfo ?? undefined}
+              project={projectSite?.project ?? null}
+              site={projectSite?.site ?? null}
             />
           )}
         </div>

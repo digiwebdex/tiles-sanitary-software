@@ -10,6 +10,10 @@ interface Props {
   dealerInfo?: { name: string; phone: string | null; address: string | null } | null;
   /** When true, render compact measurement breakdown for lines that have a snapshot. */
   showMeasurements?: boolean;
+  /** Optional Project link details (Project / Site-wise Sales). */
+  project?: { project_name: string; project_code: string } | null;
+  /** Optional delivery Site under the project. Address overrides delivery address when present. */
+  site?: { site_name: string; address: string | null; contact_person: string | null; contact_phone: string | null } | null;
 }
 
 const fmtDate = (d: string) => {
@@ -17,14 +21,15 @@ const fmtDate = (d: string) => {
   return dt ? dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : d;
 };
 
-const QuotationDocument = ({ quotation, items, customer, dealerInfo, showMeasurements = true }: Props) => {
+const QuotationDocument = ({ quotation, items, customer, dealerInfo, showMeasurements = true, project, site }: Props) => {
   const measuredItems = showMeasurements
     ? items.filter((it) => (it as { measurement_snapshot?: unknown }).measurement_snapshot)
     : [];
   const businessName = dealerInfo?.name ?? "Your Business Name";
   const customerName = customer?.name ?? quotation.customer_name_text ?? "—";
   const customerPhone = customer?.phone ?? quotation.customer_phone_text ?? null;
-  const customerAddress = customer?.address ?? quotation.customer_address_text ?? null;
+  // When a site address is present, use it as the delivery-style address override.
+  const customerAddress = site?.address ?? customer?.address ?? quotation.customer_address_text ?? null;
 
   const discountLabel =
     quotation.discount_type === "percent"
@@ -78,7 +83,25 @@ const QuotationDocument = ({ quotation, items, customer, dealerInfo, showMeasure
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Quote To:</p>
           <p className="font-bold text-foreground">{customerName}</p>
-          {customerAddress && <p className="text-xs text-muted-foreground mt-0.5">{customerAddress}</p>}
+          {project && (
+            <p className="text-xs text-foreground mt-0.5">
+              <span className="text-muted-foreground">Project: </span>
+              <span className="font-mono">{project.project_code}</span> · {project.project_name}
+            </p>
+          )}
+          {site && (
+            <p className="text-xs text-foreground mt-0.5">
+              <span className="text-muted-foreground">Site: </span>
+              <span className="font-medium">{site.site_name}</span>
+              {site.contact_person ? ` · ${site.contact_person}` : ""}
+              {site.contact_phone ? ` · ${site.contact_phone}` : ""}
+            </p>
+          )}
+          {customerAddress && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {site?.address ? "Delivery: " : ""}{customerAddress}
+            </p>
+          )}
           {customerPhone && <p className="text-xs text-muted-foreground mt-0.5">Tel: {customerPhone}</p>}
         </div>
         <div>

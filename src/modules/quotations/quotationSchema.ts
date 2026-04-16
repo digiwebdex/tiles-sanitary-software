@@ -35,6 +35,10 @@ export const quotationFormSchema = z
     discount_value: z.coerce.number().min(0).default(0),
     notes: z.string().optional().default(""),
     terms_text: z.string().optional().default(""),
+    /** Optional project link (Project / Site-wise Sales). */
+    project_id: z.string().nullable().optional(),
+    /** Optional site link under the chosen project. */
+    site_id: z.string().nullable().optional(),
     items: z.array(quotationItemSchema).min(1, "Add at least one item"),
   })
   .refine(
