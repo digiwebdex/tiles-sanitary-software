@@ -731,6 +731,7 @@ export type Database = {
           allow_backorder: boolean
           challan_template: string
           created_at: string
+          default_wastage_pct: number
           enable_reservations: boolean
           id: string
           name: string
@@ -742,6 +743,7 @@ export type Database = {
           allow_backorder?: boolean
           challan_template?: string
           created_at?: string
+          default_wastage_pct?: number
           enable_reservations?: boolean
           id?: string
           name: string
@@ -753,6 +755,7 @@ export type Database = {
           allow_backorder?: boolean
           challan_template?: string
           created_at?: string
+          default_wastage_pct?: number
           enable_reservations?: boolean
           id?: string
           name?: string
