@@ -141,6 +141,7 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
         form.setValue(`items.${idx}.rate`, r.rate);
         form.setValue(`items.${idx}.rate_source`, r.source);
         form.setValue(`items.${idx}.tier_id`, r.tier_id);
+        form.setValue(`items.${idx}.original_resolved_rate`, r.rate);
         const qty = Number(it.quantity || 0);
         const disc = Number(it.discount_value || 0);
         form.setValue(`items.${idx}.line_total`, Math.max(0, qty * r.rate - disc));
@@ -148,9 +149,9 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
       });
       if (changedCount > 0 || keptManual > 0) {
         const parts: string[] = [];
-        if (changedCount > 0) parts.push(`Re-priced ${changedCount} line${changedCount === 1 ? "" : "s"}`);
-        if (keptManual > 0) parts.push(`${keptManual} manual rate${keptManual === 1 ? "" : "s"} kept`);
-        toast.message(parts.join(" · "));
+        if (changedCount > 0) parts.push(`Refreshed ${changedCount} line${changedCount === 1 ? "" : "s"}`);
+        if (keptManual > 0) parts.push(`kept ${keptManual} manual-rate line${keptManual === 1 ? "" : "s"} unchanged`);
+        toast.message(parts.join(", "));
       }
     })();
   }, [customerId, tierId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -176,6 +177,7 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
       sort_order: fields.length,
       rate_source: resolved.source,
       tier_id: resolved.tier_id,
+      original_resolved_rate: resolved.rate,
     });
   };
 
@@ -460,15 +462,31 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
                           <Input
                             type="number"
                             step="0.01"
+                            className={(it as { rate_source?: string })?.rate_source === "manual" ? "border-warning/50 bg-warning/5" : ""}
                             {...form.register(`items.${idx}.rate`, {
-                              onChange: () => {
+                              onChange: (e) => {
                                 const cur = form.getValues(`items.${idx}.rate_source`);
-                                if (cur !== "manual") form.setValue(`items.${idx}.rate_source`, "manual");
+                                const orig = form.getValues(`items.${idx}.original_resolved_rate`);
+                                const newVal = Number((e.target as HTMLInputElement).value);
+                                const baseline = orig ?? Number(form.getValues(`items.${idx}.rate`) ?? 0);
+                                if (orig == null) {
+                                  form.setValue(`items.${idx}.original_resolved_rate`, baseline);
+                                }
+                                if (cur !== "manual" && newVal !== baseline) {
+                                  form.setValue(`items.${idx}.rate_source`, "manual");
+                                }
                               },
                             })}
                           />
-                          <div className="mt-1">
+                          <div className="mt-1 flex items-center gap-1 justify-end">
                             <RateSourceBadge source={(it as { rate_source?: string })?.rate_source ?? "default"} />
+                            {(it as { rate_source?: string; original_resolved_rate?: number | null })?.rate_source === "manual" &&
+                              (it as { original_resolved_rate?: number | null })?.original_resolved_rate != null &&
+                              Number((it as { original_resolved_rate?: number | null }).original_resolved_rate) !== Number(it.rate) && (
+                                <span className="text-[10px] text-muted-foreground" title="Original resolved rate">
+                                  was {formatCurrency(Number((it as { original_resolved_rate?: number | null }).original_resolved_rate))}
+                                </span>
+                              )}
                           </div>
                         </td>
                         <td className="py-2 px-2">
