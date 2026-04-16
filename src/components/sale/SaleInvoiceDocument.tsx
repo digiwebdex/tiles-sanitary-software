@@ -2,6 +2,7 @@ import { formatCurrency, CURRENCY_CODE } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { TrendingUp } from "lucide-react";
 import SaleInvoiceBarcode from "./SaleInvoiceBarcode";
+import RateSourceBadge from "@/components/RateSourceBadge";
 
 interface SaleInvoiceDocumentProps {
   sale: any;
@@ -136,7 +137,20 @@ const SaleInvoiceDocument = ({
                   <td className="px-3 py-2 text-center border-b">
                     {qtyDisplay}{sftDisplay}
                   </td>
-                  <td className="px-3 py-2 text-right border-b">{formatCurrency(item.sale_rate)}</td>
+                  <td className="px-3 py-2 text-right border-b">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span>{formatCurrency(item.sale_rate)}</span>
+                      <RateSourceBadge
+                        source={item.rate_source ?? "default"}
+                        className="text-[9px] px-1 py-0 h-4 print:border print:bg-transparent"
+                      />
+                    </div>
+                    {item.rate_source === "manual" && item.original_resolved_rate != null && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        was {formatCurrency(Number(item.original_resolved_rate))}
+                      </p>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right font-semibold border-b">{formatCurrency(item.total)}</td>
                 </tr>
               );

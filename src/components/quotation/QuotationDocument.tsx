@@ -1,6 +1,7 @@
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency, CURRENCY_CODE, parseLocalDate } from "@/lib/utils";
 import { formatQuotationDisplayNo, type Quotation, type QuotationItem } from "@/services/quotationService";
+import RateSourceBadge from "@/components/RateSourceBadge";
 
 interface Props {
   quotation: Quotation;
@@ -127,7 +128,21 @@ const QuotationDocument = ({ quotation, items, customer, dealerInfo, showMeasure
                   <td className="px-3 py-2 text-center border-b">
                     {qtyDisplay}{sftDisplay}
                   </td>
-                  <td className="px-3 py-2 text-right border-b">{formatCurrency(it.rate)}</td>
+                  <td className="px-3 py-2 text-right border-b">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span>{formatCurrency(it.rate)}</span>
+                      <RateSourceBadge
+                        source={(it as { rate_source?: string }).rate_source ?? "default"}
+                        className="text-[9px] px-1 py-0 h-4 print:border print:bg-transparent"
+                      />
+                    </div>
+                    {(it as { rate_source?: string }).rate_source === "manual" &&
+                      (it as { original_resolved_rate?: number | null }).original_resolved_rate != null && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          was {formatCurrency(Number((it as { original_resolved_rate?: number | null }).original_resolved_rate))}
+                        </p>
+                      )}
+                  </td>
                   <td className="px-3 py-2 text-right font-semibold border-b">{formatCurrency(it.line_total)}</td>
                 </tr>
               );
