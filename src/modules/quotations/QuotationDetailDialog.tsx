@@ -53,6 +53,14 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
     enabled: open && !!quotation,
   });
 
+  const projectId = (quotation as { project_id?: string | null } | undefined)?.project_id ?? null;
+  const siteId = (quotation as { site_id?: string | null } | undefined)?.site_id ?? null;
+  const { data: projectSite } = useQuery({
+    queryKey: ["quotation-project-site", quotationId, projectId, siteId],
+    queryFn: () => projectService.getProjectAndSite(dealerId, projectId, siteId),
+    enabled: open && !!quotation && (!!projectId || !!siteId),
+  });
+
   const reviseMutation = useMutation({
     mutationFn: () => quotationService.revise(quotationId, dealerId),
     onSuccess: (newId) => {
