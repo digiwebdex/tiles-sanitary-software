@@ -16,6 +16,7 @@ export const quotationItemSchema = z.object({
   preferred_batch_no: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   sort_order: z.coerce.number().int().default(0),
+  measurement_snapshot: z.any().nullable().optional(),
 });
 
 export const quotationFormSchema = z

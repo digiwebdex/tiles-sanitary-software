@@ -4,7 +4,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2, ArrowLeft, Save, FileCheck } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Save, FileCheck, Calculator, Ruler } from "lucide-react";
+import AreaCalculatorDialog, { type AreaCalculatorInsertPayload } from "./AreaCalculatorDialog";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,10 +83,12 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
           preferred_batch_no: it.preferred_batch_no,
           notes: it.notes,
           sort_order: it.sort_order,
+          measurement_snapshot: (it as { measurement_snapshot?: unknown }).measurement_snapshot ?? null,
         })) ?? [],
     },
   });
 
+  const [calcOpen, setCalcOpen] = useState(false);
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
   const watchedItems = form.watch("items");
   const watchedDiscountType = form.watch("discount_type");
@@ -150,7 +153,31 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
       preferred_batch_no: null,
       notes: null,
       sort_order: fields.length,
+      measurement_snapshot: null,
     });
+  };
+
+  const handleAreaInsert = (payload: AreaCalculatorInsertPayload) => {
+    const { product, final_boxes, snapshot } = payload;
+    const roomLabel = snapshot.room_name ? `Room: ${snapshot.room_name}` : "Area Calculator";
+    append({
+      product_id: product.id,
+      product_name_snapshot: product.name,
+      product_sku_snapshot: product.sku,
+      unit_type: "box_sft",
+      per_box_sft: product.per_box_sft,
+      quantity: final_boxes,
+      rate: product.default_sale_rate,
+      discount_value: 0,
+      line_total: final_boxes * product.default_sale_rate,
+      preferred_shade_code: null,
+      preferred_caliber: null,
+      preferred_batch_no: null,
+      notes: roomLabel,
+      sort_order: fields.length,
+      measurement_snapshot: snapshot,
+    });
+    toast.success(`${snapshot.room_name || "Room"}: ${final_boxes} boxes added`);
   };
 
   const saveDraftMutation = useMutation({
@@ -282,6 +309,9 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
                   ))}
                 </SelectContent>
               </Select>
+              <Button type="button" variant="outline" size="sm" onClick={() => setCalcOpen(true)}>
+                <Calculator className="h-4 w-4 mr-1" /> Area Calculator
+              </Button>
               <Button type="button" variant="outline" size="sm" onClick={addBlankLine}>
                 <Plus className="h-4 w-4 mr-1" /> Custom Line
               </Button>
@@ -308,6 +338,7 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
                   {fields.map((f, idx) => {
                     const it = watchedItems?.[idx];
                     const lineTotal = it ? Math.max(0, Number(it.quantity || 0) * Number(it.rate || 0) - Number(it.discount_value || 0)) : 0;
+                    const snap = (it as { measurement_snapshot?: { room_name?: string | null; final_boxes?: number; final_area_sft?: number } | null } | undefined)?.measurement_snapshot;
                     return (
                       <tr key={f.id} className="border-b align-top">
                         <td className="py-2 pr-2 space-y-1">
@@ -319,6 +350,14 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
                             <Input {...form.register(`items.${idx}.preferred_batch_no`)} placeholder="Batch" className="text-xs" />
                           </div>
                           <Input {...form.register(`items.${idx}.notes`)} placeholder="Line note (optional)" className="text-xs" />
+                          {snap && (
+                            <div className="flex items-center gap-1 text-xs text-primary">
+                              <Ruler className="h-3 w-3" />
+                              <span>
+                                {snap.room_name || "Area"} · {Number(snap.final_area_sft ?? 0).toFixed(2)} sft → {snap.final_boxes} boxes
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-2 px-2">
                           <Input type="number" step="0.01" {...form.register(`items.${idx}.quantity`)} />
@@ -407,6 +446,12 @@ const QuotationForm = ({ initialQuotation, initialItems }: Props) => {
           </div>
         </CardContent>
       </Card>
+
+      <AreaCalculatorDialog
+        open={calcOpen}
+        onOpenChange={setCalcOpen}
+        onInsert={handleAreaInsert}
+      />
     </div>
   );
 };

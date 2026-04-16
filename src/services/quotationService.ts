@@ -58,6 +58,7 @@ export interface QuotationItem {
   preferred_batch_no: string | null;
   notes: string | null;
   sort_order: number;
+  measurement_snapshot: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -220,6 +221,7 @@ export const quotationService = {
       preferred_batch_no: it.preferred_batch_no || null,
       notes: it.notes || null,
       sort_order: it.sort_order,
+      measurement_snapshot: ((it as { measurement_snapshot?: unknown }).measurement_snapshot ?? null) as never,
     }));
     const { error } = await sb.from("quotation_items").insert(rows);
     if (error) throw new Error(error.message);

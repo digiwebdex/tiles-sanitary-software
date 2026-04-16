@@ -213,6 +213,47 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
           </div>
         )}
 
+        {items.some((it) => (it as { measurement_snapshot?: unknown }).measurement_snapshot) && (
+          <div className="px-6 pb-2">
+            <Card>
+              <CardContent className="py-3">
+                <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Measurement Details</p>
+                <div className="space-y-2">
+                  {items
+                    .filter((it) => (it as { measurement_snapshot?: unknown }).measurement_snapshot)
+                    .map((it) => {
+                      const s = (it as { measurement_snapshot: Record<string, unknown> }).measurement_snapshot;
+                      const room = (s.room_name as string) || it.product_name_snapshot;
+                      return (
+                        <div key={it.id} className="text-xs rounded border border-border bg-muted/30 px-3 py-2 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-sm">{room} · {it.product_name_snapshot}</span>
+                            <span className="font-mono">
+                              {Number(s.final_area_sft ?? 0).toFixed(2)} sft → {String(s.final_boxes ?? "—")} boxes
+                            </span>
+                          </div>
+                          <div className="text-muted-foreground">
+                            Type: {String(s.measurement_type)}
+                            {s.measurement_type !== "direct" && ` · ${String(s.input_unit ?? "ft")}`}
+                            {s.measurement_type === "direct" && ` · ${String(s.area_unit ?? "sft")}`}
+                            {" · Wastage "}{String(s.wastage_pct ?? 0)}%
+                            {" · Per box "}{Number(s.per_box_sft_snapshot ?? 0).toFixed(2)} sft
+                          </div>
+                          {s.manual_override ? (
+                            <div className="text-destructive">
+                              ⚠ Manual override: calc {String(s.calculated_boxes)} → final {String(s.final_boxes)}
+                              {s.override_reason ? ` · ${String(s.override_reason)}` : ""}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         <div ref={printRef}>
           {quotation && (
             <QuotationDocument
