@@ -15,6 +15,7 @@ export interface SaleItemInput {
   sale_rate: number;
   rate_source?: "default" | "tier" | "manual";
   tier_id?: string | null;
+  original_resolved_rate?: number | null;
 }
 
 export interface CreateSaleInput {
@@ -371,6 +372,7 @@ export const salesService = {
       fulfillment_status: item.fulfillment_status,
       rate_source: (item as SaleItemInput).rate_source ?? "default",
       tier_id: (item as SaleItemInput).tier_id ?? null,
+      original_resolved_rate: (item as SaleItemInput).original_resolved_rate ?? null,
     }));
 
     const { data: insertedSaleItems, error: iErr } = await supabase

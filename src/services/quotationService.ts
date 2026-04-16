@@ -61,6 +61,7 @@ export interface QuotationItem {
   measurement_snapshot: Record<string, unknown> | null;
   rate_source: "default" | "tier" | "manual";
   tier_id: string | null;
+  original_resolved_rate: number | null;
   created_at: string;
 }
 
@@ -226,6 +227,7 @@ export const quotationService = {
       measurement_snapshot: ((it as { measurement_snapshot?: unknown }).measurement_snapshot ?? null) as never,
       rate_source: it.rate_source ?? "default",
       tier_id: it.tier_id ?? null,
+      original_resolved_rate: it.original_resolved_rate ?? null,
     }));
     const { error } = await sb.from("quotation_items").insert(rows);
     if (error) throw new Error(error.message);
