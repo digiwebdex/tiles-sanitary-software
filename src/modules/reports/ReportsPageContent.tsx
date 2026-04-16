@@ -55,6 +55,11 @@ import {
   CustomerReservedStockReport,
   BatchReservedStockReport,
 } from "./ReservationReports";
+import {
+  ApprovalHistoryReport,
+  ApprovalTypeSummaryReport,
+  UserApprovalStatsReport,
+} from "./ApprovalReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -63,7 +68,7 @@ import {
   BarChart3, Package, Layers, Tags, AlertTriangle,
   Receipt, CalendarDays, Calendar, CreditCard,
   ShoppingCart, DollarSign, Users, History, BookOpen, Clock, TrendingUp,
-  ChevronDown, GitBranch, Shield, Lock,
+  ChevronDown, GitBranch, Shield, Lock, ShieldCheck, FileBarChart, UserCheck,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -158,6 +163,15 @@ const reportGroups = [
     ],
   },
   {
+    label: "Approval Workflow",
+    icon: ShieldCheck,
+    items: [
+      { key: "approval-history", label: "Approval History", icon: History },
+      { key: "approval-type-summary", label: "Approval Type Summary", icon: FileBarChart },
+      { key: "approval-user-stats", label: "User Approval Stats", icon: UserCheck },
+    ],
+  },
+  {
     label: "Purchases & Expenses",
     icon: ShoppingCart,
     items: [
@@ -219,6 +233,9 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "expiring-reservations": return <ExpiringReservationsReport dealerId={dealerId} />;
       case "customer-reserved": return <CustomerReservedStockReport dealerId={dealerId} />;
       case "batch-reserved": return <BatchReservedStockReport dealerId={dealerId} />;
+      case "approval-history": return <ApprovalHistoryReport dealerId={dealerId} />;
+      case "approval-type-summary": return <ApprovalTypeSummaryReport dealerId={dealerId} />;
+      case "approval-user-stats": return <UserApprovalStatsReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
