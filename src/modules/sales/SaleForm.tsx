@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { saleSchema, type SaleFormValues } from "@/modules/sales/saleSchema";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { pricingTierService } from "@/services/pricingTierService";
+import RateSourceBadge from "@/components/RateSourceBadge";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
@@ -163,13 +165,13 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
 
   const fullStockMap = new Map(fullStockData.map((s) => [s.product_id, s]));
 
-  // Fetch customers for overdue check
+  // Fetch customers for overdue check + tier resolution
   const { data: allCustomers = [] } = useQuery({
     queryKey: ["customers-for-sale-overdue", dealerId],
     queryFn: async () => {
       const { data } = await supabase
         .from("customers")
-        .select("id, name, credit_limit, max_overdue_days")
+        .select("id, name, credit_limit, max_overdue_days, price_tier_id")
         .eq("dealer_id", dealerId)
         .eq("status", "active");
       return data ?? [];
@@ -181,6 +183,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
   const matchedCustomer = allCustomers.find(
     (c) => c.name.toLowerCase() === (watchCustomerName ?? "").toLowerCase().trim()
   );
+  const customerTierId = (matchedCustomer as { price_tier_id?: string | null } | undefined)?.price_tier_id ?? null;
 
   const { data: overdueInfo } = useQuery({
     queryKey: ["sale-overdue-check", matchedCustomer?.id],
@@ -320,13 +323,53 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     { box: 0, sft: 0, piece: 0 }
   );
 
-  const handleProductSelect = (idx: number, productId: string) => {
+  const handleProductSelect = async (idx: number, productId: string) => {
     form.setValue(`items.${idx}.product_id`, productId);
     const product = getProduct(productId);
-    if (product) {
+    if (!product) return;
+    // Resolve rate from tier (falls back to default)
+    try {
+      const resolved = await pricingTierService.resolvePrice(dealerId, productId, customerTierId);
+      form.setValue(`items.${idx}.sale_rate`, resolved.rate);
+      form.setValue(`items.${idx}.rate_source`, resolved.source);
+      form.setValue(`items.${idx}.tier_id`, resolved.tier_id);
+    } catch {
       form.setValue(`items.${idx}.sale_rate`, product.default_sale_rate);
+      form.setValue(`items.${idx}.rate_source`, "default");
+      form.setValue(`items.${idx}.tier_id`, null);
     }
   };
+
+  // Re-price default/tier lines when customer changes; preserve manual rates
+  useEffect(() => {
+    if (!matchedCustomer) return;
+    void (async () => {
+      const current = form.getValues("items");
+      const productIds = current.map((it) => it.product_id).filter((id): id is string => !!id);
+      if (productIds.length === 0) return;
+      const resolved = await pricingTierService.resolvePricesBatch(dealerId, productIds, customerTierId);
+      let changedCount = 0;
+      let keptManual = 0;
+      current.forEach((it, idx) => {
+        if (!it.product_id) return;
+        if (it.rate_source === "manual") { keptManual += 1; return; }
+        const r = resolved.get(it.product_id);
+        if (!r) return;
+        if (Number(it.sale_rate) === r.rate && it.rate_source === r.source) return;
+        form.setValue(`items.${idx}.sale_rate`, r.rate);
+        form.setValue(`items.${idx}.rate_source`, r.source);
+        form.setValue(`items.${idx}.tier_id`, r.tier_id);
+        changedCount += 1;
+      });
+      if (changedCount > 0 || keptManual > 0) {
+        const parts: string[] = [];
+        if (changedCount > 0) parts.push(`Re-priced ${changedCount} line${changedCount === 1 ? "" : "s"}`);
+        if (keptManual > 0) parts.push(`${keptManual} manual rate${keptManual === 1 ? "" : "s"} kept`);
+        toast.message(parts.join(" · "));
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchedCustomer?.id, customerTierId]);
 
   // Helper: build approval context for the current sale
   const buildApprovalContext = (
