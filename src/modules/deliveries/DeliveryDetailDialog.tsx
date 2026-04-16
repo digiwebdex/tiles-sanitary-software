@@ -49,7 +49,9 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
   const challanNo = (delivery as any)?.challans?.challan_no;
   const deliveryNo = (delivery as any)?.delivery_no;
   const invoiceNo = sale?.invoice_number;
-  const address = delivery?.delivery_address || customer?.address || "—";
+  const project = (delivery as any)?.projects;
+  const site = (delivery as any)?.project_sites;
+  const address = delivery?.delivery_address || site?.address || customer?.address || "—";
   const phone = delivery?.receiver_phone || customer?.phone;
   const businessName = dealerInfo?.name ?? "Your Business";
 
@@ -113,6 +115,33 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
                 <InfoRow label="Delivery No" value={deliveryNo || challanNo || `DO${delivery.id.slice(0, 12)}`} />
                 <InfoRow label="Sale Reference No" value={invoiceNo || "—"} />
                 <InfoRow label="Customer" value={customer?.name ?? delivery.receiver_name ?? "—"} />
+                {project && (
+                  <InfoRow
+                    label="Project"
+                    value={
+                      <span>
+                        <span className="font-medium">{project.project_name}</span>
+                        <span className="text-xs text-muted-foreground ml-1 font-mono">({project.project_code})</span>
+                      </span>
+                    }
+                  />
+                )}
+                {site && (
+                  <InfoRow
+                    label="Site"
+                    value={
+                      <div>
+                        <p className="font-medium">{site.site_name}</p>
+                        {site.address && <p className="text-xs text-muted-foreground">{site.address}</p>}
+                        {(site.contact_person || site.contact_phone) && (
+                          <p className="text-xs text-muted-foreground">
+                            {site.contact_person}{site.contact_person && site.contact_phone ? " · " : ""}{site.contact_phone}
+                          </p>
+                        )}
+                      </div>
+                    }
+                  />
+                )}
                 <InfoRow
                   label="Address"
                   value={
