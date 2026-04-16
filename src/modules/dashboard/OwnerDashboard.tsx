@@ -31,6 +31,7 @@ import { ApprovalDashboardWidgets } from "@/components/approval/ApprovalDashboar
 import { QuotationDashboardWidgets } from "@/components/quotation/QuotationDashboardWidgets";
 import { PricingTierDashboardWidgets } from "@/components/PricingTierDashboardWidgets";
 import { ProjectDashboardWidgets } from "@/components/project/ProjectDashboardWidgets";
+import { PurchasePlanningWidgets } from "@/components/PurchasePlanningWidgets";
 
 interface OwnerDashboardProps {
   dealerId: string;
@@ -547,6 +548,9 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
 
       {/* Project / Site-wise Sales Widgets */}
       <ProjectDashboardWidgets dealerId={dealerId} />
+
+      {/* Purchase Planning from Shortage Widgets */}
+      <PurchasePlanningWidgets dealerId={dealerId} />
 
       {/* Top Overdue Customers Widget */}
       {topOverdue.length > 0 && (

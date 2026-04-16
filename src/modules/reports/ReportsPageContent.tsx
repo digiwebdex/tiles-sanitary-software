@@ -81,6 +81,10 @@ import {
   ProjectQuotationPipelineReport,
   TopActiveProjectsReport,
 } from "./ProjectReports";
+import {
+  PurchaseNeedByProductReport,
+  CustomerSiteDemandReport,
+} from "./PurchasePlanningReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -227,6 +231,14 @@ const reportGroups = [
     ],
   },
   {
+    label: "Purchase Planning",
+    icon: ShoppingCart,
+    items: [
+      { key: "purchase-need", label: "Purchase Need by Product", icon: Package },
+      { key: "purchase-customer-demand", label: "Customer / Site Demand", icon: Users },
+    ],
+  },
+  {
     label: "Purchases & Expenses",
     icon: ShoppingCart,
     items: [
@@ -306,6 +318,8 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "site-delivery-history": return <DeliveryHistoryBySiteReport dealerId={dealerId} />;
       case "project-quote-pipeline": return <ProjectQuotationPipelineReport dealerId={dealerId} />;
       case "project-top-active": return <TopActiveProjectsReport dealerId={dealerId} />;
+      case "purchase-need": return <PurchaseNeedByProductReport dealerId={dealerId} />;
+      case "purchase-customer-demand": return <CustomerSiteDemandReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
