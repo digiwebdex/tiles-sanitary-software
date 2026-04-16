@@ -151,11 +151,23 @@ export const batchService = {
    * FIFO allocation: allocate requested qty from oldest active batches.
    * Returns allocation plan without modifying data (preview only).
    */
+  /**
+   * FIFO allocation: allocate requested qty from oldest active batches.
+   * Returns allocation plan without modifying data (preview only).
+   * 
+   * RESERVATION ENFORCEMENT:
+   * Free qty = batch total - batch reserved. Only free qty is available
+   * for FIFO allocation. Reserved stock is protected for the holding customer.
+   * 
+   * If skipReservedForCustomer is provided, that customer's reservations
+   * are excluded from the "reserved" deduction (they own those holds).
+   */
   async planFIFOAllocation(
     productId: string,
     dealerId: string,
     requestedQty: number,
-    unitType: "box_sft" | "piece"
+    unitType: "box_sft" | "piece",
+    skipReservedForCustomer?: string
   ): Promise<FIFOAllocationResult> {
     const batches = await this.getActiveBatches(productId, dealerId);
 
@@ -174,6 +186,28 @@ export const batchService = {
       };
     }
 
+    // If we need to account for customer-specific reservation offsets,
+    // fetch active reservations for this product
+    let batchReservationMap = new Map<string, number>();
+    if (skipReservedForCustomer) {
+      const { data: reservations } = await supabase
+        .from("stock_reservations")
+        .select("batch_id, reserved_qty, fulfilled_qty, released_qty")
+        .eq("product_id", productId)
+        .eq("dealer_id", dealerId)
+        .eq("customer_id", skipReservedForCustomer)
+        .eq("status", "active");
+      
+      for (const r of reservations ?? []) {
+        if (!r.batch_id) continue;
+        const remaining = Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
+        batchReservationMap.set(
+          r.batch_id,
+          (batchReservationMap.get(r.batch_id) ?? 0) + remaining
+        );
+      }
+    }
+
     const allocations: BatchAllocation[] = [];
     let remaining = requestedQty;
     const shadeSet = new Set<string>();
@@ -182,13 +216,23 @@ export const batchService = {
     for (const batch of batches) {
       if (remaining <= 0) break;
 
-      const availableQty = unitType === "box_sft"
+      const totalQty = unitType === "box_sft"
         ? Number(batch.box_qty)
         : Number(batch.piece_qty);
 
-      if (availableQty <= 0) continue;
+      const reservedQty = unitType === "box_sft"
+        ? Number((batch as any).reserved_box_qty ?? 0)
+        : Number((batch as any).reserved_piece_qty ?? 0);
 
-      const allocateQty = Math.min(remaining, availableQty);
+      // Customer's own reservation on this batch — treat as available to them
+      const customerReservedOnBatch = batchReservationMap.get(batch.id) ?? 0;
+
+      // Free qty = total - reserved + customer's own holds (they can use their own reserved stock)
+      const freeQty = totalQty - reservedQty + customerReservedOnBatch;
+
+      if (freeQty <= 0) continue;
+
+      const allocateQty = Math.min(remaining, freeQty);
       allocations.push({
         batch_id: batch.id,
         batch_no: batch.batch_no,
