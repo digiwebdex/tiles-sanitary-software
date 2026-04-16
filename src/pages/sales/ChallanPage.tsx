@@ -534,7 +534,36 @@ const ChallanDocument = ({ sale, items, customer, challan, showPrices, dealerInf
             </span>
           )}
           {customer?.phone && <p className="text-[11px] text-muted-foreground mt-1.5">📞 {customer.phone}</p>}
-          {customer?.address && <p className="text-[11px] text-muted-foreground leading-snug">{customer.address}</p>}
+          {/* Site address overrides customer address when provided */}
+          {(challan as any)?.project_sites?.address ? (
+            <p className="text-[11px] text-muted-foreground leading-snug">📍 {(challan as any).project_sites.address}</p>
+          ) : customer?.address ? (
+            <p className="text-[11px] text-muted-foreground leading-snug">{customer.address}</p>
+          ) : null}
+          {/* Project / Site block */}
+          {((challan as any)?.projects || (challan as any)?.project_sites) && (
+            <div className="mt-2 pt-2 border-t border-border space-y-0.5">
+              {(challan as any)?.projects && (
+                <p className="text-[11px] text-foreground">
+                  <span className="text-muted-foreground">Project:</span>{" "}
+                  <span className="font-semibold">{(challan as any).projects.project_name}</span>
+                  <span className="text-muted-foreground font-mono ml-1">({(challan as any).projects.project_code})</span>
+                </p>
+              )}
+              {(challan as any)?.project_sites && (
+                <p className="text-[11px] text-foreground">
+                  <span className="text-muted-foreground">Site:</span>{" "}
+                  <span className="font-semibold">{(challan as any).project_sites.site_name}</span>
+                  {(challan as any).project_sites.contact_person && (
+                    <span className="text-muted-foreground"> · {(challan as any).project_sites.contact_person}</span>
+                  )}
+                  {(challan as any).project_sites.contact_phone && (
+                    <span className="text-muted-foreground"> · {(challan as any).project_sites.contact_phone}</span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
         </div>
         {/* Transport */}
         <div className="p-4 border-t sm:border-t-0 border-border">
