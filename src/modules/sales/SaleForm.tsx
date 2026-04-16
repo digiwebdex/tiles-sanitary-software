@@ -966,30 +966,48 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
                       <FormField
                         control={form.control}
                         name={`items.${idx}.sale_rate`}
-                        render={({ field: f }) => (
-                          <FormItem className="space-y-0">
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                placeholder="Rate"
-                                className="h-8 text-sm text-right"
-                                disabled={priceLocked}
-                                {...f}
-                                onChange={(e) => {
-                                  f.onChange(e);
-                                  form.setValue(`items.${idx}.rate_source`, "manual");
-                                }}
-                              />
-                            </FormControl>
-                            {watchItems[idx]?.product_id && (
-                              <div className="flex justify-end mt-0.5">
-                                <RateSourceBadge source={watchItems[idx]?.rate_source} className="text-[9px] px-1 py-0 h-4" />
-                              </div>
-                            )}
-                            <FormMessage />
-                          </FormItem>
-                        )}
+                        render={({ field: f }) => {
+                          const item = watchItems[idx];
+                          const orig = item?.original_resolved_rate;
+                          const isManual = item?.rate_source === "manual";
+                          const tier = (allCustomers.find((c) => c.id === matchedCustomer?.id) as { price_tier_id?: string | null } | undefined)?.price_tier_id;
+                          return (
+                            <FormItem className="space-y-0">
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="Rate"
+                                  className={`h-8 text-sm text-right ${isManual ? "border-warning/50 bg-warning/5" : ""}`}
+                                  disabled={priceLocked}
+                                  {...f}
+                                  onChange={(e) => {
+                                    f.onChange(e);
+                                    const newVal = Number(e.target.value);
+                                    const baseline = orig ?? Number(item?.sale_rate ?? 0);
+                                    if (orig == null) {
+                                      form.setValue(`items.${idx}.original_resolved_rate`, baseline);
+                                    }
+                                    if (newVal !== baseline) {
+                                      form.setValue(`items.${idx}.rate_source`, "manual");
+                                    }
+                                  }}
+                                />
+                              </FormControl>
+                              {item?.product_id && (
+                                <div className="flex items-center justify-end gap-1 mt-0.5">
+                                  <RateSourceBadge source={item?.rate_source} className="text-[9px] px-1 py-0 h-4" />
+                                  {isManual && orig != null && Number(orig) !== Number(item?.sale_rate) && (
+                                    <span className="text-[9px] text-muted-foreground" title="Original resolved rate">
+                                      was {formatCurrency(Number(orig))}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <FormMessage />
+                            </FormItem>
+                          );
+                        }}
                       />
                     </div>
 
