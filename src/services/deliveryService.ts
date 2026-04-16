@@ -33,13 +33,18 @@ async function generateDeliveryNo(dealerId: string): Promise<string> {
 }
 
 export const deliveryService = {
-  async list(dealerId: string, page = 1, statusFilter?: string) {
+  async list(
+    dealerId: string,
+    page = 1,
+    statusFilter?: string,
+    opts: { projectId?: string | null; siteId?: string | null } = {},
+  ) {
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
     let query = supabase
       .from("deliveries")
-      .select("*, challans(challan_no), sales(invoice_number, customers(name, phone, address)), delivery_items(id, quantity, products(name, unit_type))", { count: "exact" })
+      .select("*, challans(challan_no), sales(invoice_number, customers(name, phone, address)), projects:projects(id, project_name, project_code), project_sites:project_sites(id, site_name, address), delivery_items(id, quantity, products(name, unit_type))", { count: "exact" })
       .eq("dealer_id", dealerId)
       .order("delivery_date", { ascending: false })
       .range(from, to);
@@ -47,6 +52,8 @@ export const deliveryService = {
     if (statusFilter && statusFilter !== "all") {
       query = query.eq("status", statusFilter);
     }
+    if (opts.projectId) query = query.eq("project_id", opts.projectId);
+    if (opts.siteId) query = query.eq("site_id", opts.siteId);
 
     const { data, error, count } = await query;
     if (error) throw new Error(error.message);
