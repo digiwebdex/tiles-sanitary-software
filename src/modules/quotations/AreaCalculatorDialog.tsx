@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2, Calculator } from "lucide-react";
 
@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
 
 import { useDealerId } from "@/hooks/useDealerId";
+import { useDealerInfo } from "@/hooks/useDealerInfo";
 import { productService } from "@/services/productService";
 import {
   calculateArea,
@@ -43,10 +44,25 @@ interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   onInsert: (payload: AreaCalculatorInsertPayload) => void;
+  /** When supplied, dialog opens in edit mode pre-filled from this snapshot. */
+  initialSnapshot?: MeasurementSnapshot | null;
+  /** Current rate to keep when editing (used by parent to recompute line_total). */
+  initialProductId?: string | null;
+  /** Submit button label override (e.g. "Update line"). */
+  submitLabel?: string;
 }
 
-const AreaCalculatorDialog = ({ open, onOpenChange, onInsert }: Props) => {
+const AreaCalculatorDialog = ({
+  open,
+  onOpenChange,
+  onInsert,
+  initialSnapshot,
+  initialProductId,
+  submitLabel,
+}: Props) => {
   const dealerId = useDealerId();
+  const { data: dealerInfo } = useDealerInfo();
+  const dealerDefaultWastage = Number(dealerInfo?.default_wastage_pct ?? DEFAULT_WASTAGE_PCT);
 
   const { data: productsResp } = useQuery({
     queryKey: ["products-area-calc", dealerId],
@@ -75,15 +91,43 @@ const AreaCalculatorDialog = ({ open, onOpenChange, onInsert }: Props) => {
   const [walls, setWalls] = useState<WallSegment[]>([{ length: 0 }]);
   const [deductions, setDeductions] = useState<Deduction[]>([]);
   const [directArea, setDirectArea] = useState<string>("");
-  const [wastagePct, setWastagePct] = useState<number>(DEFAULT_WASTAGE_PCT);
+  const [wastagePct, setWastagePct] = useState<number>(dealerDefaultWastage);
   const [notes, setNotes] = useState<string>("");
 
   const [manualOverride, setManualOverride] = useState(false);
   const [overrideBoxes, setOverrideBoxes] = useState<string>("");
   const [overrideReason, setOverrideReason] = useState<string>("");
 
+  const isEditMode = !!initialSnapshot;
+
+  // Pre-fill on open: edit mode hydrates from snapshot, fresh mode uses dealer default wastage.
+  useEffect(() => {
+    if (!open) return;
+    if (initialSnapshot) {
+      setProductId(initialProductId ?? "");
+      setRoomName(initialSnapshot.room_name ?? "");
+      setMeasurementType(initialSnapshot.measurement_type);
+      setInputUnit(initialSnapshot.input_unit ?? "ft");
+      setAreaUnit(initialSnapshot.area_unit ?? "sft");
+      setFloorLength(initialSnapshot.floor_length != null ? String(initialSnapshot.floor_length) : "");
+      setFloorWidth(initialSnapshot.floor_width != null ? String(initialSnapshot.floor_width) : "");
+      setWallHeight(initialSnapshot.wall_height != null ? String(initialSnapshot.wall_height) : "");
+      setWalls(initialSnapshot.walls?.length ? initialSnapshot.walls : [{ length: 0 }]);
+      setDeductions(initialSnapshot.deductions ?? []);
+      setDirectArea(initialSnapshot.direct_area != null ? String(initialSnapshot.direct_area) : "");
+      setWastagePct(Number(initialSnapshot.wastage_pct ?? dealerDefaultWastage));
+      setNotes(initialSnapshot.notes ?? "");
+      setManualOverride(Boolean(initialSnapshot.manual_override));
+      setOverrideBoxes(initialSnapshot.manual_override ? String(initialSnapshot.final_boxes ?? "") : "");
+      setOverrideReason(initialSnapshot.override_reason ?? "");
+    } else {
+      setWastagePct(dealerDefaultWastage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   const product = tileProducts.find((p) => p.id === productId);
-  const perBoxSft = Number(product?.per_box_sft ?? 0);
+  const perBoxSft = Number(product?.per_box_sft ?? initialSnapshot?.per_box_sft_snapshot ?? 0);
 
   const calcInput: AreaCalculatorInput = {
     measurement_type: measurementType,
@@ -119,7 +163,7 @@ const AreaCalculatorDialog = ({ open, onOpenChange, onInsert }: Props) => {
     setWalls([{ length: 0 }]);
     setDeductions([]);
     setDirectArea("");
-    setWastagePct(DEFAULT_WASTAGE_PCT);
+    setWastagePct(dealerDefaultWastage);
     setNotes("");
     setManualOverride(false);
     setOverrideBoxes("");
@@ -165,7 +209,7 @@ const AreaCalculatorDialog = ({ open, onOpenChange, onInsert }: Props) => {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calculator className="h-5 w-5 text-primary" />
-            Area Calculator
+            {isEditMode ? "Edit Measurement" : "Area Calculator"}
           </DialogTitle>
         </DialogHeader>
 
@@ -174,7 +218,7 @@ const AreaCalculatorDialog = ({ open, onOpenChange, onInsert }: Props) => {
           <div className="space-y-4">
             <div>
               <Label>Tile Product</Label>
-              <Select value={productId} onValueChange={setProductId}>
+              <Select value={productId} onValueChange={setProductId} disabled={isEditMode}>
                 <SelectTrigger>
                   <SelectValue placeholder="Pick a tile product…" />
                 </SelectTrigger>
@@ -192,7 +236,11 @@ const AreaCalculatorDialog = ({ open, onOpenChange, onInsert }: Props) => {
                   )}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground mt-1">Sanitary &amp; piece-unit products are excluded.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {isEditMode
+                  ? "Product is locked while editing an existing measurement."
+                  : "Sanitary & piece-unit products are excluded."}
+              </p>
             </div>
 
             <div>
@@ -325,6 +373,9 @@ const AreaCalculatorDialog = ({ open, onOpenChange, onInsert }: Props) => {
                 value={wastagePct}
                 onChange={(e) => setWastagePct(Math.max(0, Math.min(25, Number(e.target.value || 0))))}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Dealer default: {dealerDefaultWastage}%
+              </p>
             </div>
 
             <div>
@@ -387,7 +438,7 @@ const AreaCalculatorDialog = ({ open, onOpenChange, onInsert }: Props) => {
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={handleInsert} disabled={!canInsert}>
-            Insert into Quote
+            {submitLabel ?? (isEditMode ? "Update Line" : "Insert into Quote")}
           </Button>
         </DialogFooter>
       </DialogContent>
