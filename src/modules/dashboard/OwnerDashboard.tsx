@@ -27,6 +27,7 @@ import { formatCurrency } from "@/lib/utils";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useState } from "react";
 import { ReservationDashboardWidgets } from "./ReservationDashboardWidgets";
+import { ApprovalDashboardWidgets } from "@/components/approval/ApprovalDashboardWidgets";
 
 interface OwnerDashboardProps {
   dealerId: string;
@@ -531,6 +532,9 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
       {dealerInfo?.enable_reservations && (
         <ReservationDashboardWidgets dealerId={dealerId} />
       )}
+
+      {/* Approval Workflow Widgets */}
+      <ApprovalDashboardWidgets dealerId={dealerId} />
 
       {/* Top Overdue Customers Widget */}
       {topOverdue.length > 0 && (
