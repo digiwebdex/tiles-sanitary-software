@@ -246,7 +246,7 @@ export const salesService = {
 
     const [productsRes, stockRes] = await Promise.all([
       supabase.from("products").select("id, unit_type, per_box_sft").in("id", productIds),
-      supabase.from("stock").select("product_id, average_cost_per_unit, box_qty, piece_qty").eq("dealer_id", input.dealer_id).in("product_id", productIds),
+      supabase.from("stock").select("product_id, average_cost_per_unit, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty").eq("dealer_id", input.dealer_id).in("product_id", productIds),
     ]);
 
     if (productsRes.error) throw new Error(productsRes.error.message);
