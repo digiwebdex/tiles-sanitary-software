@@ -17,6 +17,8 @@ export const quotationItemSchema = z.object({
   notes: z.string().nullable().optional(),
   sort_order: z.coerce.number().int().default(0),
   measurement_snapshot: z.any().nullable().optional(),
+  rate_source: z.enum(["default", "tier", "manual"]).default("default"),
+  tier_id: z.string().nullable().optional(),
 });
 
 export const quotationFormSchema = z

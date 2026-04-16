@@ -59,6 +59,8 @@ export interface QuotationItem {
   notes: string | null;
   sort_order: number;
   measurement_snapshot: Record<string, unknown> | null;
+  rate_source: "default" | "tier" | "manual";
+  tier_id: string | null;
   created_at: string;
 }
 
@@ -222,6 +224,8 @@ export const quotationService = {
       notes: it.notes || null,
       sort_order: it.sort_order,
       measurement_snapshot: ((it as { measurement_snapshot?: unknown }).measurement_snapshot ?? null) as never,
+      rate_source: it.rate_source ?? "default",
+      tier_id: it.tier_id ?? null,
     }));
     const { error } = await sb.from("quotation_items").insert(rows);
     if (error) throw new Error(error.message);
