@@ -681,6 +681,7 @@ export type Database = {
           name: string
           opening_balance: number
           phone: string | null
+          price_tier_id: string | null
           reference_name: string | null
           status: string
           type: Database["public"]["Enums"]["customer_type"]
@@ -696,6 +697,7 @@ export type Database = {
           name: string
           opening_balance?: number
           phone?: string | null
+          price_tier_id?: string | null
           reference_name?: string | null
           status?: string
           type?: Database["public"]["Enums"]["customer_type"]
@@ -711,6 +713,7 @@ export type Database = {
           name?: string
           opening_balance?: number
           phone?: string | null
+          price_tier_id?: string | null
           reference_name?: string | null
           status?: string
           type?: Database["public"]["Enums"]["customer_type"]
@@ -721,6 +724,13 @@ export type Database = {
             columns: ["dealer_id"]
             isOneToOne: false
             referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_price_tier_id_fkey"
+            columns: ["price_tier_id"]
+            isOneToOne: false
+            referencedRelation: "price_tiers"
             referencedColumns: ["id"]
           },
         ]
@@ -1205,6 +1215,99 @@ export type Database = {
         }
         Relationships: []
       }
+      price_tier_items: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          id: string
+          product_id: string
+          rate: number
+          tier_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          id?: string
+          product_id: string
+          rate: number
+          tier_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          product_id?: string
+          rate?: number
+          tier_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_tier_items_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_tier_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_tier_items_tier_id_fkey"
+            columns: ["tier_id"]
+            isOneToOne: false
+            referencedRelation: "price_tiers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      price_tiers: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          description: string | null
+          id: string
+          is_default: boolean
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_tiers_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_batches: {
         Row: {
           batch_no: string
@@ -1655,7 +1758,9 @@ export type Database = {
           quantity: number
           quotation_id: string
           rate: number
+          rate_source: string
           sort_order: number
+          tier_id: string | null
           unit_type: string
         }
         Insert: {
@@ -1676,7 +1781,9 @@ export type Database = {
           quantity?: number
           quotation_id: string
           rate?: number
+          rate_source?: string
           sort_order?: number
+          tier_id?: string | null
           unit_type?: string
         }
         Update: {
@@ -1697,7 +1804,9 @@ export type Database = {
           quantity?: number
           quotation_id?: string
           rate?: number
+          rate_source?: string
           sort_order?: number
+          tier_id?: string | null
           unit_type?: string
         }
         Relationships: [
@@ -1720,6 +1829,13 @@ export type Database = {
             columns: ["quotation_id"]
             isOneToOne: false
             referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_items_tier_id_fkey"
+            columns: ["tier_id"]
+            isOneToOne: false
+            referencedRelation: "price_tiers"
             referencedColumns: ["id"]
           },
         ]
@@ -1948,8 +2064,10 @@ export type Database = {
           id: string
           product_id: string
           quantity: number
+          rate_source: string
           sale_id: string
           sale_rate: number
+          tier_id: string | null
           total: number
           total_sft: number | null
         }
@@ -1962,8 +2080,10 @@ export type Database = {
           id?: string
           product_id: string
           quantity: number
+          rate_source?: string
           sale_id: string
           sale_rate: number
+          tier_id?: string | null
           total?: number
           total_sft?: number | null
         }
@@ -1976,8 +2096,10 @@ export type Database = {
           id?: string
           product_id?: string
           quantity?: number
+          rate_source?: string
           sale_id?: string
           sale_rate?: number
+          tier_id?: string | null
           total?: number
           total_sft?: number | null
         }
@@ -2001,6 +2123,13 @@ export type Database = {
             columns: ["sale_id"]
             isOneToOne: false
             referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_tier_id_fkey"
+            columns: ["tier_id"]
+            isOneToOne: false
+            referencedRelation: "price_tiers"
             referencedColumns: ["id"]
           },
         ]
