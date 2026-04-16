@@ -13,6 +13,8 @@ export interface SaleItemInput {
   product_id: string;
   quantity: number;
   sale_rate: number;
+  rate_source?: "default" | "tier" | "manual";
+  tier_id?: string | null;
 }
 
 export interface CreateSaleInput {
@@ -367,6 +369,8 @@ export const salesService = {
       backorder_qty: item.backorder_qty,
       allocated_qty: 0,
       fulfillment_status: item.fulfillment_status,
+      rate_source: (item as SaleItemInput).rate_source ?? "default",
+      tier_id: (item as SaleItemInput).tier_id ?? null,
     }));
 
     const { data: insertedSaleItems, error: iErr } = await supabase
@@ -698,6 +702,8 @@ export const salesService = {
       sale_rate: item.sale_rate,
       total: item.total,
       total_sft: item.total_sft,
+      rate_source: (item as SaleItemInput).rate_source ?? "default",
+      tier_id: (item as SaleItemInput).tier_id ?? null,
     }));
     const { data: insertedItems, error: iErr } = await supabase
       .from("sale_items")
