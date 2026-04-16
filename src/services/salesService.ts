@@ -184,13 +184,18 @@ export async function previewBatchAllocation(
 }
 
 export const salesService = {
-  async list(dealerId: string, page = 1, search?: string) {
+  async list(
+    dealerId: string,
+    page = 1,
+    search?: string,
+    opts: { projectId?: string | null; siteId?: string | null } = {},
+  ) {
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
     let query = supabase
       .from("sales")
-      .select("*, customers(name, type, phone, address)", { count: "exact" })
+      .select("*, customers(name, type, phone, address), projects:projects(id, project_name, project_code), project_sites:project_sites(id, site_name, address)", { count: "exact" })
       .eq("dealer_id", dealerId)
       .order("sale_date", { ascending: false })
       .order("created_at", { ascending: false })
@@ -199,6 +204,8 @@ export const salesService = {
     if (search?.trim()) {
       query = query.or(`invoice_number.ilike.%${search.trim()}%`);
     }
+    if (opts.projectId) query = query.eq("project_id", opts.projectId);
+    if (opts.siteId) query = query.eq("site_id", opts.siteId);
 
     const { data, error, count } = await query;
     if (error) throw new Error(error.message);

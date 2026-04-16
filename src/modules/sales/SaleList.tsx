@@ -29,6 +29,7 @@ import {
   type ApprovalContextData,
 } from "@/services/approvalService";
 import { ApprovalRequestDialog } from "@/components/approval/ApprovalRequestDialog";
+import { ProjectSiteFilter } from "@/components/project/ProjectSiteFilter";
 
 interface SaleListProps {
   dealerId: string;
@@ -67,6 +68,8 @@ const SaleList = ({ dealerId }: SaleListProps) => {
   const [deleteSale, setDeleteSale] = useState<any>(null);
   const [cancelApprovalOpen, setCancelApprovalOpen] = useState(false);
   const [cancelApprovalContext, setCancelApprovalContext] = useState<ApprovalContextData>({});
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [siteId, setSiteId] = useState<string | null>(null);
   const permissions = usePermissions();
   const queryClient = useQueryClient();
 
@@ -180,8 +183,8 @@ const SaleList = ({ dealerId }: SaleListProps) => {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["sales", dealerId, page, search],
-    queryFn: () => salesService.list(dealerId, page, search),
+    queryKey: ["sales", dealerId, page, search, projectId, siteId],
+    queryFn: () => salesService.list(dealerId, page, search, { projectId, siteId }),
     enabled: !!dealerId,
   });
 
@@ -250,13 +253,21 @@ const SaleList = ({ dealerId }: SaleListProps) => {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search by invoice or customer…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="pl-9"
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-sm flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by invoice or customer…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="pl-9"
+          />
+        </div>
+        <ProjectSiteFilter
+          dealerId={dealerId}
+          projectId={projectId}
+          siteId={siteId}
+          onChange={({ projectId: pid, siteId: sid }) => { setProjectId(pid); setSiteId(sid); setPage(1); }}
         />
       </div>
 

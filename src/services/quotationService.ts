@@ -101,8 +101,17 @@ export const quotationService = {
     return Number(data ?? 0);
   },
 
-  async list(dealerId: string, opts: { search?: string; status?: QuotationStatus | ""; page?: number } = {}) {
-    const { search = "", status = "", page = 1 } = opts;
+  async list(
+    dealerId: string,
+    opts: {
+      search?: string;
+      status?: QuotationStatus | "";
+      page?: number;
+      projectId?: string | null;
+      siteId?: string | null;
+    } = {},
+  ) {
+    const { search = "", status = "", page = 1, projectId, siteId } = opts;
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
@@ -111,11 +120,13 @@ export const quotationService = {
 
     let query = sb
       .from("quotations")
-      .select("*, customers(name, phone)", { count: "exact" })
+      .select("*, customers(name, phone), projects:projects(id, project_name, project_code), project_sites:project_sites(id, site_name, address)", { count: "exact" })
       .eq("dealer_id", dealerId)
       .order("created_at", { ascending: false });
 
     if (status) query = query.eq("status", status);
+    if (projectId) query = query.eq("project_id", projectId);
+    if (siteId) query = query.eq("site_id", siteId);
     if (search.trim()) {
       const s = search.trim();
       query = query.or(`quotation_no.ilike.%${s}%,customer_name_text.ilike.%${s}%`);

@@ -15,6 +15,7 @@ import { quotationService, type QuotationStatus, formatQuotationDisplayNo } from
 import { QuotationStatusBadge } from "@/components/quotation/QuotationStatusBadge";
 import { formatCurrency, parseLocalDate } from "@/lib/utils";
 import QuotationDetailDialog from "./QuotationDetailDialog";
+import { ProjectSiteFilter } from "@/components/project/ProjectSiteFilter";
 
 const fmtDate = (d: string) => {
   const dt = parseLocalDate(d);
@@ -30,10 +31,12 @@ const QuotationList = () => {
   const [status, setStatus] = useState<QuotationStatus | "">("");
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [siteId, setSiteId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["quotations", dealerId, search, status, page],
-    queryFn: () => quotationService.list(dealerId, { search, status, page }),
+    queryKey: ["quotations", dealerId, search, status, page, projectId, siteId],
+    queryFn: () => quotationService.list(dealerId, { search, status, page, projectId, siteId }),
   });
 
   const cancelMutation = useMutation({
@@ -125,6 +128,12 @@ const QuotationList = () => {
               <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
+          <ProjectSiteFilter
+            dealerId={dealerId}
+            projectId={projectId}
+            siteId={siteId}
+            onChange={({ projectId: pid, siteId: sid }) => { setProjectId(pid); setSiteId(sid); setPage(1); }}
+          />
         </CardContent>
       </Card>
 

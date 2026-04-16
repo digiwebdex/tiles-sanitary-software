@@ -16,8 +16,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Pagination from "@/components/Pagination";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Eye, Pencil, Download, Trash2 } from "lucide-react";
+import { Search, Eye, Pencil, Download, Trash2, MapPin } from "lucide-react";
 import DeliveryDetailDialog from "./DeliveryDetailDialog";
+import { ProjectSiteFilter } from "@/components/project/ProjectSiteFilter";
 
 interface DeliveryListProps {
   dealerId: string;
@@ -42,12 +43,14 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [siteId, setSiteId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["deliveries", dealerId, page, statusFilter],
-    queryFn: () => deliveryService.list(dealerId, page, statusFilter),
+    queryKey: ["deliveries", dealerId, page, statusFilter, projectId, siteId],
+    queryFn: () => deliveryService.list(dealerId, page, statusFilter, { projectId, siteId }),
     enabled: !!dealerId,
   });
 
@@ -92,7 +95,7 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-foreground">Deliveries</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
             <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -101,6 +104,12 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
               ))}
             </SelectContent>
           </Select>
+          <ProjectSiteFilter
+            dealerId={dealerId}
+            projectId={projectId}
+            siteId={siteId}
+            onChange={({ projectId: pid, siteId: sid }) => { setProjectId(pid); setSiteId(sid); setPage(1); }}
+          />
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input

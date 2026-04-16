@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Pencil, Trash2, MapPin, Search, Folder, FolderOpen } from "lucide-react";
 import { ProjectFormDialog } from "@/components/project/ProjectFormDialog";
 import { SiteFormDialog } from "@/components/project/SiteFormDialog";
+import { ProjectHistoryPanel } from "@/components/project/ProjectHistoryPanel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -180,77 +182,88 @@ export default function ProjectList() {
                   <CardContent className="pt-0">
                     {p.notes && <p className="text-xs text-muted-foreground mb-3 italic">{p.notes}</p>}
 
-                    <div className="border-t pt-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-sm font-semibold flex items-center gap-1">
-                          <MapPin className="h-4 w-4" /> Delivery Sites
-                        </h4>
-                        {canManage && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setEditingSite(null);
-                              setSiteDialogProject({ id: p.id, customerId: p.customer_id });
-                              setSiteDialogOpen(true);
-                            }}
-                          >
-                            <Plus className="h-3 w-3 mr-1" /> Add Site
-                          </Button>
-                        )}
-                      </div>
-                      {sitesQ.isLoading ? (
-                        <p className="text-xs text-muted-foreground">Loading sites…</p>
-                      ) : sites.length === 0 ? (
-                        <p className="text-xs text-muted-foreground py-2">No sites yet.</p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {sites.map((s) => (
-                            <div key={s.id} className="flex items-start justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                              <div>
-                                <div className="font-medium flex items-center gap-2">
-                                  {s.site_name}
-                                  {s.status === "inactive" && (
-                                    <Badge variant="outline" className="text-xs">inactive</Badge>
+                    <Tabs defaultValue="sites" className="border-t pt-3">
+                      <TabsList className="mb-3">
+                        <TabsTrigger value="sites">Sites</TabsTrigger>
+                        <TabsTrigger value="history">History</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="sites">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-semibold flex items-center gap-1">
+                            <MapPin className="h-4 w-4" /> Delivery Sites
+                          </h4>
+                          {canManage && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingSite(null);
+                                setSiteDialogProject({ id: p.id, customerId: p.customer_id });
+                                setSiteDialogOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3 w-3 mr-1" /> Add Site
+                            </Button>
+                          )}
+                        </div>
+                        {sitesQ.isLoading ? (
+                          <p className="text-xs text-muted-foreground">Loading sites…</p>
+                        ) : sites.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-2">No sites yet.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {sites.map((s) => (
+                              <div key={s.id} className="flex items-start justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                                <div>
+                                  <div className="font-medium flex items-center gap-2">
+                                    {s.site_name}
+                                    {s.status === "inactive" && (
+                                      <Badge variant="outline" className="text-xs">inactive</Badge>
+                                    )}
+                                  </div>
+                                  {s.address && <div className="text-xs text-muted-foreground">{s.address}</div>}
+                                  {(s.contact_person || s.contact_phone) && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {s.contact_person}{s.contact_person && s.contact_phone ? " · " : ""}{s.contact_phone}
+                                    </div>
                                   )}
                                 </div>
-                                {s.address && <div className="text-xs text-muted-foreground">{s.address}</div>}
-                                {(s.contact_person || s.contact_phone) && (
-                                  <div className="text-xs text-muted-foreground">
-                                    {s.contact_person}{s.contact_person && s.contact_phone ? " · " : ""}{s.contact_phone}
+                                {canManage && (
+                                  <div className="flex">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => {
+                                        setEditingSite(s);
+                                        setSiteDialogProject({ id: p.id, customerId: p.customer_id });
+                                        setSiteDialogOpen(true);
+                                      }}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleDeleteSite(s)}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
                                   </div>
                                 )}
                               </div>
-                              {canManage && (
-                                <div className="flex">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      setEditingSite(s);
-                                      setSiteDialogProject({ id: p.id, customerId: p.customer_id });
-                                      setSiteDialogOpen(true);
-                                    }}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeleteSite(s)}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                            ))}
+                          </div>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="history">
+                        <ProjectHistoryPanel dealerId={dealerId} projectId={p.id} />
+                      </TabsContent>
+                    </Tabs>
                   </CardContent>
                 )}
               </Card>

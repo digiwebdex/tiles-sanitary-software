@@ -137,7 +137,36 @@ const ModernChallanDocument = ({ sale, items, customer, challan, showPrices, dea
             <span className="inline-block mt-1.5 text-[9px] uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold">{customer.type}</span>
           )}
           {customer?.phone && <p className="text-[11px] text-muted-foreground mt-2">📞 {customer.phone}</p>}
-          {customer?.address && <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{customer.address}</p>}
+          {/* Site address overrides customer address when provided */}
+          {(challan as any)?.project_sites?.address ? (
+            <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">📍 {(challan as any).project_sites.address}</p>
+          ) : customer?.address ? (
+            <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{customer.address}</p>
+          ) : null}
+          {/* Project / Site block */}
+          {((challan as any)?.projects || (challan as any)?.project_sites) && (
+            <div className="mt-3 pt-2 border-t border-border space-y-0.5">
+              {(challan as any)?.projects && (
+                <p className="text-[11px] text-foreground">
+                  <span className="text-muted-foreground">Project:</span>{" "}
+                  <span className="font-semibold">{(challan as any).projects.project_name}</span>
+                  <span className="text-muted-foreground font-mono ml-1">({(challan as any).projects.project_code})</span>
+                </p>
+              )}
+              {(challan as any)?.project_sites && (
+                <p className="text-[11px] text-foreground">
+                  <span className="text-muted-foreground">Site:</span>{" "}
+                  <span className="font-semibold">{(challan as any).project_sites.site_name}</span>
+                  {(challan as any).project_sites.contact_person && (
+                    <span className="text-muted-foreground"> · {(challan as any).project_sites.contact_person}</span>
+                  )}
+                  {(challan as any).project_sites.contact_phone && (
+                    <span className="text-muted-foreground"> · {(challan as any).project_sites.contact_phone}</span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-border bg-muted/20 p-4">

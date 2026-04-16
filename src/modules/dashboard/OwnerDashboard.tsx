@@ -30,6 +30,7 @@ import { ReservationDashboardWidgets } from "./ReservationDashboardWidgets";
 import { ApprovalDashboardWidgets } from "@/components/approval/ApprovalDashboardWidgets";
 import { QuotationDashboardWidgets } from "@/components/quotation/QuotationDashboardWidgets";
 import { PricingTierDashboardWidgets } from "@/components/PricingTierDashboardWidgets";
+import { ProjectDashboardWidgets } from "@/components/project/ProjectDashboardWidgets";
 
 interface OwnerDashboardProps {
   dealerId: string;
@@ -543,6 +544,9 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
 
       {/* Pricing Tiers Widgets */}
       <PricingTierDashboardWidgets dealerId={dealerId} />
+
+      {/* Project / Site-wise Sales Widgets */}
+      <ProjectDashboardWidgets dealerId={dealerId} />
 
       {/* Top Overdue Customers Widget */}
       {topOverdue.length > 0 && (
