@@ -36,8 +36,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const { profile, accessLevel, isSuperAdmin, isDealerAdmin, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  let dealerIdForBadge = "";
-  try { dealerIdForBadge = useDealerId(); } catch { /* super admin without dealer */ }
+  const dealerIdForBadge = profile?.dealer_id ?? "";
 
   const isReadonly = accessLevel === "readonly";
   const isGrace = accessLevel === "grace";
