@@ -198,10 +198,12 @@ export const purchasePlanningService = {
     const totalCustomersWaiting = new Set(
       (await this.customerShortages(dealerId)).map((r) => r.customer_id).filter(Boolean),
     ).size;
-    const oldest = products.reduce<string | null>(
-      (acc, p) => (p.oldest_demand_date && (!acc || p.oldest_demand_date < acc) ? p.oldest_demand_date : acc),
-      null,
-    );
+    let oldest: string | null = null;
+    for (const p of products) {
+      if (p.oldest_demand_date && (!oldest || p.oldest_demand_date < oldest)) {
+        oldest = p.oldest_demand_date;
+      }
+    }
 
     return {
       totalProductsShort: products.length,
