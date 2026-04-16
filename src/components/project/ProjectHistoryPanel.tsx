@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
-import { Receipt, Truck, PackageCheck, FileText } from "lucide-react";
+import { Receipt, Truck, PackageCheck, FileText, FileSignature } from "lucide-react";
 
 interface Props {
   dealerId: string;
@@ -29,8 +30,8 @@ interface ProjectActivity {
 
 const toNum = (v: any) => Number(v ?? 0) || 0;
 
-async function loadProjectHistory(dealerId: string, projectId: string): Promise<ProjectActivity> {
-  const [salesRes, challanRes, delivRes] = await Promise.all([
+async function loadProjectHistory(dealerId: string, projectId: string): Promise<ProjectActivity & { quotations: any[]; quotation_count: number }> {
+  const [salesRes, challanRes, delivRes, quoteRes] = await Promise.all([
     sb.from("sales")
       .select("id, invoice_number, sale_date, total_amount, paid_amount, due_amount, sale_status, project_sites:project_sites(site_name)")
       .eq("dealer_id", dealerId).eq("project_id", projectId)
@@ -43,14 +44,20 @@ async function loadProjectHistory(dealerId: string, projectId: string): Promise<
       .select("id, delivery_no, delivery_date, status, project_sites:project_sites(site_name)")
       .eq("dealer_id", dealerId).eq("project_id", projectId)
       .order("delivery_date", { ascending: false }).limit(50),
+    sb.from("quotations")
+      .select("id, quotation_no, quote_date, status, total_amount, project_sites:project_sites(site_name)")
+      .eq("dealer_id", dealerId).eq("project_id", projectId)
+      .order("quote_date", { ascending: false }).limit(50),
   ]);
   if (salesRes.error) throw new Error(salesRes.error.message);
   if (challanRes.error) throw new Error(challanRes.error.message);
   if (delivRes.error) throw new Error(delivRes.error.message);
+  if (quoteRes.error) throw new Error(quoteRes.error.message);
 
   const sales = salesRes.data ?? [];
   const challans = challanRes.data ?? [];
   const deliveries = delivRes.data ?? [];
+  const quotations = quoteRes.data ?? [];
 
   const dates = [
     ...sales.map((s: any) => s.sale_date),
@@ -60,7 +67,8 @@ async function loadProjectHistory(dealerId: string, projectId: string): Promise<
   const latest = dates.length ? dates.sort().reverse()[0] : null;
 
   return {
-    sales, challans, deliveries,
+    sales, challans, deliveries, quotations,
+    quotation_count: quotations.length,
     summary: {
       sales_count: sales.length,
       total_sales: sales.reduce((s: number, r: any) => s + toNum(r.total_amount), 0),
@@ -82,6 +90,7 @@ const statusColor = (s: string) => {
 };
 
 export function ProjectHistoryPanel({ dealerId, projectId }: Props) {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ["project-history", dealerId, projectId],
     queryFn: () => loadProjectHistory(dealerId, projectId),
@@ -91,12 +100,16 @@ export function ProjectHistoryPanel({ dealerId, projectId }: Props) {
   if (isLoading) return <p className="text-xs text-muted-foreground py-3">Loading history…</p>;
   if (!data) return null;
 
-  const { sales, challans, deliveries, summary } = data;
+  const { sales, challans, deliveries, quotations, summary } = data;
 
   return (
     <div className="space-y-4">
       {/* Summary tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <div className="rounded-md border bg-muted/30 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Quotations</p>
+          <p className="text-sm font-bold">{quotations.length}</p>
+        </div>
         <div className="rounded-md border bg-muted/30 px-3 py-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sales</p>
           <p className="text-sm font-bold">{summary.sales_count} · {formatCurrency(summary.total_sales)}</p>
@@ -121,8 +134,35 @@ export function ProjectHistoryPanel({ dealerId, projectId }: Props) {
         <p className="text-[11px] text-muted-foreground">Latest activity: <span className="font-medium text-foreground">{summary.latest_activity}</span></p>
       )}
 
-      {sales.length === 0 && challans.length === 0 && deliveries.length === 0 && (
+      {sales.length === 0 && challans.length === 0 && deliveries.length === 0 && quotations.length === 0 && (
         <p className="text-xs text-muted-foreground italic py-2">No transactions linked to this project yet.</p>
+      )}
+
+      {/* Quotations */}
+      {quotations.length > 0 && (
+        <div>
+          <h5 className="text-xs font-semibold mb-1.5 flex items-center gap-1 text-muted-foreground uppercase tracking-wider">
+            <FileSignature className="h-3 w-3" /> Quotations ({quotations.length})
+          </h5>
+          <div className="rounded-md border divide-y">
+            {quotations.slice(0, 10).map((q: any) => (
+              <div key={q.id} className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted/50 cursor-pointer" onClick={() => navigate("/quotations")}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono text-foreground">{q.quotation_no}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-muted-foreground">{q.quote_date}</span>
+                  {q.project_sites?.site_name && (
+                    <span className="text-muted-foreground truncate">· {q.project_sites.site_name}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge variant="outline" className={`text-[10px] ${statusColor(q.status)}`}>{q.status}</Badge>
+                  <span className="font-semibold">{formatCurrency(q.total_amount)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Sales */}
@@ -133,7 +173,7 @@ export function ProjectHistoryPanel({ dealerId, projectId }: Props) {
           </h5>
           <div className="rounded-md border divide-y">
             {sales.slice(0, 10).map((s: any) => (
-              <div key={s.id} className="flex items-center justify-between px-3 py-1.5 text-xs">
+              <div key={s.id} className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted/50 cursor-pointer" onClick={() => navigate(`/sales/${s.id}/invoice`)}>
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-mono text-foreground">{s.invoice_number ?? "—"}</span>
                   <span className="text-muted-foreground">·</span>
@@ -162,7 +202,7 @@ export function ProjectHistoryPanel({ dealerId, projectId }: Props) {
           </h5>
           <div className="rounded-md border divide-y">
             {challans.slice(0, 10).map((c: any) => (
-              <div key={c.id} className="flex items-center justify-between px-3 py-1.5 text-xs">
+              <div key={c.id} className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted/50 cursor-pointer" onClick={() => navigate("/challans")}>
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-mono text-foreground">{c.challan_no}</span>
                   <span className="text-muted-foreground">·</span>
@@ -188,7 +228,7 @@ export function ProjectHistoryPanel({ dealerId, projectId }: Props) {
           </h5>
           <div className="rounded-md border divide-y">
             {deliveries.slice(0, 10).map((d: any) => (
-              <div key={d.id} className="flex items-center justify-between px-3 py-1.5 text-xs">
+              <div key={d.id} className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted/50 cursor-pointer" onClick={() => navigate("/deliveries")}>
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-mono text-foreground">{d.delivery_no ?? "—"}</span>
                   <span className="text-muted-foreground">·</span>

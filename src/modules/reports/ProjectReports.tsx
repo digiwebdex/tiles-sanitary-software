@@ -84,6 +84,16 @@ export function OutstandingByProjectReport({ dealerId }: Props) {
     queryFn: () => projectReportService.outstandingByProject(dealerId),
   });
 
+  const totals = data.reduce(
+    (acc, r) => ({
+      billed: acc.billed + r.billed,
+      paid: acc.paid + r.paid,
+      due: acc.due + r.due,
+      overdue: acc.overdue + r.overdue,
+    }),
+    { billed: 0, paid: 0, due: 0, overdue: 0 },
+  );
+
   const handleExport = () => {
     exportToExcel(data, [
       { header: "Project", key: "project_name" },
@@ -92,6 +102,7 @@ export function OutstandingByProjectReport({ dealerId }: Props) {
       { header: "Billed", key: "billed", format: "currency" },
       { header: "Paid", key: "paid", format: "currency" },
       { header: "Due", key: "due", format: "currency" },
+      { header: "Overdue", key: "overdue", format: "currency" },
     ], `outstanding-by-project-${new Date().toISOString().split("T")[0]}`);
     toast.success("Exported");
   };
@@ -108,33 +119,57 @@ export function OutstandingByProjectReport({ dealerId }: Props) {
         {isLoading ? <p className="text-muted-foreground">Loading…</p>
         : data.length === 0 ? <p className="text-muted-foreground text-sm">No project outstanding found.</p>
         : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead className="text-right">Billed</TableHead>
-                <TableHead className="text-right">Paid</TableHead>
-                <TableHead className="text-right">Due</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map(r => (
-                <TableRow key={r.project_id}>
-                  <TableCell>
-                    <div className="font-medium">{r.project_name}</div>
-                    <div className="text-xs text-muted-foreground font-mono">{r.project_code}</div>
-                  </TableCell>
-                  <TableCell>{r.customer_name}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(r.billed)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(r.paid)}</TableCell>
-                  <TableCell className={`text-right font-semibold ${r.due > 0 ? "text-destructive" : ""}`}>
-                    {formatCurrency(r.due)}
-                  </TableCell>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+              <div className="rounded-md border bg-muted/30 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total Billed</p>
+                <p className="text-sm font-bold">{formatCurrency(totals.billed)}</p>
+              </div>
+              <div className="rounded-md border bg-muted/30 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total Paid</p>
+                <p className="text-sm font-bold text-green-600">{formatCurrency(totals.paid)}</p>
+              </div>
+              <div className={`rounded-md border px-3 py-2 ${totals.due > 0 ? "border-destructive/30 bg-destructive/5" : "bg-muted/30"}`}>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total Due</p>
+                <p className={`text-sm font-bold ${totals.due > 0 ? "text-destructive" : ""}`}>{formatCurrency(totals.due)}</p>
+              </div>
+              <div className={`rounded-md border px-3 py-2 ${totals.overdue > 0 ? "border-destructive/40 bg-destructive/10" : "bg-muted/30"}`}>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Overdue</p>
+                <p className={`text-sm font-bold ${totals.overdue > 0 ? "text-destructive" : ""}`}>{formatCurrency(totals.overdue)}</p>
+              </div>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Project</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead className="text-right">Billed</TableHead>
+                  <TableHead className="text-right">Paid</TableHead>
+                  <TableHead className="text-right">Due</TableHead>
+                  <TableHead className="text-right">Overdue</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {data.map(r => (
+                  <TableRow key={r.project_id}>
+                    <TableCell>
+                      <div className="font-medium">{r.project_name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{r.project_code}</div>
+                    </TableCell>
+                    <TableCell>{r.customer_name}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.billed)}</TableCell>
+                    <TableCell className="text-right text-green-600">{formatCurrency(r.paid)}</TableCell>
+                    <TableCell className={`text-right font-semibold ${r.due > 0 ? "text-destructive" : ""}`}>
+                      {formatCurrency(r.due)}
+                    </TableCell>
+                    <TableCell className={`text-right font-semibold ${r.overdue > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                      {r.overdue > 0 ? formatCurrency(r.overdue) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
         )}
       </CardContent>
     </Card>
