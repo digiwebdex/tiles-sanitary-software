@@ -242,6 +242,16 @@ const ApprovalsPageContent = () => {
         request={selectedRequest}
         onDecided={handleDecided}
       />
+
+      <ApprovalDetailDialog
+        open={
+          !!selectedRequest &&
+          !(selectedRequest.status === "pending" && isDealerAdmin)
+        }
+        onClose={() => setSelectedRequest(null)}
+        request={selectedRequest}
+        onChanged={handleDecided}
+      />
     </div>
   );
 };
