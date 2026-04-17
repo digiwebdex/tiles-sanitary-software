@@ -157,8 +157,10 @@ export function PurchaseNeedByProductReport({ dealerId }: ReportProps) {
                           <TableCell>{p.brand}</TableCell>
                           <TableCell>{p.unit_type === "box_sft" ? "Box" : "Piece"}</TableCell>
                           <TableCell className="text-center font-semibold text-amber-600">{p.shortage_qty}</TableCell>
-                          <TableCell className="text-center">{p.open_qty}</TableCell>
                           <TableCell className="text-center text-blue-600">{p.planned_qty}</TableCell>
+                          <TableCell className="text-center font-semibold text-amber-700">
+                            {Math.max(0, p.shortage_qty - p.planned_qty - p.fulfilled_qty)}
+                          </TableCell>
                           <TableCell className="text-center font-bold text-primary">{p.suggested_purchase_qty}</TableCell>
                           <TableCell className="text-center">{p.pending_customers}</TableCell>
                           <TableCell className="text-center text-xs text-muted-foreground">
