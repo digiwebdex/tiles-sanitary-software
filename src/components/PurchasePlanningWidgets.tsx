@@ -23,6 +23,7 @@ export function PurchasePlanningWidgets({ dealerId }: Props) {
   if (!data) return null;
 
   const goToReport = () => navigate("/reports?report=purchase-need");
+  const goToProjectReport = () => navigate("/reports?report=purchase-project-site");
 
   return (
     <div className="space-y-3">
