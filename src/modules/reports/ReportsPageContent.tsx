@@ -295,6 +295,8 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "stock-movement": return <StockMovementReport dealerId={dealerId} />;
       case "backorder": return <BackorderReport dealerId={dealerId} />;
       case "pending-fulfillment": return <PendingFulfillmentReport dealerId={dealerId} />;
+      case "ready-for-delivery": return <ReadyForDeliveryReport dealerId={dealerId} />;
+      case "partially-delivered": return <PartiallyDeliveredReport dealerId={dealerId} />;
       case "shortage-demand": return <ShortageDemandReport dealerId={dealerId} />;
       case "customer-pending-delivery": return <CustomerPendingDeliveryReport dealerId={dealerId} />;
       case "batch-stock": return <BatchStockReport dealerId={dealerId} />;
