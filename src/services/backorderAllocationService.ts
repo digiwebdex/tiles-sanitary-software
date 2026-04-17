@@ -298,16 +298,22 @@ export const backorderAllocationService = {
 
   /**
    * Get items currently ready for delivery (allocated in full, not yet delivered).
+   * Ordered by oldest sale first via the parent sales.sale_date.
    */
   async getReadyForDelivery(dealerId: string) {
     const { data, error } = await supabase
       .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, created_at, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name, phone))")
+      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name, phone))")
       .eq("dealer_id", dealerId)
-      .eq("fulfillment_status", "ready_for_delivery")
-      .order("created_at", { ascending: true });
+      .eq("fulfillment_status", "ready_for_delivery");
     if (error) throw new Error(error.message);
-    return data ?? [];
+    const rows = data ?? [];
+    // Sort by parent sale_date ASC (oldest waiting first).
+    return rows.sort((a: any, b: any) => {
+      const da = a.sales?.sale_date ?? "";
+      const db = b.sales?.sale_date ?? "";
+      return da < db ? -1 : da > db ? 1 : 0;
+    });
   },
 
   /**
@@ -316,60 +322,79 @@ export const backorderAllocationService = {
   async getPartiallyDelivered(dealerId: string) {
     const { data, error } = await supabase
       .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, created_at, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name, phone))")
+      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name, phone))")
       .eq("dealer_id", dealerId)
-      .eq("fulfillment_status", "partially_delivered")
-      .order("created_at", { ascending: true });
+      .eq("fulfillment_status", "partially_delivered");
     if (error) throw new Error(error.message);
-    return data ?? [];
+    const rows = data ?? [];
+    return rows.sort((a: any, b: any) => {
+      const da = a.sales?.sale_date ?? "";
+      const db = b.sales?.sale_date ?? "";
+      return da < db ? -1 : da > db ? 1 : 0;
+    });
   },
 
   /**
    * Get the single oldest pending fulfillment line for the "Oldest Pending" widget.
+   * Uses parent sales.sale_date as the waiting reference.
    */
   async getOldestPending(dealerId: string) {
     const { data, error } = await supabase
       .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, created_at, products(name, sku), sales(invoice_number, sale_date, customers(name))")
+      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, products(name, sku), sales(invoice_number, sale_date, customers(name))")
       .eq("dealer_id", dealerId)
-      .in("fulfillment_status", ["pending", "partially_allocated", "partially_delivered"])
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+      .in("fulfillment_status", ["pending", "partially_allocated", "partially_delivered"]);
     if (error) return null;
-    return data ?? null;
+    const rows = data ?? [];
+    if (rows.length === 0) return null;
+    // Pick the row whose parent sale has the earliest sale_date.
+    return rows.reduce((oldest: any, current: any) => {
+      const co = oldest?.sales?.sale_date ?? "9999-12-31";
+      const cc = current?.sales?.sale_date ?? "9999-12-31";
+      return cc < co ? current : oldest;
+    }, rows[0]);
   },
 
   /**
-   * Get dashboard stats for backorder widgets.
+   * Get dashboard stats for backorder/fulfillment widgets.
    */
   async getDashboardStats(dealerId: string) {
     const { data, error } = await supabase
       .from("sale_items")
-      .select("fulfillment_status, backorder_qty, allocated_qty, product_id, sale_id, created_at")
+      .select("fulfillment_status, backorder_qty, allocated_qty, product_id, sale_id, sales(sale_date)")
       .eq("dealer_id", dealerId)
       .neq("fulfillment_status", "in_stock")
       .neq("fulfillment_status", "fulfilled")
       .neq("fulfillment_status", "cancelled");
 
-    if (error) return { totalBackorders: 0, pendingFulfillment: 0, readyForDelivery: 0, partiallyDelivered: 0, oldestPendingDate: null as string | null };
+    if (error) {
+      return {
+        totalBackorders: 0,
+        pendingFulfillment: 0,
+        readyForDelivery: 0,
+        partiallyDelivered: 0,
+        oldestPendingDate: null as string | null,
+      };
+    }
 
-    const items = data ?? [];
-    const totalBackorders = items.filter(i => Number(i.backorder_qty) > 0).length;
-    const pendingFulfillment = items.filter(i => ["pending", "partially_allocated", "partially_delivered"].includes(i.fulfillment_status)).length;
-    const readyForDelivery = items.filter(i => i.fulfillment_status === "ready_for_delivery").length;
-    const partiallyDelivered = items.filter(i => i.fulfillment_status === "partially_delivered").length;
+    const items = (data ?? []) as any[];
+    const totalBackorders = items.filter((i) => Number(i.backorder_qty) > 0).length;
+    const pendingFulfillment = items.filter((i) =>
+      ["pending", "partially_allocated", "partially_delivered"].includes(i.fulfillment_status),
+    ).length;
+    const readyForDelivery = items.filter((i) => i.fulfillment_status === "ready_for_delivery").length;
+    const partiallyDelivered = items.filter((i) => i.fulfillment_status === "partially_delivered").length;
 
-    // Find the oldest pending line's created_at — used for "Oldest Pending" widget.
-    const pendingItems = items.filter(i => ["pending", "partially_allocated", "partially_delivered"].includes(i.fulfillment_status));
-    const oldestPendingDate = pendingItems.length > 0
-      ? pendingItems.reduce((oldest, i) => {
-          const d = (i as any).created_at as string | undefined;
-          if (!d) return oldest;
-          if (!oldest) return d;
-          return new Date(d).getTime() < new Date(oldest).getTime() ? d : oldest;
-        }, null as string | null)
-      : null;
+    // Oldest pending sale_date for the "Oldest Pending" widget.
+    const pendingItems = items.filter((i) =>
+      ["pending", "partially_allocated", "partially_delivered"].includes(i.fulfillment_status),
+    );
+    const oldestPendingDate = pendingItems.reduce((oldest: string | null, i: any) => {
+      const d: string | undefined = i?.sales?.sale_date;
+      if (!d) return oldest;
+      if (!oldest) return d;
+      return d < oldest ? d : oldest;
+    }, null as string | null);
 
     return { totalBackorders, pendingFulfillment, readyForDelivery, partiallyDelivered, oldestPendingDate };
   },
