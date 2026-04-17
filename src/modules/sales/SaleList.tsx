@@ -66,6 +66,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deliverySale, setDeliverySale] = useState<any>(null);
   const [deleteSale, setDeleteSale] = useState<any>(null);
+  const [waSale, setWaSale] = useState<any>(null);
   const [cancelApprovalOpen, setCancelApprovalOpen] = useState(false);
   const [cancelApprovalContext, setCancelApprovalContext] = useState<ApprovalContextData>({});
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -389,6 +390,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
                           onViewInvoice={() => navigate(`/sales/${s.id}/invoice`)}
                           onViewDeliveryStatus={() => navigate(`/deliveries`)}
                           onAddDelivery={() => setDeliverySale(s)}
+                          onSendWhatsApp={() => setWaSale(s)}
                           onEditSale={() => navigate(`/sales/${s.id}/edit`)}
                           onDeleteSale={permissions.canDeleteRecords ? () => setDeleteSale(s) : undefined}
                         />
