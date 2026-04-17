@@ -1695,6 +1695,7 @@ export type Database = {
           purchase_id: string
           purchase_rate: number
           quantity: number
+          shortage_note: string | null
           total: number
           total_sft: number | null
           transport_cost: number
@@ -1711,6 +1712,7 @@ export type Database = {
           purchase_id: string
           purchase_rate: number
           quantity: number
+          shortage_note?: string | null
           total?: number
           total_sft?: number | null
           transport_cost?: number
@@ -1727,6 +1729,7 @@ export type Database = {
           purchase_id?: string
           purchase_rate?: number
           quantity?: number
+          shortage_note?: string | null
           total?: number
           total_sft?: number | null
           transport_cost?: number
@@ -1877,6 +1880,53 @@ export type Database = {
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_shortage_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          id: string
+          link_type: string
+          notes: string | null
+          planned_qty: number
+          purchase_id: string
+          purchase_item_id: string | null
+          sale_item_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          id?: string
+          link_type?: string
+          notes?: string | null
+          planned_qty?: number
+          purchase_id: string
+          purchase_item_id?: string | null
+          sale_item_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          id?: string
+          link_type?: string
+          notes?: string | null
+          planned_qty?: number
+          purchase_id?: string
+          purchase_item_id?: string | null
+          sale_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_shortage_links_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
             referencedColumns: ["id"]
           },
         ]
