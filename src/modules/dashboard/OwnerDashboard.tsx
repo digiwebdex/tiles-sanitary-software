@@ -32,6 +32,7 @@ import { QuotationDashboardWidgets } from "@/components/quotation/QuotationDashb
 import { PricingTierDashboardWidgets } from "@/components/PricingTierDashboardWidgets";
 import { ProjectDashboardWidgets } from "@/components/project/ProjectDashboardWidgets";
 import { PurchasePlanningWidgets } from "@/components/PurchasePlanningWidgets";
+import { CommissionDashboardWidgets } from "@/components/CommissionDashboardWidgets";
 
 interface OwnerDashboardProps {
   dealerId: string;

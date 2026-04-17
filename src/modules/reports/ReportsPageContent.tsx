@@ -88,6 +88,7 @@ import {
   CustomerSiteDemandReport,
 } from "./PurchasePlanningReports";
 import { ProjectSiteShortageReport } from "./ProjectSiteShortageReport";
+import { CommissionLiabilityReport, CommissionBySourceReport } from "./CommissionReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -97,7 +98,7 @@ import {
   Receipt, CalendarDays, Calendar, CreditCard,
   ShoppingCart, DollarSign, Users, History, BookOpen, Clock, TrendingUp,
   ChevronDown, GitBranch, Shield, Lock, ShieldCheck, FileBarChart, UserCheck,
-  FileSignature, Coins, Pencil, Folder, MapPin,
+  FileSignature, Coins, Pencil, Folder, MapPin, Banknote,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -245,6 +246,14 @@ const reportGroups = [
     ],
   },
   {
+    label: "Commissions & Referrals",
+    icon: Coins,
+    items: [
+      { key: "commission-liability", label: "Commission Liability", icon: Banknote },
+      { key: "commission-by-source", label: "By Referral Source", icon: Users },
+    ],
+  },
+  {
     label: "Purchases & Expenses",
     icon: ShoppingCart,
     items: [
@@ -329,6 +338,8 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "purchase-need": return <PurchaseNeedByProductReport dealerId={dealerId} />;
       case "purchase-customer-demand": return <CustomerSiteDemandReport dealerId={dealerId} />;
       case "purchase-project-site": return <ProjectSiteShortageReport dealerId={dealerId} />;
+      case "commission-liability": return <CommissionLiabilityReport dealerId={dealerId} />;
+      case "commission-by-source": return <CommissionBySourceReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
