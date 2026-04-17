@@ -650,9 +650,9 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
       // If batch preview fails, proceed without warning (legacy/unbatched stock)
     }
 
-    // Include reservation selections in submit
+    // Include reservation selections + commission draft in submit
     const hasReservations = Object.values(reservationSelections).some(arr => arr.length > 0);
-    await onSubmit({ ...values, ...flags, ...(hasReservations ? { reservation_selections: reservationSelections } : {}) } as any);
+    await onSubmit({ ...values, ...flags, commission, ...(hasReservations ? { reservation_selections: reservationSelections } : {}) } as any);
   };
 
   const handleBackorderConfirm = async () => {
