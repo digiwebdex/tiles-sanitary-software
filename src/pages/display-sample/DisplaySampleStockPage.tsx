@@ -6,8 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { MonitorSpeaker, Send, Package } from "lucide-react";
+import { MonitorSpeaker, Send, Package, MoreHorizontal, AlertTriangle, Clock } from "lucide-react";
 import {
   displayStockService,
   sampleIssueService,
@@ -16,24 +19,23 @@ import {
 } from "@/services/displayStockService";
 import { MoveToDisplayDialog } from "./MoveToDisplayDialog";
 import { IssueSampleDialog } from "./IssueSampleDialog";
+import { ReturnSampleDialog } from "./ReturnSampleDialog";
+import { MarkLostSampleDialog } from "./MarkLostSampleDialog";
+import { MoveBackToSellableDialog } from "./MoveBackToSellableDialog";
 
 const statusVariant = (s: string): "default" | "secondary" | "destructive" | "outline" => {
   switch (s) {
-    case "issued":
-      return "default";
-    case "partially_returned":
-      return "secondary";
-    case "returned":
-      return "outline";
+    case "issued": return "default";
+    case "partially_returned": return "secondary";
+    case "returned": return "outline";
     case "damaged":
-    case "lost":
-      return "destructive";
-    default:
-      return "outline";
+    case "lost": return "destructive";
+    default: return "outline";
   }
 };
 
-const formatQty = (qty: number, unit?: string) => `${Number(qty).toLocaleString()} ${unit === "piece" ? "pcs" : "box"}`;
+const formatQty = (qty: number, unit?: string) =>
+  `${Number(qty).toLocaleString()} ${unit === "piece" ? "pcs" : "box"}`;
 
 export default function DisplaySampleStockPage() {
   const dealerId = useDealerId();
@@ -42,10 +44,19 @@ export default function DisplaySampleStockPage() {
 
   const [displayRows, setDisplayRows] = useState<DisplayStockRow[]>([]);
   const [samples, setSamples] = useState<SampleIssueRow[]>([]);
-  const [stats, setStats] = useState({ outstandingSamples: 0, totalDisplayQty: 0 });
+  const [stats, setStats] = useState({
+    outstandingSamples: 0,
+    totalDisplayQty: 0,
+    damagedLostCount: 0,
+    oldestOutstandingDays: 0,
+    oldestOutstandingDate: null as string | null,
+  });
   const [loading, setLoading] = useState(true);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
+  const [returnDialog, setReturnDialog] = useState<SampleIssueRow | null>(null);
+  const [lostDialog, setLostDialog] = useState<SampleIssueRow | null>(null);
+  const [displayActionRow, setDisplayActionRow] = useState<DisplayStockRow | null>(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -70,6 +81,9 @@ export default function DisplaySampleStockPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealerId]);
 
+  const isOutstanding = (s: SampleIssueRow) =>
+    s.status === "issued" || s.status === "partially_returned";
+
   return (
     <div className="container mx-auto max-w-6xl space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -92,35 +106,47 @@ export default function DisplaySampleStockPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Display Items</CardTitle>
+            <CardTitle className="text-xs font-medium">Display Items</CardTitle>
             <MonitorSpeaker className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalDisplayQty.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Units currently on showroom display</p>
+            <p className="text-xs text-muted-foreground">On showroom display</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Outstanding Samples</CardTitle>
+            <CardTitle className="text-xs font-medium">Pending Returns</CardTitle>
             <Send className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.outstandingSamples}</div>
-            <p className="text-xs text-muted-foreground">Issued samples awaiting return</p>
+            <p className="text-xs text-muted-foreground">Samples awaiting return</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Sample Records</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-xs font-medium">Damaged / Lost</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{samples.length}</div>
-            <p className="text-xs text-muted-foreground">All-time sample issues</p>
+            <div className="text-2xl font-bold">{stats.damagedLostCount}</div>
+            <p className="text-xs text-muted-foreground">Samples written off</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-xs font-medium">Oldest Outstanding</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {stats.oldestOutstandingDays > 0 ? `${stats.oldestOutstandingDays}d` : "—"}
+            </div>
+            <p className="text-xs text-muted-foreground">{stats.oldestOutstandingDate ?? "None"}</p>
           </CardContent>
         </Card>
       </div>
@@ -142,19 +168,20 @@ export default function DisplaySampleStockPage() {
                     <TableHead className="text-right">Display Qty</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead>Last Updated</TableHead>
+                    {canMove && <TableHead className="w-[60px]"></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <TableCell colSpan={canMove ? 6 : 5} className="text-center text-muted-foreground">
                         Loading…
                       </TableCell>
                     </TableRow>
                   )}
                   {!loading && displayRows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <TableCell colSpan={canMove ? 6 : 5} className="text-center text-muted-foreground">
                         No display stock yet. Use “Move to Display” to add items.
                       </TableCell>
                     </TableRow>
@@ -170,6 +197,13 @@ export default function DisplaySampleStockPage() {
                       <TableCell className="text-sm text-muted-foreground">
                         {new Date(r.updated_at).toLocaleDateString()}
                       </TableCell>
+                      {canMove && (
+                        <TableCell>
+                          <Button variant="ghost" size="sm" onClick={() => setDisplayActionRow(r)}>
+                            Manage
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -188,25 +222,19 @@ export default function DisplaySampleStockPage() {
                     <TableHead>Product</TableHead>
                     <TableHead>Recipient</TableHead>
                     <TableHead>Type</TableHead>
+                    <TableHead>Expected Return</TableHead>
                     <TableHead className="text-right">Issued</TableHead>
                     <TableHead className="text-right">Returned</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="w-[60px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
-                        Loading…
-                      </TableCell>
-                    </TableRow>
+                    <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">Loading…</TableCell></TableRow>
                   )}
                   {!loading && samples.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
-                        No samples issued yet.
-                      </TableCell>
-                    </TableRow>
+                    <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">No samples issued yet.</TableCell></TableRow>
                   )}
                   {samples.map((s) => (
                     <TableRow key={s.id}>
@@ -222,6 +250,7 @@ export default function DisplaySampleStockPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-sm capitalize">{s.recipient_type}</TableCell>
+                      <TableCell className="text-sm">{s.expected_return_date ?? "—"}</TableCell>
                       <TableCell className="text-right font-mono">
                         {formatQty(s.quantity, s.product?.unit_type)}
                       </TableCell>
@@ -230,6 +259,25 @@ export default function DisplaySampleStockPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={statusVariant(s.status)}>{s.status.replace("_", " ")}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {isOutstanding(s) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setReturnDialog(s)}>
+                                Return Sample
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setLostDialog(s)} className="text-destructive">
+                                Mark Lost
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -249,6 +297,27 @@ export default function DisplaySampleStockPage() {
       <IssueSampleDialog
         open={issueDialogOpen}
         onOpenChange={setIssueDialogOpen}
+        dealerId={dealerId}
+        onSuccess={refresh}
+      />
+      <ReturnSampleDialog
+        open={!!returnDialog}
+        onOpenChange={(o) => !o && setReturnDialog(null)}
+        sample={returnDialog}
+        dealerId={dealerId}
+        onSuccess={refresh}
+      />
+      <MarkLostSampleDialog
+        open={!!lostDialog}
+        onOpenChange={(o) => !o && setLostDialog(null)}
+        sample={lostDialog}
+        dealerId={dealerId}
+        onSuccess={refresh}
+      />
+      <MoveBackToSellableDialog
+        open={!!displayActionRow}
+        onOpenChange={(o) => !o && setDisplayActionRow(null)}
+        row={displayActionRow}
         dealerId={dealerId}
         onSuccess={refresh}
       />

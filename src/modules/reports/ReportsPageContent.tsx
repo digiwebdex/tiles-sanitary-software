@@ -89,6 +89,13 @@ import {
 } from "./PurchasePlanningReports";
 import { ProjectSiteShortageReport } from "./ProjectSiteShortageReport";
 import { CommissionLiabilityReport, CommissionBySourceReport } from "./CommissionReports";
+import {
+  DisplayStockReport,
+  IssuedSampleReport,
+  ReturnedSampleReport,
+  DamagedLostSampleReport,
+  SampleOutstandingReport,
+} from "./DisplaySampleReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -98,7 +105,7 @@ import {
   Receipt, CalendarDays, Calendar, CreditCard,
   ShoppingCart, DollarSign, Users, History, BookOpen, Clock, TrendingUp,
   ChevronDown, GitBranch, Shield, Lock, ShieldCheck, FileBarChart, UserCheck,
-  FileSignature, Coins, Pencil, Folder, MapPin, Banknote,
+  FileSignature, Coins, Pencil, Folder, MapPin, Banknote, MonitorSpeaker, Send, PackageCheck as PackageCheck2,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -251,6 +258,17 @@ const reportGroups = [
     items: [
       { key: "commission-liability", label: "Commission Liability", icon: Banknote },
       { key: "commission-by-source", label: "By Referral Source", icon: Users },
+    ],
+  },
+  {
+    label: "Display & Samples",
+    icon: MonitorSpeaker,
+    items: [
+      { key: "display-stock-report", label: "Display Stock", icon: MonitorSpeaker },
+      { key: "issued-samples", label: "Issued Samples", icon: Send },
+      { key: "returned-samples", label: "Returned Samples", icon: PackageCheck2 },
+      { key: "damaged-lost-samples", label: "Damaged / Lost", icon: AlertTriangle },
+      { key: "outstanding-samples", label: "Sample Outstanding", icon: Clock },
     ],
   },
   {
