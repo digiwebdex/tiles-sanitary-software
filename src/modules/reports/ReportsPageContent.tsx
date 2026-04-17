@@ -114,6 +114,7 @@ import {
   FastMovingReport,
   IncomingCoverageReport,
   DemandByGroupReport,
+  ProjectDemandReport,
 } from "./DemandPlanningReports";
 import { cn } from "@/lib/utils";
 import {
@@ -316,6 +317,7 @@ const reportGroups = [
       { key: "demand-fast", label: "Fast Moving", icon: TrendingUp },
       { key: "demand-incoming", label: "Incoming vs Demand", icon: Truck },
       { key: "demand-by-group", label: "By Category / Brand / Size", icon: Layers },
+      { key: "demand-projects", label: "Project / Site Demand", icon: Folder },
     ],
   },
   {
@@ -425,6 +427,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "demand-fast": return <FastMovingReport dealerId={dealerId} />;
       case "demand-incoming": return <IncomingCoverageReport dealerId={dealerId} />;
       case "demand-by-group": return <DemandByGroupReport dealerId={dealerId} />;
+      case "demand-projects": return <ProjectDemandReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
