@@ -450,11 +450,11 @@ async function getDemandRows(dealerId: string): Promise<DemandRow[]> {
     const reserved = reservedMap.get(p.id) ?? 0;
     const shortage = shortageMap.get(p.id) ?? 0;
     const incoming = incomingMap.get(p.id) ?? 0;
-    const sales = salesMap.get(p.id) ?? { sold30: 0, sold90: 0, lastSale: null };
+    const sales = salesMap.get(p.id) ?? { sold30: 0, sold60: 0, sold90: 0, lastSale: null };
 
     const c = classify(
       p, total, reserved, shortage, incoming,
-      sales.sold30, sales.sold90, sales.lastSale, settings,
+      sales.sold30, sales.sold60, sales.sold90, sales.lastSale, settings,
     );
 
     return {
@@ -476,14 +476,17 @@ async function getDemandRows(dealerId: string): Promise<DemandRow[]> {
       coverage_status: c.coverage_status,
       coverage_ratio: c.coverage_ratio,
       sold_30d: sales.sold30,
+      sold_60d: sales.sold60,
       sold_90d: sales.sold90,
       velocity_per_day: Math.round(c.velocity * 100) / 100,
+      velocity_trend: c.velocity_trend,
       days_of_cover: c.cover === null ? null : Math.round(c.cover * 10) / 10,
       last_sale_date: sales.lastSale,
       days_since_last_sale: daysBetween(sales.lastSale),
       suggested_reorder_qty: c.suggested,
       flags: c.flags,
       primary_flag: pickPrimaryFlag(c.flags),
+      flag_reasons: c.reasons,
     };
   });
 }
