@@ -3461,6 +3461,77 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_message_logs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          error_message: string | null
+          failed_at: string | null
+          id: string
+          message_text: string
+          message_type: Database["public"]["Enums"]["whatsapp_message_type"]
+          payload_snapshot: Json
+          provider: string
+          provider_message_id: string | null
+          recipient_name: string | null
+          recipient_phone: string
+          sent_at: string | null
+          source_id: string | null
+          source_type: string
+          status: Database["public"]["Enums"]["whatsapp_message_status"]
+          template_key: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          error_message?: string | null
+          failed_at?: string | null
+          id?: string
+          message_text: string
+          message_type: Database["public"]["Enums"]["whatsapp_message_type"]
+          payload_snapshot?: Json
+          provider?: string
+          provider_message_id?: string | null
+          recipient_name?: string | null
+          recipient_phone: string
+          sent_at?: string | null
+          source_id?: string | null
+          source_type: string
+          status?: Database["public"]["Enums"]["whatsapp_message_status"]
+          template_key?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          error_message?: string | null
+          failed_at?: string | null
+          id?: string
+          message_text?: string
+          message_type?: Database["public"]["Enums"]["whatsapp_message_type"]
+          payload_snapshot?: Json
+          provider?: string
+          provider_message_id?: string | null
+          recipient_name?: string | null
+          recipient_phone?: string
+          sent_at?: string | null
+          source_id?: string | null
+          source_type?: string
+          status?: Database["public"]["Enums"]["whatsapp_message_status"]
+          template_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_message_logs_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -3651,6 +3722,13 @@ export type Database = {
       subscription_status: "active" | "expired" | "suspended"
       unit_type: "box_sft" | "piece"
       user_status: "active" | "inactive" | "suspended"
+      whatsapp_message_status: "pending" | "manual_handoff" | "sent" | "failed"
+      whatsapp_message_type:
+        | "quotation_share"
+        | "invoice_share"
+        | "payment_receipt"
+        | "overdue_reminder"
+        | "delivery_update"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3843,6 +3921,14 @@ export const Constants = {
       subscription_status: ["active", "expired", "suspended"],
       unit_type: ["box_sft", "piece"],
       user_status: ["active", "inactive", "suspended"],
+      whatsapp_message_status: ["pending", "manual_handoff", "sent", "failed"],
+      whatsapp_message_type: [
+        "quotation_share",
+        "invoice_share",
+        "payment_receipt",
+        "overdue_reminder",
+        "delivery_update",
+      ],
     },
   },
 } as const
