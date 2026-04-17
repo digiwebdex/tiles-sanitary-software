@@ -992,6 +992,59 @@ export type Database = {
           },
         ]
       }
+      demand_planning_settings: {
+        Row: {
+          created_at: string
+          dead_stock_days: number
+          dealer_id: string
+          fast_moving_30d_qty: number
+          incoming_window_days: number
+          reorder_cover_days: number
+          safety_stock_days: number
+          slow_moving_30d_max: number
+          stockout_cover_days: number
+          target_cover_days: number
+          updated_at: string
+          velocity_window_days: number
+        }
+        Insert: {
+          created_at?: string
+          dead_stock_days?: number
+          dealer_id: string
+          fast_moving_30d_qty?: number
+          incoming_window_days?: number
+          reorder_cover_days?: number
+          safety_stock_days?: number
+          slow_moving_30d_max?: number
+          stockout_cover_days?: number
+          target_cover_days?: number
+          updated_at?: string
+          velocity_window_days?: number
+        }
+        Update: {
+          created_at?: string
+          dead_stock_days?: number
+          dealer_id?: string
+          fast_moving_30d_qty?: number
+          incoming_window_days?: number
+          reorder_cover_days?: number
+          safety_stock_days?: number
+          slow_moving_30d_max?: number
+          stockout_cover_days?: number
+          target_cover_days?: number
+          updated_at?: string
+          velocity_window_days?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demand_planning_settings_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: true
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       display_movements: {
         Row: {
           created_at: string

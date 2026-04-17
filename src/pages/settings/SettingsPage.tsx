@@ -14,6 +14,7 @@ import { Settings, AlertTriangle, Package, ShieldCheck, Calculator, Tags, ArrowR
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/usePermissions";
 import { ApprovalSettingsCard } from "@/components/approval/ApprovalSettingsCard";
+import { DemandPlanningSettingsCard } from "@/components/DemandPlanningSettingsCard";
 
 const SettingsPage = () => {
   const { isDealerAdmin } = usePermissions();
@@ -235,6 +236,9 @@ const SettingsPage = () => {
 
           {/* Approval Workflow */}
           <ApprovalSettingsCard />
+
+          {/* Demand Planning Thresholds */}
+          <DemandPlanningSettingsCard />
         </>
       )}
     </div>
