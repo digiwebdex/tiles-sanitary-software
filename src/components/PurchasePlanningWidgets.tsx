@@ -33,23 +33,23 @@ export function PurchasePlanningWidgets({ dealerId }: Props) {
       <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={goToReport}>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Products Short</CardTitle>
-            <Package className="h-4 w-4 text-amber-600" />
+            <CardTitle className="text-xs font-medium text-muted-foreground">Open Shortages</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent>
-            <p className="text-lg font-bold text-foreground">{data.totalProductsShort}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">need restocking</p>
+            <p className="text-lg font-bold text-foreground">{data.openCount}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">unplanned lines</p>
           </CardContent>
         </Card>
 
         <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={goToReport}>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Total Shortage</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <CardTitle className="text-xs font-medium text-muted-foreground">Planned Need</CardTitle>
+            <Package className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <p className="text-lg font-bold text-foreground">{data.totalShortageUnits}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">units pending</p>
+            <p className="text-lg font-bold text-foreground">{data.plannedCount}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">linked to purchase</p>
           </CardContent>
         </Card>
 
