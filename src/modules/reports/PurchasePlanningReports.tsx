@@ -54,6 +54,11 @@ export function PurchaseNeedByProductReport({ dealerId }: ReportProps) {
 
   const totalShortage = (products ?? []).reduce((s, p) => s + p.shortage_qty, 0);
   const totalSuggested = (products ?? []).reduce((s, p) => s + p.suggested_purchase_qty, 0);
+  const totalPlanned = (products ?? []).reduce((s, p) => s + p.planned_qty, 0);
+  const totalUncovered = (products ?? []).reduce(
+    (s, p) => s + Math.max(0, p.shortage_qty - p.planned_qty - p.fulfilled_qty),
+    0,
+  );
 
   const selectedRows = useMemo(
     () => allCustomerRows.filter((r) => selectedSaleItemIds.has(r.sale_item_id)),
@@ -81,11 +86,12 @@ export function PurchaseNeedByProductReport({ dealerId }: ReportProps) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
         <SummaryTile label="Products Short" value={String(products?.length ?? 0)} icon={Package} />
-        <SummaryTile label="Total Shortage Qty" value={String(totalShortage)} icon={ArrowRight} accent="warning" />
-        <SummaryTile label="Suggested Purchase" value={String(totalSuggested)} icon={Package} accent="primary" />
-        <SummaryTile label="Pending Lines" value={String((products ?? []).reduce((s, p) => s + p.pending_lines, 0))} icon={Users} />
+        <SummaryTile label="Total Shortage" value={String(totalShortage)} icon={ArrowRight} accent="warning" />
+        <SummaryTile label="Planned Incoming" value={String(totalPlanned)} icon={ShoppingCart} accent="primary" />
+        <SummaryTile label="Net Uncovered" value={String(totalUncovered)} icon={Package} accent="warning" />
+        <SummaryTile label="Suggested Buy" value={String(totalSuggested)} icon={Package} accent="primary" />
       </div>
 
       <Card>
@@ -120,8 +126,8 @@ export function PurchaseNeedByProductReport({ dealerId }: ReportProps) {
                     <TableHead>Brand</TableHead>
                     <TableHead>Unit</TableHead>
                     <TableHead className="text-center">Shortage</TableHead>
-                    <TableHead className="text-center">Open</TableHead>
-                    <TableHead className="text-center">Planned</TableHead>
+                    <TableHead className="text-center">Planned In</TableHead>
+                    <TableHead className="text-center">Net Uncovered</TableHead>
                     <TableHead className="text-center">Suggested</TableHead>
                     <TableHead className="text-center">Customers</TableHead>
                     <TableHead className="text-center">Oldest</TableHead>
@@ -151,8 +157,10 @@ export function PurchaseNeedByProductReport({ dealerId }: ReportProps) {
                           <TableCell>{p.brand}</TableCell>
                           <TableCell>{p.unit_type === "box_sft" ? "Box" : "Piece"}</TableCell>
                           <TableCell className="text-center font-semibold text-amber-600">{p.shortage_qty}</TableCell>
-                          <TableCell className="text-center">{p.open_qty}</TableCell>
                           <TableCell className="text-center text-blue-600">{p.planned_qty}</TableCell>
+                          <TableCell className="text-center font-semibold text-amber-700">
+                            {Math.max(0, p.shortage_qty - p.planned_qty - p.fulfilled_qty)}
+                          </TableCell>
                           <TableCell className="text-center font-bold text-primary">{p.suggested_purchase_qty}</TableCell>
                           <TableCell className="text-center">{p.pending_customers}</TableCell>
                           <TableCell className="text-center text-xs text-muted-foreground">

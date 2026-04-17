@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { LinkedShortagesPanel } from "@/components/LinkedShortagesPanel";
+import { useDealerId } from "@/hooks/useDealerId";
 
 // TODO: Replace with actual role from auth context
 const TEMP_SHOW_OFFER = true;
@@ -21,6 +23,7 @@ const TEMP_SHOW_OFFER = true;
 const ViewPurchasePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const dealerId = useDealerId();
 
   const { data: purchase, isLoading } = useQuery({
     queryKey: ["purchase", id],
@@ -108,6 +111,8 @@ const ViewPurchasePage = () => {
           </TableBody>
         </Table>
       </div>
+
+      {dealerId && id && <LinkedShortagesPanel dealerId={dealerId} purchaseId={id} />}
     </div>
   );
 };

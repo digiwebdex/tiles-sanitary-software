@@ -555,4 +555,83 @@ export const purchasePlanningService = {
 
     return { purchase_id: purchase.id };
   },
+
+  /**
+   * For ViewPurchase: list shortage rows that this purchase is covering.
+   * Read-only — no stock or ledger side effect.
+   */
+  async linksForPurchase(dealerId: string, purchaseId: string): Promise<Array<{
+    link_id: string;
+    sale_item_id: string;
+    planned_qty: number;
+    link_type: string;
+    notes: string | null;
+    product_id: string;
+    product_name: string;
+    product_sku: string;
+    unit_type: string;
+    customer_name: string;
+    invoice_number: string | null;
+    sale_date: string | null;
+    project_name: string | null;
+    site_name: string | null;
+    backorder_qty: number;
+    allocated_qty: number;
+    status: ShortageStatus;
+  }>> {
+    const { data: links, error } = await supabase
+      .from("purchase_shortage_links" as any)
+      .select("id, sale_item_id, planned_qty, link_type, notes")
+      .eq("dealer_id", dealerId)
+      .eq("purchase_id", purchaseId);
+    if (error) throw new Error(error.message);
+    const linkRows = (links ?? []) as unknown as Array<{
+      id: string; sale_item_id: string; planned_qty: number; link_type: string; notes: string | null;
+    }>;
+    if (linkRows.length === 0) return [];
+
+    const saleItemIds = Array.from(new Set(linkRows.map((l) => l.sale_item_id)));
+    const { data: items } = await supabase
+      .from("sale_items")
+      .select(`
+        id, product_id, backorder_qty, allocated_qty,
+        products(name, sku, unit_type),
+        sales(
+          invoice_number, sale_date,
+          customers(name),
+          projects(project_name),
+          project_sites!sales_site_id_fkey(site_name)
+        )
+      `)
+      .eq("dealer_id", dealerId)
+      .in("id", saleItemIds);
+
+    const byId = new Map<string, any>();
+    for (const it of (items ?? []) as any[]) byId.set(it.id, it);
+
+    return linkRows.map((l) => {
+      const it = byId.get(l.sale_item_id);
+      const bo = Number(it?.backorder_qty) || 0;
+      const al = Number(it?.allocated_qty) || 0;
+      return {
+        link_id: l.id,
+        sale_item_id: l.sale_item_id,
+        planned_qty: Number(l.planned_qty) || 0,
+        link_type: l.link_type,
+        notes: l.notes,
+        product_id: it?.product_id ?? "",
+        product_name: it?.products?.name ?? "—",
+        product_sku: it?.products?.sku ?? "",
+        unit_type: it?.products?.unit_type ?? "piece",
+        customer_name: it?.sales?.customers?.name ?? "—",
+        invoice_number: it?.sales?.invoice_number ?? null,
+        sale_date: it?.sales?.sale_date ?? null,
+        project_name: it?.sales?.projects?.project_name ?? null,
+        site_name: it?.sales?.project_sites?.site_name ?? null,
+        backorder_qty: bo,
+        allocated_qty: al,
+        status: deriveStatus(bo, al, Number(l.planned_qty) || 0),
+      };
+    });
+  },
 };
