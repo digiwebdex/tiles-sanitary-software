@@ -78,6 +78,26 @@ function ReportShell({
   columns: Column[];
 }) {
   const handleExport = () => {
+    const columnsDef = [
+      { key: "SKU", header: "SKU" },
+      { key: "Product", header: "Product" },
+      { key: "Brand", header: "Brand" },
+      { key: "Category", header: "Category" },
+      { key: "Free", header: "Free", format: "number" as const },
+      { key: "Total", header: "Total", format: "number" as const },
+      { key: "Reserved", header: "Reserved", format: "number" as const },
+      { key: "Reorder_Level", header: "Reorder Level", format: "number" as const },
+      { key: "Sold_30d", header: "Sold 30d", format: "number" as const },
+      { key: "Sold_90d", header: "Sold 90d", format: "number" as const },
+      { key: "Velocity_PerDay", header: "Velocity / day", format: "number" as const },
+      { key: "Days_Of_Cover", header: "Days Cover" },
+      { key: "Open_Shortage", header: "Open Shortage", format: "number" as const },
+      { key: "Incoming_30d", header: "Incoming 30d", format: "number" as const },
+      { key: "Suggested_Reorder", header: "Suggested Qty", format: "number" as const },
+      { key: "Last_Sale", header: "Last Sale" },
+      { key: "Days_Since_Sale", header: "Days Since Sale" },
+      { key: "Flag", header: "Flag" },
+    ];
     exportToExcel(
       rows.map((r) => ({
         SKU: r.sku, Product: r.name, Brand: r.brand ?? "—",
@@ -93,6 +113,7 @@ function ReportShell({
         Days_Since_Sale: r.days_since_last_sale ?? "—",
         Flag: r.primary_flag,
       })),
+      columnsDef,
       exportName,
     );
   };
