@@ -54,6 +54,11 @@ export function PurchaseNeedByProductReport({ dealerId }: ReportProps) {
 
   const totalShortage = (products ?? []).reduce((s, p) => s + p.shortage_qty, 0);
   const totalSuggested = (products ?? []).reduce((s, p) => s + p.suggested_purchase_qty, 0);
+  const totalPlanned = (products ?? []).reduce((s, p) => s + p.planned_qty, 0);
+  const totalUncovered = (products ?? []).reduce(
+    (s, p) => s + Math.max(0, p.shortage_qty - p.planned_qty - p.fulfilled_qty),
+    0,
+  );
 
   const selectedRows = useMemo(
     () => allCustomerRows.filter((r) => selectedSaleItemIds.has(r.sale_item_id)),
