@@ -345,10 +345,10 @@ export function SupplierLeadTimeReport({ dealerId }: Props) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
-          <Clock className="h-4 w-4" /> Supplier Supply Cadence
+          <Clock className="h-4 w-4" /> Supplier Lead Time / Cadence
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Average days between consecutive purchases — a practical proxy for supplier responsiveness.
+          Average days between consecutive purchases. A gap is flagged "delayed" when it exceeds the supplier's own median cadence × 1.5 (with a 7-day floor).
         </p>
       </CardHeader>
       <CardContent>
@@ -365,8 +365,12 @@ export function SupplierLeadTimeReport({ dealerId }: Props) {
                 <TableRow>
                   <TableHead>Supplier</TableHead>
                   <TableHead className="text-right">Purchases</TableHead>
-                  <TableHead className="text-right">Avg Gap (days)</TableHead>
-                  <TableHead className="text-right">Last Purchase</TableHead>
+                  <TableHead className="text-right">Avg Gap</TableHead>
+                  <TableHead className="text-right">Last Gap</TableHead>
+                  <TableHead className="text-right">Longest Gap</TableHead>
+                  <TableHead className="text-right">On-Time</TableHead>
+                  <TableHead className="text-right">Delayed</TableHead>
+                  <TableHead className="text-right">Delayed %</TableHead>
                   <TableHead className="text-right">Days Since</TableHead>
                 </TableRow>
               </TableHeader>
@@ -378,11 +382,85 @@ export function SupplierLeadTimeReport({ dealerId }: Props) {
                     <TableCell className="text-right font-semibold">
                       {r.avg_days_between_purchases}d
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {r.last_purchase_date ?? "—"}
+                    <TableCell className="text-right">
+                      {r.last_gap_days !== null ? `${r.last_gap_days}d` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {r.longest_gap_days !== null ? `${r.longest_gap_days}d` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">{r.on_time_count}</TableCell>
+                    <TableCell className={`text-right ${r.delayed_count > 0 ? "text-amber-700 font-medium" : "text-muted-foreground"}`}>
+                      {r.delayed_count}
+                    </TableCell>
+                    <TableCell className={`text-right font-semibold ${r.delayed_pct > 30 ? "text-destructive" : ""}`}>
+                      {r.delayed_pct}%
                     </TableCell>
                     <TableCell className={`text-right ${(r.days_since_last_purchase ?? 0) > 90 ? "text-destructive font-medium" : ""}`}>
                       {r.days_since_last_purchase !== null ? `${r.days_since_last_purchase}d` : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─── Suppliers with High Return Rate (Batch 2) ───────────── */
+export function HighReturnSuppliersReport({ dealerId }: Props) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["supplier-performance", dealerId],
+    queryFn: () => supplierPerformanceService.list(dealerId),
+    enabled: !!dealerId,
+  });
+
+  const rows = (data ?? [])
+    .filter((s) => s.return_rate_pct >= 5)
+    .sort((a, b) => b.return_rate_pct - a.return_rate_pct);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-destructive" /> Suppliers with High Return Rate (≥5%)
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Suppliers whose return value crosses 5% of their total purchase value — review quality or terms.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8">No suppliers with high return rate. Clean run.</p>
+        ) : (
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead>Band</TableHead>
+                  <TableHead className="text-right">Returns</TableHead>
+                  <TableHead className="text-right">Return Value</TableHead>
+                  <TableHead className="text-right">Return Rate %</TableHead>
+                  <TableHead className="text-right">Total Purchases</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.supplier_id}>
+                    <TableCell className="font-medium">{r.supplier_name}</TableCell>
+                    <TableCell><ReliabilityBadge band={r.reliability_band} /></TableCell>
+                    <TableCell className="text-right">{r.total_returns}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.total_return_value)}</TableCell>
+                    <TableCell className="text-right font-semibold text-destructive">
+                      {r.return_rate_pct.toFixed(2)}%
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {formatCurrency(r.total_purchase_value)}
                     </TableCell>
                   </TableRow>
                 ))}
