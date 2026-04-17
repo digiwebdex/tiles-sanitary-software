@@ -62,6 +62,12 @@ function useFiltered(rows: DemandRow[] | undefined, flag: DemandFlag, search: st
   }, [rows, flag, search]);
 }
 
+interface Column {
+  header: string;
+  key?: keyof DemandRow;
+  render?: (r: DemandRow) => React.ReactNode;
+}
+
 function ReportShell({
   title, subtitle, rows, exportName, columns,
 }: {
@@ -69,7 +75,7 @@ function ReportShell({
   subtitle: string;
   rows: DemandRow[];
   exportName: string;
-  columns: { header: string; key: keyof DemandRow | "primary_flag"; render?: (r: DemandRow) => React.ReactNode }[];
+  columns: Column[];
 }) {
   const handleExport = () => {
     exportToExcel(
@@ -122,7 +128,11 @@ function ReportShell({
                 <TableRow key={r.product_id}>
                   {columns.map((c) => (
                     <TableCell key={c.header}>
-                      {c.render ? c.render(r) : String(r[c.key as keyof DemandRow] ?? "—")}
+                      {c.render
+                        ? c.render(r)
+                        : c.key
+                          ? String(r[c.key] ?? "—")
+                          : "—"}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -146,16 +156,16 @@ function SearchBar({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-const COMMON_COLS = (extra: { header: string; render: (r: DemandRow) => React.ReactNode }[] = []) => [
-  { header: "SKU", key: "sku" as const, render: (r: DemandRow) => <span className="font-mono text-xs">{r.sku}</span> },
-  { header: "Product", key: "name" as const, render: (r: DemandRow) => (
+const COMMON_COLS = (extra: Column[] = []): Column[] => [
+  { header: "SKU", render: (r: DemandRow) => <span className="font-mono text-xs">{r.sku}</span> },
+  { header: "Product", render: (r: DemandRow) => (
     <div>
       <div className="font-medium">{r.name}</div>
       <div className="text-xs text-muted-foreground">{r.brand ?? "—"} · {r.category}</div>
     </div>
   ) },
-  { header: "Free", key: "free_stock" as const },
-  { header: "Reserved", key: "reserved_stock" as const },
+  { header: "Free", render: (r) => r.free_stock },
+  { header: "Reserved", render: (r) => r.reserved_stock },
   ...extra,
 ];
 
