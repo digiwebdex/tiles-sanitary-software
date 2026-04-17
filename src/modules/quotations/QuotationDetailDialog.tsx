@@ -1,8 +1,8 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Printer, X, GitBranch, ShoppingCart, ExternalLink } from "lucide-react";
+import { Printer, X, GitBranch, ShoppingCart, ExternalLink, MessageCircle } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import { useDealerId } from "@/hooks/useDealerId";
 import QuotationDocument from "@/components/quotation/QuotationDocument";
 import { QuotationStatusBadge } from "@/components/quotation/QuotationStatusBadge";
 import { formatCurrency, parseLocalDate } from "@/lib/utils";
+import SendWhatsAppDialog from "@/components/whatsapp/SendWhatsAppDialog";
+import { buildQuotationMessage } from "@/services/whatsappService";
 
 interface Props {
   quotationId: string;
@@ -34,6 +36,7 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
   const dealerId = useDealerId();
   const qc = useQueryClient();
   const { data: dealerInfo } = useDealerInfo();
+  const [waOpen, setWaOpen] = useState(false);
 
   const { data: quotation } = useQuery({
     queryKey: ["quotation", quotationId],
@@ -174,6 +177,14 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
                 <ShoppingCart className="h-4 w-4 mr-1" /> Convert to Sale
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWaOpen(true)}
+              disabled={!quotation}
+            >
+              <MessageCircle className="h-4 w-4 mr-1" /> WhatsApp
+            </Button>
             <Button variant="outline" size="sm" onClick={handlePrint} disabled={!quotation}>
               <Printer className="h-4 w-4 mr-1" /> Print
             </Button>
@@ -278,6 +289,45 @@ const QuotationDetailDialog = ({ quotationId, open, onOpenChange }: Props) => {
           )}
         </div>
       </DialogContent>
+
+      {quotation && (
+        <SendWhatsAppDialog
+          open={waOpen}
+          onOpenChange={setWaOpen}
+          dealerId={dealerId}
+          messageType="quotation_share"
+          sourceType="quotation"
+          sourceId={quotation.id}
+          templateKey="quotation_share_v1"
+          defaultPhone={
+            quotation.customers?.phone ??
+            quotation.customer_phone_text ??
+            ""
+          }
+          defaultName={
+            quotation.customers?.name ??
+            quotation.customer_name_text ??
+            null
+          }
+          defaultMessage={buildQuotationMessage({
+            dealerName: dealerInfo?.name ?? "Our Store",
+            customerName:
+              quotation.customers?.name ?? quotation.customer_name_text ?? null,
+            quotationNo: formatQuotationDisplayNo(quotation),
+            totalAmount: Number(quotation.total_amount ?? 0),
+            validUntil: quotation.valid_until
+              ? fmtDate(quotation.valid_until)
+              : null,
+            itemCount: items.length,
+          })}
+          payloadSnapshot={{
+            quotation_no: formatQuotationDisplayNo(quotation),
+            total: Number(quotation.total_amount ?? 0),
+            items: items.length,
+          }}
+          title="Share Quotation via WhatsApp"
+        />
+      )}
     </Dialog>
   );
 };

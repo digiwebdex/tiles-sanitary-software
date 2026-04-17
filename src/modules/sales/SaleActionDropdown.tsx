@@ -4,7 +4,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Eye, FileText, CreditCard, Truck, Pencil, Trash2, MoreHorizontal,
+  Eye, FileText, CreditCard, Truck, Pencil, Trash2, MoreHorizontal, MessageCircle,
 } from "lucide-react";
 
 export interface SaleActionHandlers {
@@ -18,14 +18,16 @@ export interface SaleActionHandlers {
   onViewDeliveryStatus: () => void;
   onAddDelivery: () => void;
   onEditSale: () => void;
-  onDeleteSale: () => void;
+  onDeleteSale?: () => void;
+  /** Optional: open WhatsApp share dialog. Hidden when omitted. */
+  onSendWhatsApp?: () => void;
 }
 
 const SaleActionDropdown = (props: SaleActionHandlers) => {
   const {
     hasPaid, hasDelivery, isDelivered,
     onViewSale, onAddPayment, onViewInvoice, onViewDeliveryStatus,
-    onAddDelivery, onEditSale, onDeleteSale,
+    onAddDelivery, onEditSale, onDeleteSale, onSendWhatsApp,
   } = props;
 
   const canEdit = !hasPaid && !isDelivered;
@@ -48,6 +50,11 @@ const SaleActionDropdown = (props: SaleActionHandlers) => {
         <DropdownMenuItem onClick={onViewInvoice}>
           <FileText className="mr-2 h-4 w-4" /> View Invoice
         </DropdownMenuItem>
+        {onSendWhatsApp && (
+          <DropdownMenuItem onClick={onSendWhatsApp}>
+            <MessageCircle className="mr-2 h-4 w-4" /> Send via WhatsApp
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={onViewDeliveryStatus}>
           <Truck className="mr-2 h-4 w-4" /> Delivery Status
         </DropdownMenuItem>
@@ -60,14 +67,16 @@ const SaleActionDropdown = (props: SaleActionHandlers) => {
         <DropdownMenuItem onClick={onEditSale} disabled={!canEdit} className={!canEdit ? "opacity-50" : ""}>
           <Pencil className="mr-2 h-4 w-4" /> {canEdit ? "Edit Sale" : "Edit (Locked)"}
         </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!canDelete}
-          className={!canDelete ? "opacity-50" : "text-destructive focus:text-destructive"}
-          onClick={() => { if (canDelete) onDeleteSale(); }}
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          {canDelete ? "Delete Sale" : "Cannot Delete"}
-        </DropdownMenuItem>
+        {onDeleteSale && (
+          <DropdownMenuItem
+            disabled={!canDelete}
+            className={!canDelete ? "opacity-50" : "text-destructive focus:text-destructive"}
+            onClick={() => { if (canDelete) onDeleteSale(); }}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {canDelete ? "Delete Sale" : "Cannot Delete"}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
