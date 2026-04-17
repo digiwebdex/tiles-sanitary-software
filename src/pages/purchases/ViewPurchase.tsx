@@ -23,6 +23,7 @@ const TEMP_SHOW_OFFER = true;
 const ViewPurchasePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const dealerId = useDealerId();
 
   const { data: purchase, isLoading } = useQuery({
     queryKey: ["purchase", id],
