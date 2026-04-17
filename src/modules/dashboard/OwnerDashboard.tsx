@@ -901,8 +901,20 @@ function BackorderSummarySection({ dealerId, navigate }: { dealerId: string; nav
     enabled: !!dealerId,
   });
 
-  const total = (backorderStats?.totalBackorders ?? 0) + (backorderStats?.pendingFulfillment ?? 0) + (backorderStats?.readyForDelivery ?? 0);
+  const total =
+    (backorderStats?.totalBackorders ?? 0) +
+    (backorderStats?.pendingFulfillment ?? 0) +
+    (backorderStats?.readyForDelivery ?? 0);
   if (total === 0) return null;
+
+  // Compute waiting days for the "Oldest Pending" widget.
+  const oldestDate = backorderStats?.oldestPendingDate ?? null;
+  let oldestDaysLabel = "—";
+  if (oldestDate) {
+    const diffMs = Date.now() - new Date(oldestDate).getTime();
+    const days = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+    oldestDaysLabel = `${days} day${days === 1 ? "" : "s"}`;
+  }
 
   return (
     <Section title="Backorder & Fulfillment">
@@ -934,6 +946,28 @@ function BackorderSummarySection({ dealerId, navigate }: { dealerId: string; nav
         <CardContent>
           <p className="text-lg font-bold text-blue-600">{backorderStats?.readyForDelivery ?? 0}</p>
           <p className="text-xs text-muted-foreground mt-0.5">Allocated, awaiting dispatch</p>
+        </CardContent>
+      </Card>
+      <Card className="cursor-pointer hover:border-primary/50 transition-colors border-orange-300/50" onClick={() => navigate("/reports")}>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-xs font-medium text-muted-foreground">Partially Delivered</CardTitle>
+          <Package className="h-4 w-4 text-orange-500" />
+        </CardHeader>
+        <CardContent>
+          <p className="text-lg font-bold text-orange-500">{backorderStats?.partiallyDelivered ?? 0}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Some shipped, more pending</p>
+        </CardContent>
+      </Card>
+      <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate("/reports")}>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-xs font-medium text-muted-foreground">Oldest Pending</CardTitle>
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+        </CardHeader>
+        <CardContent>
+          <p className="text-lg font-bold text-destructive">{oldestDaysLabel}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {oldestDate ? `Since ${oldestDate}` : "Nothing waiting"}
+          </p>
         </CardContent>
       </Card>
     </Section>

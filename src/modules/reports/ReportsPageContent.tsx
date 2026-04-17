@@ -166,6 +166,8 @@ const reportGroups = [
     items: [
       { key: "backorder", label: "Backorder Report", icon: AlertTriangle },
       { key: "pending-fulfillment", label: "Pending Fulfillment", icon: Clock },
+      { key: "ready-for-delivery", label: "Ready for Delivery", icon: Package },
+      { key: "partially-delivered", label: "Partially Delivered", icon: Package },
       { key: "shortage-demand", label: "Shortage Demand", icon: Tags },
       { key: "customer-pending-delivery", label: "Customer Pending", icon: Users },
     ],
