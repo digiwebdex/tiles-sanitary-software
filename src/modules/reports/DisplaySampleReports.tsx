@@ -386,6 +386,17 @@ export function SampleOutstandingReport({ dealerId }: Props) {
         DaysOut: s.daysOut,
         Overdue: s.overdue ? "YES" : "",
       })),
+      [
+        { header: "Issue Date", key: "IssueDate" },
+        { header: "Product", key: "Product" },
+        { header: "SKU", key: "SKU" },
+        { header: "Recipient", key: "Recipient" },
+        { header: "Type", key: "Type" },
+        { header: "Outstanding", key: "Outstanding", format: "number" },
+        { header: "Expected Return", key: "ExpectedReturn" },
+        { header: "Days Out", key: "DaysOut", format: "number" },
+        { header: "Overdue", key: "Overdue" },
+      ],
       "sample-outstanding"
     );
 
