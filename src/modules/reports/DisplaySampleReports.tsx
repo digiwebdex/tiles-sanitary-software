@@ -60,6 +60,13 @@ export function DisplayStockReport({ dealerId }: Props) {
         Notes: r.notes ?? "",
         LastUpdated: r.updated_at?.slice(0, 10),
       })),
+      [
+        { header: "Product", key: "Product" },
+        { header: "SKU", key: "SKU" },
+        { header: "Display Qty", key: "DisplayQty", format: "number" },
+        { header: "Notes", key: "Notes" },
+        { header: "Last Updated", key: "LastUpdated" },
+      ],
       "display-stock"
     );
 
@@ -238,6 +245,23 @@ function SampleRowsTable({ rows }: { rows: SampleIssueRow[] }) {
   );
 }
 
+const SAMPLE_COLS = [
+  { header: "Issue Date", key: "IssueDate" },
+  { header: "Product", key: "Product" },
+  { header: "SKU", key: "SKU" },
+  { header: "Recipient", key: "Recipient" },
+  { header: "Phone", key: "Phone" },
+  { header: "Type", key: "Type" },
+  { header: "Issued", key: "Issued", format: "number" as const },
+  { header: "Returned", key: "Returned", format: "number" as const },
+  { header: "Damaged", key: "Damaged", format: "number" as const },
+  { header: "Lost", key: "Lost", format: "number" as const },
+  { header: "Expected Return", key: "ExpectedReturn" },
+  { header: "Returned Date", key: "ReturnedDate" },
+  { header: "Status", key: "Status" },
+  { header: "Notes", key: "Notes" },
+];
+
 const sampleExport = (rows: SampleIssueRow[], filename: string) =>
   exportToExcel(
     rows.map((s) => ({
@@ -256,6 +280,7 @@ const sampleExport = (rows: SampleIssueRow[], filename: string) =>
       Status: s.status,
       Notes: s.notes ?? "",
     })),
+    SAMPLE_COLS,
     filename
   );
 
