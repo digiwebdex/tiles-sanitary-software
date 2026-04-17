@@ -85,6 +85,7 @@ import {
   PurchaseNeedByProductReport,
   CustomerSiteDemandReport,
 } from "./PurchasePlanningReports";
+import { ProjectSiteShortageReport } from "./ProjectSiteShortageReport";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
