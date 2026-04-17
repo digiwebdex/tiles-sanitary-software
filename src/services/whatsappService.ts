@@ -151,23 +151,28 @@ export const whatsappService = {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id ?? null;
 
+    const row = {
+      dealer_id: input.dealer_id,
+      message_type: input.message_type,
+      source_type: input.source_type,
+      source_id: input.source_id,
+      recipient_phone: input.recipient_phone,
+      recipient_name: input.recipient_name ?? null,
+      template_key: input.template_key ?? null,
+      message_text: input.message_text,
+      payload_snapshot: (input.payload_snapshot ?? {}) as unknown as Database["public"]["Tables"]["whatsapp_message_logs"]["Insert"]["payload_snapshot"],
+      status: input.status ?? "manual_handoff",
+      provider: "wa_click_to_chat",
+      sent_at:
+        input.status === "sent" || !input.status
+          ? new Date().toISOString()
+          : null,
+      created_by: userId,
+    };
+
     const { data, error } = await supabase
       .from("whatsapp_message_logs")
-      .insert({
-        dealer_id: input.dealer_id,
-        message_type: input.message_type,
-        source_type: input.source_type,
-        source_id: input.source_id,
-        recipient_phone: input.recipient_phone,
-        recipient_name: input.recipient_name ?? null,
-        template_key: input.template_key ?? null,
-        message_text: input.message_text,
-        payload_snapshot: input.payload_snapshot ?? {},
-        status: input.status ?? "manual_handoff",
-        provider: "wa_click_to_chat",
-        sent_at: input.status === "sent" || !input.status ? new Date().toISOString() : null,
-        created_by: userId,
-      })
+      .insert(row)
       .select("*")
       .single();
 
