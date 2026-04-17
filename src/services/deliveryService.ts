@@ -358,5 +358,17 @@ export const deliveryService = {
         .eq("id", saleId)
         .eq("dealer_id", dealerId);
     }
+
+    // BUSINESS RULE: commission becomes "earned" only after the sale is fully delivered.
+    // Promote the linked commission row (if any) at exactly this transition.
+    if (newSaleStatus === "delivered") {
+      try {
+        const { saleCommissionService } = await import("@/services/commissionService");
+        await saleCommissionService.promoteToEarnedIfFullyDelivered(saleId, dealerId);
+      } catch (e) {
+        // Non-fatal — delivery flow must succeed even if commission promotion fails.
+        console.warn("Commission promotion on full delivery skipped:", e);
+      }
+    }
   },
 };
