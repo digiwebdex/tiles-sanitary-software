@@ -205,6 +205,59 @@ export const displayStockService = {
       new_data: { product_id: productId, quantity, notes },
     });
   },
+
+  /**
+   * Replace damaged display unit with new sellable stock.
+   * Net effect: -N sellable, display_qty unchanged (1 damaged out, 1 fresh in).
+   */
+  async replaceDisplay(
+    productId: string,
+    quantity: number,
+    dealerId: string,
+    notes?: string
+  ) {
+    if (quantity <= 0) throw new Error("Quantity must be positive");
+
+    await stockService.deductStock(productId, quantity, dealerId);
+
+    const row = await getOrCreateDisplayRow(productId, dealerId);
+    const { error } = await supabase
+      .from("display_stock")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+
+    const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+    await supabase.from("display_movements").insert({
+      dealer_id: dealerId,
+      product_id: productId,
+      movement_type: "display_replaced",
+      quantity,
+      notes: notes ?? null,
+      created_by: userId,
+    });
+
+    await logAudit({
+      dealer_id: dealerId,
+      action: "display_replaced",
+      table_name: "display_stock",
+      record_id: row.id,
+      new_data: { product_id: productId, quantity, notes },
+    });
+  },
+
+  /**
+   * Display movement history (audit trail) for a dealer.
+   */
+  async listMovements(dealerId: string) {
+    const { data, error } = await supabase
+      .from("display_movements")
+      .select("*, product:products(name, sku, unit_type)")
+      .eq("dealer_id", dealerId)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  },
 };
 
 export const sampleIssueService = {
@@ -277,13 +330,183 @@ export const sampleIssueService = {
   },
 
   /**
-   * Aggregate stats: outstanding samples, total display items.
+   * Return a sample (or part of it).
+   *
+   * Business rules:
+   *   - return_to = "sellable"  → restock to sellable inventory
+   *   - return_to = "display"   → put unit(s) on showroom display
+   *   - return_to = "damaged"   → mark damaged, no stock restoration
+   *
+   * Sets status:
+   *   - returned         (returned_qty + damaged_qty + lost_qty == quantity)
+   *   - partially_returned (otherwise, when any return_qty > 0)
+   */
+  async returnSample(input: {
+    sample_id: string;
+    dealer_id: string;
+    return_qty: number;
+    return_to: "sellable" | "display" | "damaged";
+    notes?: string;
+  }): Promise<SampleIssueRow> {
+    if (input.return_qty <= 0) throw new Error("Return quantity must be positive");
+
+    const { data: sample, error: fetchErr } = await supabase
+      .from("sample_issues")
+      .select("*")
+      .eq("id", input.sample_id)
+      .eq("dealer_id", input.dealer_id)
+      .single();
+    if (fetchErr || !sample) throw new Error("Sample not found");
+    if (sample.status === "returned" || sample.status === "lost")
+      throw new Error(`Sample is already ${sample.status}`);
+
+    const remaining =
+      Number(sample.quantity) -
+      Number(sample.returned_qty) -
+      Number(sample.damaged_qty) -
+      Number(sample.lost_qty);
+    if (input.return_qty > remaining)
+      throw new Error(`Cannot return ${input.return_qty} — only ${remaining} outstanding`);
+
+    // Apply stock movement based on return condition
+    if (input.return_to === "sellable") {
+      await stockService.addStock(sample.product_id, input.return_qty, input.dealer_id);
+    } else if (input.return_to === "display") {
+      const row = await getOrCreateDisplayRow(sample.product_id, input.dealer_id);
+      const { error } = await supabase
+        .from("display_stock")
+        .update({
+          display_qty: Number(row.display_qty) + input.return_qty,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+      if (error) throw new Error(`Display stock update failed: ${error.message}`);
+
+      const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+      await supabase.from("display_movements").insert({
+        dealer_id: input.dealer_id,
+        product_id: sample.product_id,
+        movement_type: "to_display",
+        quantity: input.return_qty,
+        notes: `Sample return → display: ${input.notes ?? ""}`,
+        created_by: userId,
+      });
+    }
+    // "damaged" → no stock restoration; just record on sample row
+
+    // Update sample counters and status
+    const newReturned =
+      input.return_to === "damaged"
+        ? Number(sample.returned_qty)
+        : Number(sample.returned_qty) + input.return_qty;
+    const newDamaged =
+      input.return_to === "damaged"
+        ? Number(sample.damaged_qty) + input.return_qty
+        : Number(sample.damaged_qty);
+
+    const totalSettled = newReturned + newDamaged + Number(sample.lost_qty);
+    const newStatus: SampleStatus =
+      totalSettled >= Number(sample.quantity) ? "returned" : "partially_returned";
+
+    const { data: updated, error: updErr } = await supabase
+      .from("sample_issues")
+      .update({
+        returned_qty: newReturned,
+        damaged_qty: newDamaged,
+        status: newStatus,
+        returned_date:
+          newStatus === "returned" ? new Date().toISOString().slice(0, 10) : sample.returned_date,
+        notes: input.notes
+          ? `${sample.notes ? sample.notes + "\n" : ""}[Return ${input.return_to}] ${input.notes}`
+          : sample.notes,
+      })
+      .eq("id", input.sample_id)
+      .select("*, product:products(name, sku, unit_type), customer:customers(name)")
+      .single();
+    if (updErr) throw new Error(updErr.message);
+
+    await logAudit({
+      dealer_id: input.dealer_id,
+      action: `sample_return_${input.return_to}`,
+      table_name: "sample_issues",
+      record_id: input.sample_id,
+      old_data: { status: sample.status, returned_qty: sample.returned_qty, damaged_qty: sample.damaged_qty },
+      new_data: { return_qty: input.return_qty, return_to: input.return_to, new_status: newStatus, notes: input.notes },
+    });
+
+    return updated as SampleIssueRow;
+  },
+
+  /**
+   * Mark a sample as fully lost (or partially lost).
+   * No stock restoration. Requires a reason.
+   */
+  async markSampleLost(input: {
+    sample_id: string;
+    dealer_id: string;
+    lost_qty: number;
+    reason: string;
+  }): Promise<SampleIssueRow> {
+    if (input.lost_qty <= 0) throw new Error("Lost quantity must be positive");
+    if (!input.reason.trim()) throw new Error("Reason is required for lost samples");
+
+    const { data: sample, error: fetchErr } = await supabase
+      .from("sample_issues")
+      .select("*")
+      .eq("id", input.sample_id)
+      .eq("dealer_id", input.dealer_id)
+      .single();
+    if (fetchErr || !sample) throw new Error("Sample not found");
+
+    const remaining =
+      Number(sample.quantity) -
+      Number(sample.returned_qty) -
+      Number(sample.damaged_qty) -
+      Number(sample.lost_qty);
+    if (input.lost_qty > remaining)
+      throw new Error(`Cannot mark ${input.lost_qty} lost — only ${remaining} outstanding`);
+
+    const newLost = Number(sample.lost_qty) + input.lost_qty;
+    const totalSettled = Number(sample.returned_qty) + Number(sample.damaged_qty) + newLost;
+    const newStatus: SampleStatus =
+      totalSettled >= Number(sample.quantity)
+        ? newLost === Number(sample.quantity)
+          ? "lost"
+          : "returned"
+        : "partially_returned";
+
+    const { data: updated, error: updErr } = await supabase
+      .from("sample_issues")
+      .update({
+        lost_qty: newLost,
+        status: newStatus,
+        notes: `${sample.notes ? sample.notes + "\n" : ""}[Lost] ${input.reason}`,
+      })
+      .eq("id", input.sample_id)
+      .select("*, product:products(name, sku, unit_type), customer:customers(name)")
+      .single();
+    if (updErr) throw new Error(updErr.message);
+
+    await logAudit({
+      dealer_id: input.dealer_id,
+      action: "sample_marked_lost",
+      table_name: "sample_issues",
+      record_id: input.sample_id,
+      old_data: { lost_qty: sample.lost_qty, status: sample.status },
+      new_data: { lost_qty: input.lost_qty, reason: input.reason, new_status: newStatus },
+    });
+
+    return updated as SampleIssueRow;
+  },
+
+  /**
+   * Aggregate stats for dashboard widgets.
    */
   async getDashboardStats(dealerId: string) {
     const [{ data: samples }, { data: display }] = await Promise.all([
       supabase
         .from("sample_issues")
-        .select("status, quantity, returned_qty, damaged_qty, lost_qty")
+        .select("status, quantity, returned_qty, damaged_qty, lost_qty, issue_date, expected_return_date")
         .eq("dealer_id", dealerId),
       supabase
         .from("display_stock")
@@ -291,12 +514,36 @@ export const sampleIssueService = {
         .eq("dealer_id", dealerId),
     ]);
 
-    const outstandingSamples = (samples ?? []).filter((s) =>
-      s.status === "issued" || s.status === "partially_returned"
-    ).length;
+    const outstanding = (samples ?? []).filter(
+      (s) => s.status === "issued" || s.status === "partially_returned"
+    );
 
     const totalDisplayQty = (display ?? []).reduce((sum, d) => sum + Number(d.display_qty), 0);
 
-    return { outstandingSamples, totalDisplayQty };
+    const damagedLostCount = (samples ?? []).filter(
+      (s) =>
+        s.status === "damaged" ||
+        s.status === "lost" ||
+        Number(s.damaged_qty) > 0 ||
+        Number(s.lost_qty) > 0
+    ).length;
+
+    // Oldest outstanding sample (by issue_date)
+    const oldest = outstanding
+      .slice()
+      .sort((a, b) => (a.issue_date < b.issue_date ? -1 : 1))[0];
+
+    const today = new Date();
+    const oldestDays = oldest
+      ? Math.floor((today.getTime() - new Date(oldest.issue_date).getTime()) / 86400000)
+      : 0;
+
+    return {
+      outstandingSamples: outstanding.length,
+      totalDisplayQty,
+      damagedLostCount,
+      oldestOutstandingDays: oldestDays,
+      oldestOutstandingDate: oldest?.issue_date ?? null,
+    };
   },
 };
