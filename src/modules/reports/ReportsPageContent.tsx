@@ -41,6 +41,8 @@ import {
   PendingFulfillmentReport,
   ShortageDemandReport,
   CustomerPendingDeliveryReport,
+  ReadyForDeliveryReport,
+  PartiallyDeliveredReport,
 } from "./BackorderReports";
 import {
   BatchStockReport,
