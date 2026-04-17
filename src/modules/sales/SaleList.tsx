@@ -30,6 +30,9 @@ import {
 } from "@/services/approvalService";
 import { ApprovalRequestDialog } from "@/components/approval/ApprovalRequestDialog";
 import { ProjectSiteFilter } from "@/components/project/ProjectSiteFilter";
+import SendWhatsAppDialog from "@/components/whatsapp/SendWhatsAppDialog";
+import { buildInvoiceMessage } from "@/services/whatsappService";
+import { useDealerInfo } from "@/hooks/useDealerInfo";
 
 interface SaleListProps {
   dealerId: string;
@@ -73,6 +76,7 @@ const SaleList = ({ dealerId }: SaleListProps) => {
   const [siteId, setSiteId] = useState<string | null>(null);
   const permissions = usePermissions();
   const queryClient = useQueryClient();
+  const { data: dealerInfoForWa } = useDealerInfo();
 
   const { data: approvalSettings } = useQuery({
     queryKey: ["approval-settings", dealerId],
@@ -421,6 +425,35 @@ const SaleList = ({ dealerId }: SaleListProps) => {
           title="Cancel & Delete Sale"
           description={`This will cancel sale "${deleteSale?.invoice_number ?? ""}", reverse all stock changes, and remove ledger entries. This action cannot be undone.`}
           onConfirm={() => { if (deleteSale) deleteMutation.mutate(deleteSale.id); }}
+        />
+      )}
+
+      {waSale && (
+        <SendWhatsAppDialog
+          open={!!waSale}
+          onOpenChange={(o) => { if (!o) setWaSale(null); }}
+          dealerId={dealerId}
+          messageType="invoice_share"
+          sourceType="sale"
+          sourceId={waSale.id}
+          templateKey="invoice_share_v1"
+          defaultPhone={waSale.customer_phone ?? waSale.customers?.phone ?? ""}
+          defaultName={waSale.customers?.name ?? waSale.customer_name ?? null}
+          defaultMessage={buildInvoiceMessage({
+            dealerName: dealerInfoForWa?.name ?? "Our Store",
+            customerName: waSale.customers?.name ?? waSale.customer_name ?? null,
+            invoiceNo: waSale.invoice_number ?? "",
+            totalAmount: Number(waSale.total_amount ?? 0),
+            paidAmount: Number(waSale.paid_amount ?? 0),
+            dueAmount: Number(waSale.due_amount ?? 0),
+            saleDate: waSale.sale_date ?? null,
+          })}
+          payloadSnapshot={{
+            invoice_no: waSale.invoice_number,
+            total: Number(waSale.total_amount ?? 0),
+            due: Number(waSale.due_amount ?? 0),
+          }}
+          title="Share Invoice via WhatsApp"
         />
       )}
     </div>

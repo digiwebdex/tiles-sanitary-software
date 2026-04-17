@@ -52,6 +52,7 @@ import EditQuotation from "./pages/quotations/EditQuotation";
 import ProjectsPage from "./pages/projects/ProjectsPage";
 import ReferralSourcesPage from "./pages/referrals/ReferralSourcesPage";
 import DisplaySampleStockPage from "./pages/display-sample/DisplaySampleStockPage";
+import WhatsAppLogsPage from "./pages/whatsapp/WhatsAppLogsPage";
 
 // Super Admin
 import SuperAdminLayout from "./pages/super-admin/SuperAdminLayout";
@@ -161,6 +162,7 @@ const App = () => (
             <Route path="/projects" element={<ProtectedRoute><AppLayout><ProjectsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/referrals" element={<ProtectedRoute><AppLayout><ReferralSourcesPage /></AppLayout></ProtectedRoute>} />
             <Route path="/display-sample" element={<ProtectedRoute><AppLayout><DisplaySampleStockPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/whatsapp-logs" element={<ProtectedRoute><AppLayout><WhatsAppLogsPage /></AppLayout></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>
