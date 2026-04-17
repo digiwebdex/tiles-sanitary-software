@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
 import { useDealerId } from "@/hooks/useDealerId";
 import SaleInvoiceDocument from "@/components/sale/SaleInvoiceDocument";
+import SaleCommissionPanel from "@/components/sale/SaleCommissionPanel";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 
@@ -188,22 +189,25 @@ const InvoicePage = () => {
 
       {/* Invoice paper */}
       <div className="no-print min-h-screen bg-muted/40 py-6 px-4">
-        <div id="invoice-print-area" className="mx-auto max-w-3xl bg-background shadow-lg rounded-lg overflow-hidden border">
-          <SaleInvoiceDocument
-            sale={sale}
-            items={items}
-            customer={customer}
-            subtotal={subtotal}
-            totalAmount={totalAmount}
-            discountAmount={discountAmount}
-            paidAmount={paidAmount}
-            dueAmount={dueAmount}
-            isDealerAdmin={isDealerAdmin}
-            dealerInfo={dealerInfo}
-            salesReturns={salesReturns}
-            project={projectSite?.project ?? null}
-            site={projectSite?.site ?? null}
-          />
+        <div className="mx-auto max-w-3xl space-y-3">
+          <div id="invoice-print-area" className="bg-background shadow-lg rounded-lg overflow-hidden border">
+            <SaleInvoiceDocument
+              sale={sale}
+              items={items}
+              customer={customer}
+              subtotal={subtotal}
+              totalAmount={totalAmount}
+              discountAmount={discountAmount}
+              paidAmount={paidAmount}
+              dueAmount={dueAmount}
+              isDealerAdmin={isDealerAdmin}
+              dealerInfo={dealerInfo}
+              salesReturns={salesReturns}
+              project={projectSite?.project ?? null}
+              site={projectSite?.site ?? null}
+            />
+          </div>
+          {id && <SaleCommissionPanel saleId={id} />}
         </div>
       </div>
 

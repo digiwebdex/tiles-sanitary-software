@@ -2209,6 +2209,62 @@ export type Database = {
           },
         ]
       }
+      referral_sources: {
+        Row: {
+          active: boolean
+          created_at: string
+          dealer_id: string
+          default_commission_type:
+            | Database["public"]["Enums"]["commission_type"]
+            | null
+          default_commission_value: number | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          source_type: Database["public"]["Enums"]["referral_source_type"]
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          dealer_id: string
+          default_commission_type?:
+            | Database["public"]["Enums"]["commission_type"]
+            | null
+          default_commission_value?: number | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          source_type?: Database["public"]["Enums"]["referral_source_type"]
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          dealer_id?: string
+          default_commission_type?:
+            | Database["public"]["Enums"]["commission_type"]
+            | null
+          default_commission_value?: number | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          source_type?: Database["public"]["Enums"]["referral_source_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_sources_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restore_logs: {
         Row: {
           app_name: string
@@ -2267,6 +2323,85 @@ export type Database = {
             columns: ["backup_log_id"]
             isOneToOne: false
             referencedRelation: "backup_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sale_commissions: {
+        Row: {
+          calculated_commission_amount: number
+          commission_base_amount: number
+          commission_type: Database["public"]["Enums"]["commission_type"]
+          commission_value: number
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          id: string
+          notes: string | null
+          payable_at: string | null
+          referral_source_id: string
+          sale_id: string
+          settled_amount: number
+          settled_at: string | null
+          status: Database["public"]["Enums"]["commission_status"]
+          updated_at: string
+        }
+        Insert: {
+          calculated_commission_amount?: number
+          commission_base_amount?: number
+          commission_type?: Database["public"]["Enums"]["commission_type"]
+          commission_value?: number
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          id?: string
+          notes?: string | null
+          payable_at?: string | null
+          referral_source_id: string
+          sale_id: string
+          settled_amount?: number
+          settled_at?: string | null
+          status?: Database["public"]["Enums"]["commission_status"]
+          updated_at?: string
+        }
+        Update: {
+          calculated_commission_amount?: number
+          commission_base_amount?: number
+          commission_type?: Database["public"]["Enums"]["commission_type"]
+          commission_value?: number
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          id?: string
+          notes?: string | null
+          payable_at?: string | null
+          referral_source_id?: string
+          sale_id?: string
+          settled_amount?: number
+          settled_at?: string | null
+          status?: Database["public"]["Enums"]["commission_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_commissions_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_commissions_referral_source_id_fkey"
+            columns: ["referral_source_id"]
+            isOneToOne: false
+            referencedRelation: "referral_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_commissions_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: true
+            referencedRelation: "sales"
             referencedColumns: ["id"]
           },
         ]
@@ -3187,6 +3322,13 @@ export type Database = {
         | "stock_adjustment"
         | "sale_cancel"
         | "reservation_release"
+      commission_status:
+        | "pending"
+        | "earned"
+        | "settled"
+        | "cancelled"
+        | "adjusted"
+      commission_type: "percent" | "fixed"
       customer_type: "retailer" | "customer" | "project"
       ledger_entry_type:
         | "sale"
@@ -3200,6 +3342,13 @@ export type Database = {
       payment_method_type: "cash" | "bank" | "mobile_banking"
       payment_status_type: "paid" | "partial" | "pending"
       product_category: "tiles" | "sanitary"
+      referral_source_type:
+        | "salesman"
+        | "architect"
+        | "contractor"
+        | "mason"
+        | "fitter"
+        | "other"
       subscription_status: "active" | "expired" | "suspended"
       unit_type: "box_sft" | "piece"
       user_status: "active" | "inactive" | "suspended"
@@ -3342,6 +3491,14 @@ export const Constants = {
         "sale_cancel",
         "reservation_release",
       ],
+      commission_status: [
+        "pending",
+        "earned",
+        "settled",
+        "cancelled",
+        "adjusted",
+      ],
+      commission_type: ["percent", "fixed"],
       customer_type: ["retailer", "customer", "project"],
       ledger_entry_type: [
         "sale",
@@ -3356,6 +3513,14 @@ export const Constants = {
       payment_method_type: ["cash", "bank", "mobile_banking"],
       payment_status_type: ["paid", "partial", "pending"],
       product_category: ["tiles", "sanitary"],
+      referral_source_type: [
+        "salesman",
+        "architect",
+        "contractor",
+        "mason",
+        "fitter",
+        "other",
+      ],
       subscription_status: ["active", "expired", "suspended"],
       unit_type: ["box_sft", "piece"],
       user_status: ["active", "inactive", "suspended"],

@@ -2,9 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDealerId } from "@/hooks/useDealerId";
 import { salesService } from "@/services/salesService";
+import { saleCommissionService } from "@/services/commissionService";
 import SaleForm from "@/modules/sales/SaleForm";
 import type { SaleFormValues } from "@/modules/sales/saleSchema";
 import type { SaleItemInput } from "@/services/salesService";
+import type { SaleCommissionDraft } from "@/components/sale/SaleCommissionSection";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,8 +23,14 @@ const EditSalePage = () => {
     enabled: !!id,
   });
 
+  const { data: existingCommission } = useQuery({
+    queryKey: ["sale-commission", id],
+    queryFn: () => saleCommissionService.getForSale(id!),
+    enabled: !!id,
+  });
+
   const mutation = useMutation({
-    mutationFn: async (values: SaleFormValues) => {
+    mutationFn: async (values: SaleFormValues & { commission?: SaleCommissionDraft | null }) => {
       await salesService.update(id!, {
         dealer_id: dealerId,
         customer_name: values.customer_name,
@@ -35,10 +43,30 @@ const EditSalePage = () => {
         notes: values.notes,
         items: values.items as SaleItemInput[],
       });
+      // Sync commission
+      const subtotal = (values.items ?? []).reduce(
+        (s, it: any) => s + Number(it.quantity || 0) * Number(it.sale_rate || 0),
+        0,
+      );
+      const base = Math.max(0, subtotal - Number(values.discount || 0));
+      if (values.commission && values.commission.referral_source_id) {
+        await saleCommissionService.upsert({
+          dealer_id: dealerId,
+          sale_id: id!,
+          referral_source_id: values.commission.referral_source_id,
+          commission_type: values.commission.commission_type,
+          commission_value: values.commission.commission_value,
+          commission_base_amount: base,
+          notes: values.commission.notes ?? null,
+        });
+      } else if (existingCommission) {
+        await saleCommissionService.removeForSale(id!, dealerId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["sale", id] });
+      queryClient.invalidateQueries({ queryKey: ["sale-commission", id] });
       queryClient.invalidateQueries({ queryKey: ["stock"] });
       toast.success("Invoice updated successfully");
       navigate(`/sales/${id}/invoice`);
@@ -69,6 +97,15 @@ const EditSalePage = () => {
     items: saleItems,
   };
 
+  const defaultCommission: SaleCommissionDraft | null = existingCommission
+    ? {
+        referral_source_id: existingCommission.referral_source_id,
+        commission_type: existingCommission.commission_type,
+        commission_value: Number(existingCommission.commission_value),
+        notes: existingCommission.notes ?? undefined,
+      }
+    : null;
+
   return (
     <div className="container mx-auto max-w-4xl space-y-4 p-6">
       <div className="flex items-center gap-2">
@@ -80,9 +117,10 @@ const EditSalePage = () => {
       </div>
       <SaleForm
         dealerId={dealerId}
-        onSubmit={async (v) => { await mutation.mutateAsync(v); }}
+        onSubmit={async (v) => { await mutation.mutateAsync(v as any); }}
         isLoading={mutation.isPending}
         defaultValues={defaultValues}
+        defaultCommission={defaultCommission}
         submitLabel="Update Invoice"
         priceLocked={Number(sale.paid_amount) > 0}
       />

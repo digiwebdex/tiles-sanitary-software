@@ -3,9 +3,11 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useDealerId } from "@/hooks/useDealerId";
 import { salesService } from "@/services/salesService";
 import { quotationService } from "@/services/quotationService";
+import { saleCommissionService } from "@/services/commissionService";
 import SaleForm from "@/modules/sales/SaleForm";
 import type { SaleFormValues } from "@/modules/sales/saleSchema";
 import type { SaleItemInput } from "@/services/salesService";
+import type { SaleCommissionDraft } from "@/components/sale/SaleCommissionSection";
 import { toast } from "sonner";
 import { ArrowLeft, FileSignature } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +32,7 @@ const CreateSalePage = () => {
   const fromQuotation = !!prefill.quotation_id;
 
   const mutation = useMutation({
-    mutationFn: async (values: SaleFormValues & { allow_backorder?: boolean; reservation_selections?: Record<string, Array<{ reservation_id: string; consume_qty: number }>> }) => {
+    mutationFn: async (values: SaleFormValues & { allow_backorder?: boolean; reservation_selections?: Record<string, Array<{ reservation_id: string; consume_qty: number }>>; commission?: SaleCommissionDraft | null }) => {
       const result = await salesService.create({
         dealer_id: dealerId,
         customer_name: values.customer_name,
@@ -53,8 +55,28 @@ const CreateSalePage = () => {
         try {
           await quotationService.linkToSale(prefill.quotation_id, result.id, dealerId);
         } catch (e) {
-          // Don't block the sale; surface a soft warning
           toast.warning("Sale created, but failed to mark quotation as converted: " + (e as Error).message);
+        }
+      }
+      // Persist optional commission
+      if (values.commission && values.commission.referral_source_id && result?.id) {
+        const subtotal = (values.items ?? []).reduce(
+          (s, it: any) => s + Number(it.quantity || 0) * Number(it.sale_rate || 0),
+          0,
+        );
+        const base = Math.max(0, subtotal - Number(values.discount || 0));
+        try {
+          await saleCommissionService.upsert({
+            dealer_id: dealerId,
+            sale_id: result.id,
+            referral_source_id: values.commission.referral_source_id,
+            commission_type: values.commission.commission_type,
+            commission_value: values.commission.commission_value,
+            commission_base_amount: base,
+            notes: values.commission.notes ?? null,
+          });
+        } catch (e) {
+          toast.warning("Sale saved, but commission could not be recorded: " + (e as Error).message);
         }
       }
       return { id: result!.id, sale_type: values.sale_type };

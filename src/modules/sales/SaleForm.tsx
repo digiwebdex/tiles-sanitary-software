@@ -49,6 +49,7 @@ import {
   type ApprovalType,
 } from "@/services/approvalService";
 import { ApprovalRequestDialog } from "@/components/approval/ApprovalRequestDialog";
+import SaleCommissionSection, { type SaleCommissionDraft } from "@/components/sale/SaleCommissionSection";
 
 interface StockShortageItem {
   product_name: string;
@@ -60,15 +61,18 @@ interface StockShortageItem {
 
 interface SaleFormProps {
   dealerId: string;
-  onSubmit: (values: SaleFormValues & { allow_backorder?: boolean; reservation_selections?: Record<string, Array<{ reservation_id: string; consume_qty: number }>> }) => Promise<void>;
+  onSubmit: (values: SaleFormValues & { allow_backorder?: boolean; reservation_selections?: Record<string, Array<{ reservation_id: string; consume_qty: number }>>; commission?: SaleCommissionDraft | null }) => Promise<void>;
   isLoading?: boolean;
   defaultValues?: Partial<SaleFormValues>;
   submitLabel?: string;
   priceLocked?: boolean;
+  /** Pre-existing commission (edit mode). */
+  defaultCommission?: SaleCommissionDraft | null;
 }
 
-const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabel, priceLocked }: SaleFormProps) => {
+const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabel, priceLocked, defaultCommission }: SaleFormProps) => {
   const { user, isDealerAdmin } = useAuth();
+  const [commission, setCommission] = useState<SaleCommissionDraft | null>(defaultCommission ?? null);
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
   const [backorderDialogOpen, setBackorderDialogOpen] = useState(false);
   const [shortageItems, setShortageItems] = useState<StockShortageItem[]>([]);
@@ -646,9 +650,9 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
       // If batch preview fails, proceed without warning (legacy/unbatched stock)
     }
 
-    // Include reservation selections in submit
+    // Include reservation selections + commission draft in submit
     const hasReservations = Object.values(reservationSelections).some(arr => arr.length > 0);
-    await onSubmit({ ...values, ...flags, ...(hasReservations ? { reservation_selections: reservationSelections } : {}) } as any);
+    await onSubmit({ ...values, ...flags, commission, ...(hasReservations ? { reservation_selections: reservationSelections } : {}) } as any);
   };
 
   const handleBackorderConfirm = async () => {
@@ -663,7 +667,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     setMixedBatchDialogOpen(false);
     if (pendingValues) {
       const hasReservations = Object.values(reservationSelections).some(arr => arr.length > 0);
-      await onSubmit({ ...pendingValues, mixed_batch_acknowledged: true, ...(hasReservations ? { reservation_selections: reservationSelections } : {}) } as any);
+      await onSubmit({ ...pendingValues, mixed_batch_acknowledged: true, commission, ...(hasReservations ? { reservation_selections: reservationSelections } : {}) } as any);
       setPendingValues(null);
       setMixedBatchInfo(null);
     }
@@ -1251,6 +1255,15 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
               </div>
             </div>
           )}
+
+          {/* Optional referral / commission */}
+          <SaleCommissionSection
+            dealerId={dealerId}
+            baseAmount={Math.max(0, totalAmount)}
+            value={commission}
+            onChange={setCommission}
+            disabled={priceLocked}
+          />
 
           {/* Submit + Reset */}
           <div className="flex items-center gap-3">

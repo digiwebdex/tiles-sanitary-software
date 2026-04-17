@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard, Package, ShoppingCart, Receipt, RotateCcw,
   BookOpen, BarChart3, LogOut, Settings, Clock, Truck, Users, ShieldCheck, FileText,
-  Undo2, MapPin, Zap, Gift, Wallet, FileSignature, Folder,
+  Undo2, MapPin, Zap, Gift, Wallet, FileSignature, Folder, HandCoins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDealerId } from "@/hooks/useDealerId";
@@ -29,6 +29,7 @@ const navItems = [
   { path: "/collections", label: "Payments", icon: Wallet },
   { path: "/approvals", label: "Approvals", icon: ShieldCheck },
   { path: "/campaigns", label: "Campaigns", icon: Gift },
+  { path: "/referrals", label: "Referrals", icon: HandCoins },
   { path: "/reports", label: "Reports", icon: BarChart3, readonlyAllowed: true },
   { path: "/reports/credit", label: "Credit Report", icon: ShieldCheck, readonlyAllowed: true },
   { path: "/settings", label: "Settings", icon: Settings, readonlyAllowed: false },

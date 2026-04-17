@@ -50,6 +50,7 @@ import QuotationsPage from "./pages/quotations/QuotationsPage";
 import CreateQuotation from "./pages/quotations/CreateQuotation";
 import EditQuotation from "./pages/quotations/EditQuotation";
 import ProjectsPage from "./pages/projects/ProjectsPage";
+import ReferralSourcesPage from "./pages/referrals/ReferralSourcesPage";
 
 // Super Admin
 import SuperAdminLayout from "./pages/super-admin/SuperAdminLayout";
@@ -157,6 +158,7 @@ const App = () => (
             <Route path="/quotations/new" element={<ProtectedRoute><AppLayout><CreateQuotation /></AppLayout></ProtectedRoute>} />
             <Route path="/quotations/:id/edit" element={<ProtectedRoute><AppLayout><EditQuotation /></AppLayout></ProtectedRoute>} />
             <Route path="/projects" element={<ProtectedRoute><AppLayout><ProjectsPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/referrals" element={<ProtectedRoute><AppLayout><ReferralSourcesPage /></AppLayout></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>
