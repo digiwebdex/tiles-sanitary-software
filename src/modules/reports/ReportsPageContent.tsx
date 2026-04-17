@@ -106,6 +106,14 @@ import {
   HighReturnSuppliersReport,
   SupplierPriceTrendReport,
 } from "./SupplierPerformanceReports";
+import {
+  ReorderSuggestionReport,
+  StockoutRiskReport,
+  DeadStockReport,
+  SlowMovingReport,
+  FastMovingReport,
+  IncomingCoverageReport,
+} from "./DemandPlanningReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -116,7 +124,7 @@ import {
   ShoppingCart, DollarSign, Users, History, BookOpen, Clock, TrendingUp,
   ChevronDown, GitBranch, Shield, Lock, ShieldCheck, FileBarChart, UserCheck,
   FileSignature, Coins, Pencil, Folder, MapPin, Banknote, MonitorSpeaker, Send, PackageCheck as PackageCheck2,
-  Truck, Wallet,
+  Truck, Wallet, Brain, Archive, TrendingDown,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -297,6 +305,18 @@ const reportGroups = [
     ],
   },
   {
+    label: "Demand Planning",
+    icon: Brain,
+    items: [
+      { key: "demand-reorder", label: "Reorder Suggestion", icon: Package },
+      { key: "demand-stockout", label: "Low Stock / Stockout", icon: AlertTriangle },
+      { key: "demand-dead", label: "Dead Stock", icon: Archive },
+      { key: "demand-slow", label: "Slow Moving", icon: TrendingDown },
+      { key: "demand-fast", label: "Fast Moving", icon: TrendingUp },
+      { key: "demand-incoming", label: "Incoming vs Demand", icon: Truck },
+    ],
+  },
+  {
     label: "Purchases & Expenses",
     icon: ShoppingCart,
     items: [
@@ -396,6 +416,12 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "supplier-top-reliable": return <TopReliableSuppliersReport dealerId={dealerId} />;
       case "supplier-at-risk": return <AtRiskSuppliersReport dealerId={dealerId} />;
       case "supplier-price-trend": return <SupplierPriceTrendReport dealerId={dealerId} />;
+      case "demand-reorder": return <ReorderSuggestionReport dealerId={dealerId} />;
+      case "demand-stockout": return <StockoutRiskReport dealerId={dealerId} />;
+      case "demand-dead": return <DeadStockReport dealerId={dealerId} />;
+      case "demand-slow": return <SlowMovingReport dealerId={dealerId} />;
+      case "demand-fast": return <FastMovingReport dealerId={dealerId} />;
+      case "demand-incoming": return <IncomingCoverageReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
