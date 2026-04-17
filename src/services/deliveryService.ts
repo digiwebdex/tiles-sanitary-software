@@ -63,6 +63,39 @@ export const deliveryService = {
   async create(input: CreateDeliveryInput) {
     await assertDealerId(input.dealer_id);
 
+    // ----- Server-side over-delivery guard -----
+    // Reject any line that would deliver more than ordered minus already-delivered.
+    // This is the defensive backstop in case the UI cap is bypassed.
+    if (input.sale_id && input.items && input.items.length > 0) {
+      const { data: saleItems, error: siErr } = await supabase
+        .from("sale_items")
+        .select("id, quantity")
+        .eq("sale_id", input.sale_id)
+        .eq("dealer_id", input.dealer_id);
+      if (siErr) throw new Error(siErr.message);
+
+      const orderedById = new Map<string, number>();
+      for (const si of saleItems ?? []) {
+        orderedById.set(si.id, Number(si.quantity));
+      }
+
+      const alreadyDelivered = await this.getDeliveredQtyBySale(input.sale_id, input.dealer_id);
+
+      for (const item of input.items) {
+        const ordered = orderedById.get(item.sale_item_id);
+        if (ordered === undefined) {
+          throw new Error("Delivery item does not belong to the referenced sale.");
+        }
+        const prior = alreadyDelivered[item.sale_item_id] || 0;
+        const remaining = Math.max(0, ordered - prior);
+        if (Number(item.quantity) > remaining + 1e-9) {
+          throw new Error(
+            `Cannot deliver ${item.quantity} — only ${remaining} remaining for this line (ordered ${ordered}, already delivered ${prior}).`,
+          );
+        }
+      }
+    }
+
     const deliveryNo = await generateDeliveryNo(input.dealer_id);
 
     // Inherit project/site from sale (preferred) or challan
@@ -260,12 +293,23 @@ export const deliveryService = {
   },
 
   /**
-   * Update sale status based on delivery progress
+   * Update sale status AND each sale_item.fulfillment_status based on delivery progress.
+   *
+   * Per-line transitions (delivery-aware):
+   *   delivered >= ordered  → fulfilled
+   *   0 < delivered < ord.  → partially_delivered
+   *   delivered = 0 & backorder_qty <= 0 & allocated already covered → ready_for_delivery (kept)
+   *   else                  → leave allocation-derived status untouched
+   *
+   * Sale-level summary:
+   *   all delivered          → delivered
+   *   some delivered         → partially_delivered
+   *   else                   → leave existing sale_status
    */
   async updateSaleDeliveryStatus(saleId: string, dealerId: string) {
     const { data: saleItems, error: siErr } = await supabase
       .from("sale_items")
-      .select("id, quantity")
+      .select("id, quantity, backorder_qty, allocated_qty, fulfillment_status")
       .eq("sale_id", saleId)
       .eq("dealer_id", dealerId);
     if (siErr) throw new Error(siErr.message);
@@ -274,22 +318,43 @@ export const deliveryService = {
 
     let totalOrdered = 0;
     let totalDelivered = 0;
+
+    // Per-line fulfillment_status update (delivery-aware promotion).
     for (const si of saleItems ?? []) {
-      totalOrdered += Number(si.quantity);
-      totalDelivered += deliveredQty[si.id] || 0;
+      const ordered = Number(si.quantity);
+      const delivered = deliveredQty[si.id] || 0;
+      totalOrdered += ordered;
+      totalDelivered += delivered;
+
+      let nextStatus: string | null = null;
+      if (delivered >= ordered && ordered > 0) {
+        nextStatus = "fulfilled";
+      } else if (delivered > 0) {
+        nextStatus = "partially_delivered";
+      }
+      // Only write when status actually changes — keeps allocation-derived
+      // statuses (in_stock / pending / partially_allocated / ready_for_delivery)
+      // intact when no delivery has happened yet.
+      if (nextStatus && nextStatus !== si.fulfillment_status) {
+        await supabase
+          .from("sale_items")
+          .update({ fulfillment_status: nextStatus } as any)
+          .eq("id", si.id)
+          .eq("dealer_id", dealerId);
+      }
     }
 
-    let newStatus: string | null = null;
+    // Sale-level summary status.
+    let newSaleStatus: string | null = null;
     if (totalDelivered >= totalOrdered && totalOrdered > 0) {
-      newStatus = "delivered";
+      newSaleStatus = "delivered";
     } else if (totalDelivered > 0) {
-      newStatus = "partially_delivered";
+      newSaleStatus = "partially_delivered";
     }
-
-    if (newStatus) {
+    if (newSaleStatus) {
       await supabase
         .from("sales")
-        .update({ sale_status: newStatus } as any)
+        .update({ sale_status: newSaleStatus } as any)
         .eq("id", saleId)
         .eq("dealer_id", dealerId);
     }
