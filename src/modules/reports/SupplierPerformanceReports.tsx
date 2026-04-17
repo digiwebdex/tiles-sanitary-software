@@ -14,11 +14,12 @@ import {
   supplierPerformanceService,
   type ReliabilityBand,
   type SupplierPerformance,
+  type PriceTrend,
 } from "@/services/supplierPerformanceService";
 import { formatCurrency } from "@/lib/utils";
 import { exportToExcel } from "@/lib/exportUtils";
 import { usePermissions } from "@/hooks/usePermissions";
-import { Download, Truck, Search, AlertTriangle, ShieldCheck, Wallet, Clock } from "lucide-react";
+import { Download, Truck, Search, AlertTriangle, ShieldCheck, Wallet, Clock, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 interface Props {
   dealerId: string;
