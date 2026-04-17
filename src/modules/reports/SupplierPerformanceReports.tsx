@@ -47,7 +47,7 @@ export function ReliabilityBadge({ band }: { band: ReliabilityBand }) {
   );
 }
 
-type QuickFilter = "all" | "delayed" | "high_return" | "high_outstanding";
+type QuickFilter = "all" | "delayed" | "high_return" | "high_outstanding" | "rising_price" | "active_only" | "inactive_only";
 
 /* ─── Supplier Performance Report (main) ────────────────────── */
 export function SupplierPerformanceReport({ dealerId }: Props) {
@@ -75,6 +75,9 @@ export function SupplierPerformanceReport({ dealerId }: Props) {
       if (quick === "delayed" && !(r.days_since_last_purchase !== null && r.days_since_last_purchase > 90)) return false;
       if (quick === "high_return" && r.return_rate_pct < 5) return false;
       if (quick === "high_outstanding" && !(r.outstanding_amount > 0 && r.avg_purchase_value > 0 && r.outstanding_amount > r.avg_purchase_value * 5)) return false;
+      if (quick === "rising_price" && r.price_trend !== "rising") return false;
+      if (quick === "active_only" && r.total_purchases === 0) return false;
+      if (quick === "inactive_only" && r.reliability_band !== "inactive") return false;
       if (search.trim()) {
         const s = search.toLowerCase();
         if (!r.supplier_name.toLowerCase().includes(s)) return false;
@@ -125,12 +128,15 @@ export function SupplierPerformanceReport({ dealerId }: Props) {
               </SelectContent>
             </Select>
             <Select value={quick} onValueChange={(v) => setQuick(v as QuickFilter)}>
-              <SelectTrigger className="h-9 w-40"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All suppliers</SelectItem>
+                <SelectItem value="active_only">Active only</SelectItem>
+                <SelectItem value="inactive_only">Inactive only</SelectItem>
                 <SelectItem value="delayed">Delayed (90d+)</SelectItem>
                 <SelectItem value="high_return">High return ≥5%</SelectItem>
                 <SelectItem value="high_outstanding">High exposure</SelectItem>
+                <SelectItem value="rising_price">Rising price</SelectItem>
               </SelectContent>
             </Select>
             {canExportReports && rows.length > 0 && (
