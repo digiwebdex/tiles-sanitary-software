@@ -83,9 +83,27 @@ export interface PlanningStats {
   totalCustomersWaiting: number;
   oldestDemandDate: string | null;
   topProducts: ProductShortageRow[];
+  topProjects: ProjectShortageRow[];
   openCount: number;
   plannedCount: number;
   partialCount: number;
+}
+
+export interface ProjectShortageRow {
+  /** stable composite key — use as React key */
+  key: string;
+  project_id: string | null;
+  project_name: string;
+  site_id: string | null;
+  site_name: string | null;
+  customer_id: string | null;
+  customer_name: string;
+  shortage_qty: number;
+  pending_lines: number;
+  pending_products: number;
+  oldest_demand_date: string | null;
+  open_qty: number;
+  planned_qty: number;
 }
 
 export interface CreateDraftInput {
@@ -378,11 +396,58 @@ export const purchasePlanningService = {
   },
 
   /**
-   * Dashboard stats with status counts.
+   * Roll-up by project / site / customer for owner-level visibility.
+   * Customer-only shortages (no project) appear with project_id=null and a "Direct Sale"
+   * label so they remain visible.
+   */
+  async projectSiteShortages(dealerId: string): Promise<ProjectShortageRow[]> {
+    const customers = await this.customerShortages(dealerId);
+    const map = new Map<string, ProjectShortageRow & { products: Set<string> }>();
+
+    for (const r of customers) {
+      const key = `${r.project_id ?? "_"}|${r.site_id ?? "_"}|${r.customer_id ?? "_"}`;
+      const cur = map.get(key);
+      if (cur) {
+        cur.shortage_qty += r.shortage_qty;
+        cur.pending_lines += 1;
+        cur.products.add(r.product_id);
+        cur.planned_qty += r.planned_qty;
+        cur.open_qty = Math.max(0, cur.shortage_qty - cur.planned_qty);
+        if (r.sale_date && (!cur.oldest_demand_date || r.sale_date < cur.oldest_demand_date)) {
+          cur.oldest_demand_date = r.sale_date;
+        }
+      } else {
+        map.set(key, {
+          key,
+          project_id: r.project_id,
+          project_name: r.project_name ?? "Direct Sale",
+          site_id: r.site_id,
+          site_name: r.site_name,
+          customer_id: r.customer_id || null,
+          customer_name: r.customer_name,
+          shortage_qty: r.shortage_qty,
+          pending_lines: 1,
+          pending_products: 0,
+          oldest_demand_date: r.sale_date || null,
+          open_qty: Math.max(0, r.shortage_qty - r.planned_qty),
+          planned_qty: r.planned_qty,
+          products: new Set([r.product_id]),
+        });
+      }
+    }
+
+    return Array.from(map.values())
+      .map(({ products, ...rest }) => ({ ...rest, pending_products: products.size }))
+      .sort((a, b) => b.shortage_qty - a.shortage_qty);
+  },
+
+  /**
+   * Dashboard stats with status counts + top waiting projects/sites.
    */
   async dashboardStats(dealerId: string): Promise<PlanningStats> {
     const products = await this.productShortages(dealerId);
     const customers = await this.customerShortages(dealerId);
+    const projects = await this.projectSiteShortages(dealerId);
     const totalShortageUnits = products.reduce((s, p) => s + p.shortage_qty, 0);
     const totalCustomersWaiting = new Set(
       customers.map((r) => r.customer_id).filter(Boolean),
@@ -406,6 +471,7 @@ export const purchasePlanningService = {
       totalCustomersWaiting,
       oldestDemandDate: oldest,
       topProducts: products.slice(0, 5),
+      topProjects: projects.slice(0, 5),
       openCount,
       plannedCount,
       partialCount,

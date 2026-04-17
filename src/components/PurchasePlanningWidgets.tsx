@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package, AlertTriangle, ShoppingCart, Calendar } from "lucide-react";
+import { Package, AlertTriangle, ShoppingCart, Calendar, Folder, MapPin } from "lucide-react";
 import { purchasePlanningService } from "@/services/purchasePlanningService";
 
 interface Props { dealerId: string }
@@ -23,6 +23,7 @@ export function PurchasePlanningWidgets({ dealerId }: Props) {
   if (!data) return null;
 
   const goToReport = () => navigate("/reports?report=purchase-need");
+  const goToProjectReport = () => navigate("/reports?report=purchase-project-site");
 
   return (
     <div className="space-y-3">
@@ -76,32 +77,76 @@ export function PurchasePlanningWidgets({ dealerId }: Props) {
         </Card>
       </div>
 
-      {data.topProducts.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Top Shortage Products</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-1.5">
-              {data.topProducts.map((p) => (
-                <div
-                  key={p.product_id}
-                  className="flex items-center justify-between gap-3 text-sm p-2 rounded hover:bg-muted/50 cursor-pointer"
-                  onClick={goToReport}
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="font-medium truncate">{p.name}</span>
-                    <span className="text-xs text-muted-foreground ml-1">({p.sku})</span>
+      <div className="grid gap-4 md:grid-cols-2">
+        {data.topProducts.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Top Shortage Products</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-1.5">
+                {data.topProducts.map((p) => (
+                  <div
+                    key={p.product_id}
+                    className="flex items-center justify-between gap-3 text-sm p-2 rounded hover:bg-muted/50 cursor-pointer"
+                    onClick={goToReport}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium truncate">{p.name}</span>
+                      <span className="text-xs text-muted-foreground ml-1">({p.sku})</span>
+                    </div>
+                    <Badge className="bg-amber-500/10 text-amber-700 border-amber-300 shrink-0">
+                      {p.shortage_qty} {p.unit_type === "box_sft" ? "box" : "pc"}
+                    </Badge>
                   </div>
-                  <Badge className="bg-amber-500/10 text-amber-700 border-amber-300 shrink-0">
-                    {p.shortage_qty} {p.unit_type === "box_sft" ? "box" : "pc"}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {data.topProjects.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Top Waiting Projects / Sites</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-1.5">
+                {data.topProjects.map((p) => (
+                  <div
+                    key={p.key}
+                    className="flex items-center justify-between gap-3 text-sm p-2 rounded hover:bg-muted/50 cursor-pointer"
+                    onClick={goToProjectReport}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        {p.project_id ? (
+                          <Folder className="h-3 w-3 text-primary shrink-0" />
+                        ) : (
+                          <ShoppingCart className="h-3 w-3 text-muted-foreground shrink-0" />
+                        )}
+                        <span className="font-medium truncate">{p.project_name}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate ml-4">
+                        {p.site_name && (
+                          <span className="inline-flex items-center gap-1 mr-2">
+                            <MapPin className="h-3 w-3" />
+                            {p.site_name}
+                          </span>
+                        )}
+                        {p.customer_name}
+                      </div>
+                    </div>
+                    <Badge className="bg-amber-500/10 text-amber-700 border-amber-300 shrink-0">
+                      {p.shortage_qty}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

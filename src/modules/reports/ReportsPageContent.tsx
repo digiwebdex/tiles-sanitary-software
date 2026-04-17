@@ -85,6 +85,7 @@ import {
   PurchaseNeedByProductReport,
   CustomerSiteDemandReport,
 } from "./PurchasePlanningReports";
+import { ProjectSiteShortageReport } from "./ProjectSiteShortageReport";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -236,6 +237,7 @@ const reportGroups = [
     items: [
       { key: "purchase-need", label: "Purchase Need by Product", icon: Package },
       { key: "purchase-customer-demand", label: "Customer / Site Demand", icon: Users },
+      { key: "purchase-project-site", label: "Shortage by Project / Site", icon: Folder },
     ],
   },
   {
@@ -320,6 +322,7 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "project-top-active": return <TopActiveProjectsReport dealerId={dealerId} />;
       case "purchase-need": return <PurchaseNeedByProductReport dealerId={dealerId} />;
       case "purchase-customer-demand": return <CustomerSiteDemandReport dealerId={dealerId} />;
+      case "purchase-project-site": return <ProjectSiteShortageReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };
