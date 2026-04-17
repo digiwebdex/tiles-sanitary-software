@@ -96,6 +96,14 @@ import {
   DamagedLostSampleReport,
   SampleOutstandingReport,
 } from "./DisplaySampleReports";
+import {
+  SupplierPerformanceReport,
+  TopReliableSuppliersReport,
+  AtRiskSuppliersReport,
+  SupplierExposureReport,
+  SupplierLeadTimeReport,
+  SupplierReturnReport,
+} from "./SupplierPerformanceReports";
 import { cn } from "@/lib/utils";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -106,6 +114,7 @@ import {
   ShoppingCart, DollarSign, Users, History, BookOpen, Clock, TrendingUp,
   ChevronDown, GitBranch, Shield, Lock, ShieldCheck, FileBarChart, UserCheck,
   FileSignature, Coins, Pencil, Folder, MapPin, Banknote, MonitorSpeaker, Send, PackageCheck as PackageCheck2,
+  Truck, Wallet,
 } from "lucide-react";
 
 interface ReportsPageContentProps {
@@ -272,6 +281,18 @@ const reportGroups = [
     ],
   },
   {
+    label: "Supplier Performance",
+    icon: Truck,
+    items: [
+      { key: "supplier-performance", label: "Supplier Performance", icon: ShieldCheck },
+      { key: "supplier-lead-time", label: "Supply Cadence", icon: Clock },
+      { key: "supplier-returns", label: "Returns / Damage", icon: AlertTriangle },
+      { key: "supplier-exposure", label: "Outstanding Exposure", icon: Wallet },
+      { key: "supplier-top-reliable", label: "Top Reliable", icon: ShieldCheck },
+      { key: "supplier-at-risk", label: "At-Risk", icon: AlertTriangle },
+    ],
+  },
+  {
     label: "Purchases & Expenses",
     icon: ShoppingCart,
     items: [
@@ -363,6 +384,12 @@ const ReportsPageContent = ({ dealerId }: ReportsPageContentProps) => {
       case "returned-samples": return <ReturnedSampleReport dealerId={dealerId} />;
       case "damaged-lost-samples": return <DamagedLostSampleReport dealerId={dealerId} />;
       case "outstanding-samples": return <SampleOutstandingReport dealerId={dealerId} />;
+      case "supplier-performance": return <SupplierPerformanceReport dealerId={dealerId} />;
+      case "supplier-lead-time": return <SupplierLeadTimeReport dealerId={dealerId} />;
+      case "supplier-returns": return <SupplierReturnReport dealerId={dealerId} />;
+      case "supplier-exposure": return <SupplierExposureReport dealerId={dealerId} />;
+      case "supplier-top-reliable": return <TopReliableSuppliersReport dealerId={dealerId} />;
+      case "supplier-at-risk": return <AtRiskSuppliersReport dealerId={dealerId} />;
       default: return <StockReport dealerId={dealerId} />;
     }
   };

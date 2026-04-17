@@ -34,6 +34,7 @@ import { ProjectDashboardWidgets } from "@/components/project/ProjectDashboardWi
 import { PurchasePlanningWidgets } from "@/components/PurchasePlanningWidgets";
 import { CommissionDashboardWidgets } from "@/components/CommissionDashboardWidgets";
 import { DisplaySampleDashboardWidgets } from "@/components/DisplaySampleDashboardWidgets";
+import { SupplierPerformanceWidgets } from "@/components/SupplierPerformanceWidgets";
 
 interface OwnerDashboardProps {
   dealerId: string;
@@ -559,6 +560,9 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
 
       {/* Display & Sample Widgets */}
       <DisplaySampleDashboardWidgets dealerId={dealerId} />
+
+      {/* Supplier Performance Widgets */}
+      <SupplierPerformanceWidgets dealerId={dealerId} />
 
       {/* Top Overdue Customers Widget */}
       {topOverdue.length > 0 && (
