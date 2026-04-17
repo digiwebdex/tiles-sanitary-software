@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { LinkedShortagesPanel } from "@/components/LinkedShortagesPanel";
+import { useDealerId } from "@/hooks/useDealerId";
 
 // TODO: Replace with actual role from auth context
 const TEMP_SHOW_OFFER = true;
