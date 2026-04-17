@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package, AlertTriangle, ShoppingCart, Calendar } from "lucide-react";
+import { Package, AlertTriangle, ShoppingCart, Calendar, Folder, MapPin } from "lucide-react";
 import { purchasePlanningService } from "@/services/purchasePlanningService";
 
 interface Props { dealerId: string }
