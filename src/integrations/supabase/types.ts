@@ -992,6 +992,99 @@ export type Database = {
           },
         ]
       }
+      display_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          id: string
+          movement_type: Database["public"]["Enums"]["display_movement_type"]
+          notes: string | null
+          product_id: string
+          quantity: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          id?: string
+          movement_type: Database["public"]["Enums"]["display_movement_type"]
+          notes?: string | null
+          product_id: string
+          quantity: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          id?: string
+          movement_type?: Database["public"]["Enums"]["display_movement_type"]
+          notes?: string | null
+          product_id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "display_movements_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "display_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      display_stock: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          display_qty: number
+          id: string
+          notes: string | null
+          product_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          display_qty?: number
+          id?: string
+          notes?: string | null
+          product_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          display_qty?: number
+          id?: string
+          notes?: string | null
+          product_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "display_stock_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "display_stock_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expense_ledger: {
         Row: {
           amount: number
@@ -2727,6 +2820,94 @@ export type Database = {
           },
         ]
       }
+      sample_issues: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          damaged_qty: number
+          dealer_id: string
+          expected_return_date: string | null
+          id: string
+          issue_date: string
+          lost_qty: number
+          notes: string | null
+          product_id: string
+          quantity: number
+          recipient_name: string
+          recipient_phone: string | null
+          recipient_type: Database["public"]["Enums"]["sample_recipient_type"]
+          returned_date: string | null
+          returned_qty: number
+          status: Database["public"]["Enums"]["sample_issue_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          damaged_qty?: number
+          dealer_id: string
+          expected_return_date?: string | null
+          id?: string
+          issue_date?: string
+          lost_qty?: number
+          notes?: string | null
+          product_id: string
+          quantity: number
+          recipient_name: string
+          recipient_phone?: string | null
+          recipient_type?: Database["public"]["Enums"]["sample_recipient_type"]
+          returned_date?: string | null
+          returned_qty?: number
+          status?: Database["public"]["Enums"]["sample_issue_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          damaged_qty?: number
+          dealer_id?: string
+          expected_return_date?: string | null
+          id?: string
+          issue_date?: string
+          lost_qty?: number
+          notes?: string | null
+          product_id?: string
+          quantity?: number
+          recipient_name?: string
+          recipient_phone?: string | null
+          recipient_type?: Database["public"]["Enums"]["sample_recipient_type"]
+          returned_date?: string | null
+          returned_qty?: number
+          status?: Database["public"]["Enums"]["sample_issue_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sample_issues_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sample_issues_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sample_issues_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock: {
         Row: {
           average_cost_per_unit: number
@@ -3330,6 +3511,11 @@ export type Database = {
         | "adjusted"
       commission_type: "percent" | "fixed"
       customer_type: "retailer" | "customer" | "project"
+      display_movement_type:
+        | "to_display"
+        | "from_display"
+        | "display_damaged"
+        | "display_replaced"
       ledger_entry_type:
         | "sale"
         | "purchase"
@@ -3348,6 +3534,18 @@ export type Database = {
         | "contractor"
         | "mason"
         | "fitter"
+        | "other"
+      sample_issue_status:
+        | "issued"
+        | "returned"
+        | "partially_returned"
+        | "damaged"
+        | "lost"
+      sample_recipient_type:
+        | "customer"
+        | "architect"
+        | "contractor"
+        | "mason"
         | "other"
       subscription_status: "active" | "expired" | "suspended"
       unit_type: "box_sft" | "piece"
@@ -3500,6 +3698,12 @@ export const Constants = {
       ],
       commission_type: ["percent", "fixed"],
       customer_type: ["retailer", "customer", "project"],
+      display_movement_type: [
+        "to_display",
+        "from_display",
+        "display_damaged",
+        "display_replaced",
+      ],
       ledger_entry_type: [
         "sale",
         "purchase",
@@ -3519,6 +3723,20 @@ export const Constants = {
         "contractor",
         "mason",
         "fitter",
+        "other",
+      ],
+      sample_issue_status: [
+        "issued",
+        "returned",
+        "partially_returned",
+        "damaged",
+        "lost",
+      ],
+      sample_recipient_type: [
+        "customer",
+        "architect",
+        "contractor",
+        "mason",
         "other",
       ],
       subscription_status: ["active", "expired", "suspended"],
