@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { displayStockService, type SampleIssueRow } from "@/services/displayStockService";
+import { sampleIssueService, type SampleIssueRow } from "@/services/displayStockService";
 
 interface Props {
   open: boolean;
@@ -46,7 +46,7 @@ export function ReturnSampleDialog({ open, onOpenChange, sample, dealerId, onSuc
 
     setSubmitting(true);
     try {
-      await displayStockService.returnSample({
+      await sampleIssueService.returnSample({
         sample_id: sample.id,
         dealer_id: dealerId,
         return_qty: n,

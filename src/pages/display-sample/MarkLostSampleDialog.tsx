@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { displayStockService, type SampleIssueRow } from "@/services/displayStockService";
+import { sampleIssueService, type SampleIssueRow } from "@/services/displayStockService";
 
 interface Props {
   open: boolean;
@@ -44,7 +44,7 @@ export function MarkLostSampleDialog({ open, onOpenChange, sample, dealerId, onS
 
     setSubmitting(true);
     try {
-      await displayStockService.markSampleLost({
+      await sampleIssueService.markSampleLost({
         sample_id: sample.id,
         dealer_id: dealerId,
         lost_qty: n,
