@@ -281,3 +281,145 @@ export function CustomerPendingDeliveryReport({ dealerId }: ReportProps) {
     </Card>
   );
 }
+
+/** Ready for Delivery Report — items fully allocated and awaiting dispatch. */
+export function ReadyForDeliveryReport({ dealerId }: ReportProps) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["report-ready-for-delivery", dealerId],
+    queryFn: () => backorderAllocationService.getReadyForDelivery(dealerId),
+    enabled: !!dealerId,
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Ready for Delivery Report</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? <p className="text-muted-foreground">Loading…</p> : (
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Sale Date</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead className="text-center">Ordered</TableHead>
+                  <TableHead className="text-center">Allocated</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data ?? []).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      Nothing waiting for delivery.
+                    </TableCell>
+                  </TableRow>
+                ) : (data ?? []).map((item: any) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-mono text-sm">{item.sales?.invoice_number ?? "—"}</TableCell>
+                    <TableCell>{item.sales?.sale_date ?? "—"}</TableCell>
+                    <TableCell>{item.sales?.customers?.name ?? "—"}</TableCell>
+                    <TableCell>
+                      <span className="font-medium">{item.products?.name}</span>
+                      <span className="text-xs text-muted-foreground ml-1">({item.products?.sku})</span>
+                    </TableCell>
+                    <TableCell className="text-center">{item.quantity}</TableCell>
+                    <TableCell className="text-center font-semibold text-blue-600">{item.allocated_qty}</TableCell>
+                    <TableCell className="text-center">
+                      <FulfillmentBadge status={item.fulfillment_status} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Partially Delivered Report — sales with at least one but not all units delivered. */
+export function PartiallyDeliveredReport({ dealerId }: ReportProps) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["report-partially-delivered", dealerId],
+    queryFn: () => backorderAllocationService.getPartiallyDelivered(dealerId),
+    enabled: !!dealerId,
+  });
+
+  // For each line, fetch how much was actually delivered to show ordered/delivered/pending split.
+  const { data: deliveredMap = {} } = useQuery({
+    queryKey: ["report-partially-delivered-qtys", dealerId, (data ?? []).length],
+    queryFn: async () => {
+      const out: Record<string, number> = {};
+      const saleIds = Array.from(new Set((data ?? []).map((d: any) => d.sale_id)));
+      for (const sid of saleIds) {
+        const m = await deliveryService.getDeliveredQtyBySale(sid as string, dealerId);
+        Object.assign(out, m);
+      }
+      return out;
+    },
+    enabled: !!dealerId && (data?.length ?? 0) > 0,
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Partially Delivered Report</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? <p className="text-muted-foreground">Loading…</p> : (
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Sale Date</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead className="text-center">Ordered</TableHead>
+                  <TableHead className="text-center">Delivered</TableHead>
+                  <TableHead className="text-center">Pending</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data ?? []).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      No partial deliveries in progress.
+                    </TableCell>
+                  </TableRow>
+                ) : (data ?? []).map((item: any) => {
+                  const ordered = Number(item.quantity);
+                  const delivered = (deliveredMap as any)[item.id] || 0;
+                  const pending = Math.max(0, ordered - delivered);
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-mono text-sm">{item.sales?.invoice_number ?? "—"}</TableCell>
+                      <TableCell>{item.sales?.sale_date ?? "—"}</TableCell>
+                      <TableCell>{item.sales?.customers?.name ?? "—"}</TableCell>
+                      <TableCell>
+                        <span className="font-medium">{item.products?.name}</span>
+                        <span className="text-xs text-muted-foreground ml-1">({item.products?.sku})</span>
+                      </TableCell>
+                      <TableCell className="text-center">{ordered}</TableCell>
+                      <TableCell className="text-center font-semibold text-green-600">{delivered}</TableCell>
+                      <TableCell className="text-center font-semibold text-orange-600">{pending}</TableCell>
+                      <TableCell className="text-center">
+                        <FulfillmentBadge status={item.fulfillment_status} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
