@@ -21,6 +21,7 @@ interface Props {
 
 const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
   const { data: dealerInfo } = useDealerInfo();
+  const [waOpen, setWaOpen] = useState(false);
 
   const { data: delivery, isLoading } = useQuery({
     queryKey: ["delivery-detail", deliveryId],
