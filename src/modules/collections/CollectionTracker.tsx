@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Search, Wallet, AlertTriangle, CheckCircle, DollarSign, TrendingDown, CalendarIcon, X, Download, Printer, MessageSquare, BookOpen, Clock, MessageSquareText } from "lucide-react";
+import { Search, Wallet, AlertTriangle, CheckCircle, DollarSign, TrendingDown, CalendarIcon, X, Download, Printer, MessageSquare, BookOpen, Clock, MessageSquareText, MessageCircle } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
@@ -25,6 +25,8 @@ import PaymentReceipt from "./PaymentReceipt";
 import FollowUpPanel from "./FollowUpPanel";
 import { notificationService } from "@/services/notificationService";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
+import SendWhatsAppDialog from "@/components/whatsapp/SendWhatsAppDialog";
+import { buildPaymentReceiptMessage, buildOverdueReminderMessage } from "@/services/whatsappService";
 
 interface CustomerOutstanding {
   id: string;
@@ -95,6 +97,13 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
     date: string;
   } | null>(null);
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const [waDialog, setWaDialog] = useState<null | {
+    type: "payment_receipt" | "overdue_reminder";
+    phone: string;
+    name: string;
+    sourceId: string | null;
+    message: string;
+  }>(null);
 
   // Fetch all customers with outstanding balances + follow-up data
   const { data: customers = [], isLoading } = useQuery({
@@ -381,6 +390,33 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
                     {c.phone && (
                       <Button size="sm" variant="ghost" disabled={sendingReminder === c.id} onClick={() => handleSendReminder(c)} title="SMS reminder">
                         <MessageSquare className="h-3 w-3" />
+                      </Button>
+                    )}
+                    {c.phone && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        title="WhatsApp overdue reminder"
+                        onClick={() =>
+                          setWaDialog({
+                            type: "overdue_reminder",
+                            phone: c.phone!,
+                            name: c.name,
+                            sourceId: c.id,
+                            message: buildOverdueReminderMessage({
+                              dealerName: dealerInfo?.name ?? "Your Business",
+                              dealerPhone: dealerInfo?.phone ?? null,
+                              customerName: c.name,
+                              outstanding: c.outstanding,
+                              daysOverdue: c.daysOverdue,
+                              oldestInvoiceDate: c.oldestSaleDate
+                                ? format(new Date(c.oldestSaleDate), "dd MMM yyyy")
+                                : null,
+                            }),
+                          })
+                        }
+                      >
+                        <MessageCircle className="h-3 w-3" />
                       </Button>
                     )}
                   </div>

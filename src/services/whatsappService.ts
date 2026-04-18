@@ -72,7 +72,7 @@ export function buildWaLink(phone: string, text: string): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  TEMPLATES (Batch 1: quotation_share + invoice_share, text-only)   */
+/*  TEMPLATES                                                         */
 /* ------------------------------------------------------------------ */
 
 interface QuotationTemplateData {
@@ -92,6 +92,35 @@ interface InvoiceTemplateData {
   paidAmount: number;
   dueAmount: number;
   saleDate?: string | null;
+}
+
+interface PaymentReceiptTemplateData {
+  dealerName: string;
+  customerName?: string | null;
+  receiptNo: string;
+  amount: number;
+  remainingDue: number;
+  date: string; // human-readable
+}
+
+interface OverdueReminderTemplateData {
+  dealerName: string;
+  dealerPhone?: string | null;
+  customerName?: string | null;
+  outstanding: number;
+  daysOverdue: number;
+  oldestInvoiceDate?: string | null;
+}
+
+interface DeliveryUpdateTemplateData {
+  dealerName: string;
+  customerName?: string | null;
+  deliveryNo: string;
+  status: string; // "Pending" | "In Transit" | "Delivered"
+  itemCount: number;
+  deliveryDate?: string | null;
+  invoiceNo?: string | null;
+  receiverName?: string | null;
 }
 
 const fmtBdt = (n: number) =>
@@ -140,9 +169,127 @@ export function buildInvoiceMessage(d: InvoiceTemplateData): string {
   ].join("\n");
 }
 
+export function buildPaymentReceiptMessage(d: PaymentReceiptTemplateData): string {
+  const greeting = d.customerName ? `Dear ${d.customerName},` : "Dear Customer,";
+  const dueLine =
+    d.remainingDue > 0
+      ? `Remaining Due: ${fmtBdt(d.remainingDue)}`
+      : "All dues cleared ✅";
+  return [
+    greeting,
+    "",
+    `We have received your payment. Thank you!`,
+    "",
+    `Receipt No: ${d.receiptNo}`,
+    `Date: ${d.date}`,
+    `Amount Received: ${fmtBdt(d.amount)}`,
+    dueLine,
+    "",
+    `Thanks,\n${d.dealerName}`,
+  ].join("\n");
+}
+
+export function buildOverdueReminderMessage(d: OverdueReminderTemplateData): string {
+  const greeting = d.customerName ? `Dear ${d.customerName},` : "Dear Customer,";
+  const oldestLine = d.oldestInvoiceDate
+    ? `\nOldest unpaid invoice: ${d.oldestInvoiceDate}`
+    : "";
+  const daysLine = d.daysOverdue > 0 ? `\nOverdue: ${d.daysOverdue} days` : "";
+  const contactLine = d.dealerPhone ? `\n\nFor any questions, call ${d.dealerPhone}.` : "";
+  return [
+    greeting,
+    "",
+    `This is a friendly reminder from ${d.dealerName}.`,
+    "",
+    `Outstanding balance: ${fmtBdt(d.outstanding)}${daysLine}${oldestLine}`,
+    "",
+    `Please arrange the payment at your earliest convenience.${contactLine}`,
+    "",
+    `Thanks,\n${d.dealerName}`,
+  ].join("\n");
+}
+
+export function buildDeliveryUpdateMessage(d: DeliveryUpdateTemplateData): string {
+  const greeting = d.customerName ? `Dear ${d.customerName},` : "Dear Customer,";
+  const dateLine = d.deliveryDate ? `\nDate: ${d.deliveryDate}` : "";
+  const invLine = d.invoiceNo ? `\nInvoice: ${d.invoiceNo}` : "";
+  const recvLine = d.receiverName ? `\nReceiver: ${d.receiverName}` : "";
+  return [
+    greeting,
+    "",
+    `Delivery update from ${d.dealerName}:`,
+    "",
+    `Delivery No: ${d.deliveryNo}${invLine}${dateLine}`,
+    `Items: ${d.itemCount}`,
+    `Status: ${d.status}${recvLine}`,
+    "",
+    "Thank you for your business.",
+    "",
+    `${d.dealerName}`,
+  ].join("\n");
+}
+
+/* ------------------------------------------------------------------ */
+/*  SETTINGS                                                          */
+/* ------------------------------------------------------------------ */
+
+export interface WhatsAppSettings {
+  dealer_id: string;
+  enable_quotation_share: boolean;
+  enable_invoice_share: boolean;
+  enable_payment_receipt: boolean;
+  enable_overdue_reminder: boolean;
+  enable_delivery_update: boolean;
+  template_quotation_share: string | null;
+  template_invoice_share: string | null;
+  template_payment_receipt: string | null;
+  template_overdue_reminder: string | null;
+  template_delivery_update: string | null;
+  prefer_manual_send: boolean;
+  default_country_code: string;
+}
+
+export const DEFAULT_WHATSAPP_SETTINGS = (
+  dealerId: string,
+): WhatsAppSettings => ({
+  dealer_id: dealerId,
+  enable_quotation_share: true,
+  enable_invoice_share: true,
+  enable_payment_receipt: true,
+  enable_overdue_reminder: true,
+  enable_delivery_update: true,
+  template_quotation_share: null,
+  template_invoice_share: null,
+  template_payment_receipt: null,
+  template_overdue_reminder: null,
+  template_delivery_update: null,
+  prefer_manual_send: true,
+  default_country_code: "880",
+});
+
+/** Map of message_type -> enable flag key */
+const ENABLE_KEY: Record<WhatsAppMessageType, keyof WhatsAppSettings> = {
+  quotation_share: "enable_quotation_share",
+  invoice_share: "enable_invoice_share",
+  payment_receipt: "enable_payment_receipt",
+  overdue_reminder: "enable_overdue_reminder",
+  delivery_update: "enable_delivery_update",
+};
+
+export function isMessageTypeEnabled(
+  settings: WhatsAppSettings | null | undefined,
+  type: WhatsAppMessageType,
+): boolean {
+  if (!settings) return true; // permissive default when no row yet
+  return Boolean(settings[ENABLE_KEY[type]]);
+}
+
 /* ------------------------------------------------------------------ */
 /*  SERVICE                                                            */
 /* ------------------------------------------------------------------ */
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sb: any = supabase;
 
 export const whatsappService = {
   /** Create a log row. Default status = 'manual_handoff' (wa.me model). */
@@ -223,6 +370,64 @@ export const whatsappService = {
         failed_at: new Date().toISOString(),
       })
       .eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+
+  /** Mark a log row as 'sent' (used by the dealer to confirm WhatsApp send). */
+  async markSent(id: string): Promise<void> {
+    const { error } = await supabase
+      .from("whatsapp_message_logs")
+      .update({
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        error_message: null,
+        failed_at: null,
+      })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+
+  /** Aggregate counts for dashboard widget (today). */
+  async getTodayStats(dealerId: string): Promise<{
+    sent: number;
+    handoff: number;
+    failed: number;
+    total: number;
+  }> {
+    const startIso = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+    const { data, error } = await supabase
+      .from("whatsapp_message_logs")
+      .select("status")
+      .eq("dealer_id", dealerId)
+      .gte("created_at", startIso);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as { status: WhatsAppMessageStatus }[];
+    const stats = { sent: 0, handoff: 0, failed: 0, total: rows.length };
+    for (const r of rows) {
+      if (r.status === "sent") stats.sent += 1;
+      else if (r.status === "manual_handoff") stats.handoff += 1;
+      else if (r.status === "failed") stats.failed += 1;
+    }
+    return stats;
+  },
+
+  /* ----- SETTINGS ----- */
+  async getSettings(dealerId: string): Promise<WhatsAppSettings> {
+    const { data, error } = await sb
+      .from("whatsapp_settings")
+      .select("*")
+      .eq("dealer_id", dealerId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return DEFAULT_WHATSAPP_SETTINGS(dealerId);
+    return data as WhatsAppSettings;
+  },
+
+  async upsertSettings(settings: WhatsAppSettings): Promise<void> {
+    await assertDealerId(settings.dealer_id);
+    const { error } = await sb
+      .from("whatsapp_settings")
+      .upsert(settings, { onConflict: "dealer_id" });
     if (error) throw new Error(error.message);
   },
 };

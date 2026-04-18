@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { usePermissions } from "@/hooks/usePermissions";
 import { ApprovalSettingsCard } from "@/components/approval/ApprovalSettingsCard";
 import { DemandPlanningSettingsCard } from "@/components/DemandPlanningSettingsCard";
+import WhatsAppSettingsCard from "@/components/whatsapp/WhatsAppSettingsCard";
 
 const SettingsPage = () => {
   const { isDealerAdmin } = usePermissions();
@@ -239,6 +240,9 @@ const SettingsPage = () => {
 
           {/* Demand Planning Thresholds */}
           <DemandPlanningSettingsCard />
+
+          {/* WhatsApp Automation */}
+          <WhatsAppSettingsCard />
         </>
       )}
     </div>
