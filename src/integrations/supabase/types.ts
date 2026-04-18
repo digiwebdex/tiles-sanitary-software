@@ -1401,6 +1401,126 @@ export type Database = {
         }
         Relationships: []
       }
+      portal_requests: {
+        Row: {
+          converted_quotation_id: string | null
+          created_at: string
+          customer_id: string
+          dealer_id: string
+          id: string
+          items: Json
+          message: string | null
+          portal_user_id: string | null
+          project_id: string | null
+          request_type: Database["public"]["Enums"]["portal_request_type"]
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          site_id: string | null
+          source_quotation_id: string | null
+          source_sale_id: string | null
+          status: Database["public"]["Enums"]["portal_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          converted_quotation_id?: string | null
+          created_at?: string
+          customer_id: string
+          dealer_id: string
+          id?: string
+          items?: Json
+          message?: string | null
+          portal_user_id?: string | null
+          project_id?: string | null
+          request_type: Database["public"]["Enums"]["portal_request_type"]
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          site_id?: string | null
+          source_quotation_id?: string | null
+          source_sale_id?: string | null
+          status?: Database["public"]["Enums"]["portal_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          converted_quotation_id?: string | null
+          created_at?: string
+          customer_id?: string
+          dealer_id?: string
+          id?: string
+          items?: Json
+          message?: string | null
+          portal_user_id?: string | null
+          project_id?: string | null
+          request_type?: Database["public"]["Enums"]["portal_request_type"]
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          site_id?: string | null
+          source_quotation_id?: string | null
+          source_sale_id?: string | null
+          status?: Database["public"]["Enums"]["portal_request_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_requests_converted_quotation_id_fkey"
+            columns: ["converted_quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_requests_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_requests_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_requests_portal_user_id_fkey"
+            columns: ["portal_user_id"]
+            isOneToOne: false
+            referencedRelation: "portal_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_requests_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "project_sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_requests_source_quotation_id_fkey"
+            columns: ["source_quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_requests_source_sale_id_fkey"
+            columns: ["source_sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       portal_users: {
         Row: {
           activated_at: string | null
@@ -3752,6 +3872,7 @@ export type Database = {
         Returns: string
       }
       get_next_project_code: { Args: { p_dealer_id: string }; Returns: string }
+      get_portal_challan_doc: { Args: { _challan_id: string }; Returns: Json }
       get_portal_context: {
         Args: never
         Returns: {
@@ -3760,6 +3881,7 @@ export type Database = {
           portal_user_id: string
         }[]
       }
+      get_portal_invoice_doc: { Args: { _sale_id: string }; Returns: Json }
       get_portal_ledger_history: {
         Args: { _limit?: number }
         Returns: {
@@ -3776,6 +3898,10 @@ export type Database = {
         Args: { _project_id: string }
         Returns: Json
       }
+      get_portal_quotation_doc: {
+        Args: { _quotation_id: string }
+        Returns: Json
+      }
       get_portal_recent_payments: {
         Args: { _limit?: number }
         Returns: {
@@ -3784,6 +3910,21 @@ export type Database = {
           entry_date: string
           sale_id: string
         }[]
+      }
+      get_portal_sale_items: {
+        Args: { _sale_id: string }
+        Returns: {
+          product_id: string
+          product_name: string
+          product_sku: string
+          quantity: number
+          rate: number
+          unit_type: string
+        }[]
+      }
+      get_portal_whatsapp_status: {
+        Args: { _source_id: string; _source_type: string }
+        Returns: Json
       }
       get_user_dealer_id: { Args: { _user_id: string }; Returns: string }
       has_active_subscription: { Args: never; Returns: boolean }
@@ -3832,6 +3973,18 @@ export type Database = {
         Args: { _dealer_id: string; _quotation_id: string }
         Returns: string
       }
+      submit_portal_request: {
+        Args: {
+          _items?: Json
+          _message?: string
+          _project_id?: string
+          _request_type: Database["public"]["Enums"]["portal_request_type"]
+          _site_id?: string
+          _source_quotation_id?: string
+          _source_sale_id?: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "super_admin" | "dealer_admin" | "salesman"
@@ -3869,6 +4022,8 @@ export type Database = {
       ledger_type: "customer" | "supplier" | "cash" | "expense"
       payment_method_type: "cash" | "bank" | "mobile_banking"
       payment_status_type: "paid" | "partial" | "pending"
+      portal_request_status: "pending" | "reviewed" | "converted" | "closed"
+      portal_request_type: "reorder" | "quote"
       portal_role: "contractor" | "architect" | "project_customer"
       product_category: "tiles" | "sanitary"
       referral_source_type:
@@ -4066,6 +4221,8 @@ export const Constants = {
       ledger_type: ["customer", "supplier", "cash", "expense"],
       payment_method_type: ["cash", "bank", "mobile_banking"],
       payment_status_type: ["paid", "partial", "pending"],
+      portal_request_status: ["pending", "reviewed", "converted", "closed"],
+      portal_request_type: ["reorder", "quote"],
       portal_role: ["contractor", "architect", "project_customer"],
       product_category: ["tiles", "sanitary"],
       referral_source_type: [
