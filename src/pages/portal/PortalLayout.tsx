@@ -1,7 +1,7 @@
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { PortalAuthProvider, usePortalAuth } from "@/contexts/PortalAuthContext";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FileText, ShoppingBag, Truck, Building2, User2, LogOut, Loader2 } from "lucide-react";
+import { LayoutDashboard, FileText, ShoppingBag, Truck, Building2, User2, LogOut, Loader2, Wallet } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const navItems = [
@@ -10,6 +10,7 @@ const navItems = [
   { to: "/portal/orders", label: "My Orders", icon: ShoppingBag },
   { to: "/portal/deliveries", label: "My Deliveries", icon: Truck },
   { to: "/portal/projects", label: "My Projects", icon: Building2 },
+  { to: "/portal/statement", label: "Statement", icon: Wallet },
   { to: "/portal/account", label: "My Account", icon: User2 },
 ];
 
