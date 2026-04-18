@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { MessageCircle, Search, ExternalLink } from "lucide-react";
+import { MessageCircle, Search, ExternalLink, CheckCircle2, XCircle, MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import { useDealerId } from "@/hooks/useDealerId";
 import {
@@ -31,6 +32,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import Pagination from "@/components/Pagination";
 
 const TYPE_LABELS: Record<WhatsAppMessageType, string> = {
