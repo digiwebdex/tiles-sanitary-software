@@ -299,6 +299,30 @@ const DeliveryDetailDialog = ({ deliveryId, dealerId, onClose }: Props) => {
           </div>
         )}
       </DialogContent>
+      {delivery && (phone || customer?.phone) && (
+        <SendWhatsAppDialog
+          open={waOpen}
+          onOpenChange={setWaOpen}
+          dealerId={dealerId}
+          messageType="delivery_update"
+          sourceType="delivery"
+          sourceId={delivery.id}
+          templateKey="delivery_update"
+          defaultPhone={(phone || customer?.phone) ?? ""}
+          defaultName={customer?.name ?? delivery.receiver_name ?? null}
+          defaultMessage={buildDeliveryUpdateMessage({
+            dealerName: dealerInfo?.name ?? "Your Business",
+            customerName: customer?.name ?? delivery.receiver_name ?? null,
+            deliveryNo: deliveryNo || challanNo || `DO${delivery.id.slice(0, 8)}`,
+            status: statusLabel,
+            itemCount: displayItems.length,
+            deliveryDate: delivery.delivery_date,
+            invoiceNo: invoiceNo ?? null,
+            receiverName: delivery.receiver_name ?? null,
+          })}
+          title="Send Delivery Update via WhatsApp"
+        />
+      )}
     </Dialog>
   );
 };
