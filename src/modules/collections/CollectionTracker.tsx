@@ -662,6 +662,27 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
         customerName={followUpCustomer?.name ?? ""}
         dealerId={dealerId}
       />
+
+      {/* WhatsApp Send Dialog (overdue reminder + payment receipt share) */}
+      {waDialog && (
+        <SendWhatsAppDialog
+          open={!!waDialog}
+          onOpenChange={(o) => !o && setWaDialog(null)}
+          dealerId={dealerId}
+          messageType={waDialog.type}
+          sourceType={waDialog.type === "payment_receipt" ? "payment" : "customer"}
+          sourceId={waDialog.sourceId}
+          templateKey={waDialog.type}
+          defaultPhone={waDialog.phone}
+          defaultName={waDialog.name}
+          defaultMessage={waDialog.message}
+          title={
+            waDialog.type === "payment_receipt"
+              ? "Send Receipt via WhatsApp"
+              : "Send Overdue Reminder via WhatsApp"
+          }
+        />
+      )}
     </div>
   );
 }
