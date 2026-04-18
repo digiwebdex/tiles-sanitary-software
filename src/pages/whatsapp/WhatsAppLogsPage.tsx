@@ -83,6 +83,7 @@ const statusLabel = (s: WhatsAppMessageStatus): string => {
 
 const WhatsAppLogsPage = () => {
   const dealerId = useDealerId();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<WhatsAppMessageType | "all">("all");
@@ -99,6 +100,25 @@ const WhatsAppLogsPage = () => {
         search,
       }),
     enabled: !!dealerId,
+  });
+
+  const markSent = useMutation({
+    mutationFn: (id: string) => whatsappService.markSent(id),
+    onSuccess: () => {
+      toast.success("Marked as sent");
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-logs"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const markFailed = useMutation({
+    mutationFn: (id: string) =>
+      whatsappService.markFailed(id, "Marked failed by user"),
+    onSuccess: () => {
+      toast.success("Marked as failed");
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-logs"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const rows = data?.rows ?? [];
