@@ -411,6 +411,163 @@ export const whatsappService = {
     return stats;
   },
 
+  /**
+   * Look for the most recent log for the same recipient + message_type within `cooldownHours`.
+   * Used to warn the dealer they may be re-sending the same notice (e.g. overdue reminder).
+   */
+  async getRecentSendForRecipient(opts: {
+    dealerId: string;
+    messageType: WhatsAppMessageType;
+    recipientPhone: string;
+    cooldownHours?: number;
+  }): Promise<WhatsAppMessageLog | null> {
+    const phone = normalizePhoneForWa(opts.recipientPhone);
+    if (!phone) return null;
+    const hours = opts.cooldownHours ?? 24;
+    const sinceIso = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from("whatsapp_message_logs")
+      .select("*")
+      .eq("dealer_id", opts.dealerId)
+      .eq("message_type", opts.messageType)
+      .eq("recipient_phone", phone)
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data ?? null) as WhatsAppMessageLog | null;
+  },
+
+  /**
+   * Retry a failed/handoff log: creates a NEW linked attempt log row referencing the same source,
+   * and returns the new log + wa.me link. Preserves audit trail (does not mutate original).
+   */
+  async retryLog(id: string): Promise<{ log: WhatsAppMessageLog; waLink: string }> {
+    const { data: original, error } = await supabase
+      .from("whatsapp_message_logs")
+      .select("*")
+      .eq("id", id)
+      .single();
+    if (error) throw new Error(error.message);
+    const orig = original as WhatsAppMessageLog;
+
+    const newLog = await this.createLog({
+      dealer_id: orig.dealer_id,
+      message_type: orig.message_type,
+      source_type: orig.source_type,
+      source_id: orig.source_id,
+      recipient_phone: orig.recipient_phone,
+      recipient_name: orig.recipient_name,
+      template_key: orig.template_key,
+      message_text: orig.message_text,
+      payload_snapshot: {
+        ...(orig.payload_snapshot ?? {}),
+        retry_of: orig.id,
+      },
+      status: "manual_handoff",
+    });
+    return {
+      log: newLog,
+      waLink: buildWaLink(orig.recipient_phone, orig.message_text),
+    };
+  },
+
+  /** Bulk update status for multiple log rows. */
+  async bulkUpdateStatus(ids: string[], status: WhatsAppMessageStatus): Promise<void> {
+    if (ids.length === 0) return;
+    const patch: Record<string, unknown> = { status };
+    if (status === "sent") {
+      patch.sent_at = new Date().toISOString();
+      patch.error_message = null;
+      patch.failed_at = null;
+    } else if (status === "failed") {
+      patch.failed_at = new Date().toISOString();
+      patch.error_message = "Marked failed in bulk by user";
+    }
+    const { error } = await supabase
+      .from("whatsapp_message_logs")
+      .update(patch)
+      .in("id", ids);
+    if (error) throw new Error(error.message);
+  },
+
+  /**
+   * 7-day analytics for dashboard widget: per-day counts, per-type counts, success/fail rate.
+   */
+  async getAnalytics(
+    dealerId: string,
+    days = 7,
+  ): Promise<{
+    totals: { sent: number; handoff: number; failed: number; total: number };
+    byType: Record<WhatsAppMessageType, number>;
+    daily: { date: string; sent: number; handoff: number; failed: number }[];
+    successRate: number;
+  }> {
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    startDate.setDate(startDate.getDate() - (days - 1));
+    const startIso = startDate.toISOString();
+
+    const { data, error } = await supabase
+      .from("whatsapp_message_logs")
+      .select("status, message_type, created_at")
+      .eq("dealer_id", dealerId)
+      .gte("created_at", startIso);
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as {
+      status: WhatsAppMessageStatus;
+      message_type: WhatsAppMessageType;
+      created_at: string;
+    }[];
+
+    const totals = { sent: 0, handoff: 0, failed: 0, total: rows.length };
+    const byType: Record<WhatsAppMessageType, number> = {
+      quotation_share: 0,
+      invoice_share: 0,
+      payment_receipt: 0,
+      overdue_reminder: 0,
+      delivery_update: 0,
+    };
+    const dailyMap = new Map<
+      string,
+      { date: string; sent: number; handoff: number; failed: number }
+    >();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      dailyMap.set(key, { date: key, sent: 0, handoff: 0, failed: 0 });
+    }
+
+    for (const r of rows) {
+      if (r.status === "sent") totals.sent += 1;
+      else if (r.status === "manual_handoff") totals.handoff += 1;
+      else if (r.status === "failed") totals.failed += 1;
+
+      byType[r.message_type] = (byType[r.message_type] ?? 0) + 1;
+
+      const dayKey = r.created_at.slice(0, 10);
+      const bucket = dailyMap.get(dayKey);
+      if (bucket) {
+        if (r.status === "sent") bucket.sent += 1;
+        else if (r.status === "manual_handoff") bucket.handoff += 1;
+        else if (r.status === "failed") bucket.failed += 1;
+      }
+    }
+
+    const positive = totals.sent + totals.handoff;
+    const successRate = totals.total > 0 ? (positive / totals.total) * 100 : 0;
+
+    return {
+      totals,
+      byType,
+      daily: Array.from(dailyMap.values()),
+      successRate,
+    };
+  },
+
   /* ----- SETTINGS ----- */
   async getSettings(dealerId: string): Promise<WhatsAppSettings> {
     const { data, error } = await sb
