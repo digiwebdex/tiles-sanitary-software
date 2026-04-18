@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageCircle, ExternalLink } from "lucide-react";
+import { MessageCircle, ExternalLink, AlertTriangle } from "lucide-react";
 
 import {
   Dialog,
@@ -17,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import {
   buildWaLink,
+  isMessageTypeEnabled,
   isValidWaPhone,
   normalizePhoneForWa,
   whatsappService,
@@ -58,6 +60,15 @@ const SendWhatsAppDialog = ({
   const [message, setMessage] = useState(defaultMessage);
   const [submitting, setSubmitting] = useState(false);
 
+  // Read dealer-level WhatsApp settings to enforce per-type enable flag
+  const { data: settings } = useQuery({
+    queryKey: ["whatsapp-settings", dealerId],
+    queryFn: () => whatsappService.getSettings(dealerId),
+    enabled: !!dealerId && open,
+  });
+
+  const typeEnabled = isMessageTypeEnabled(settings, messageType);
+
   // Reset state whenever dialog re-opens with new defaults
   useEffect(() => {
     if (open) {
@@ -74,6 +85,10 @@ const SendWhatsAppDialog = ({
   );
 
   const handleSend = async () => {
+    if (!typeEnabled) {
+      toast.error("This WhatsApp message type is disabled in Settings.");
+      return;
+    }
     if (!phoneValid) {
       toast.error("Please enter a valid phone number");
       return;
@@ -107,6 +122,23 @@ const SendWhatsAppDialog = ({
       onOpenChange(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to log WhatsApp send";
+      // Best-effort: also create a 'failed' log row so the dealer sees it in the log
+      try {
+        await whatsappService.createLog({
+          dealer_id: dealerId,
+          message_type: messageType,
+          source_type: sourceType,
+          source_id: sourceId,
+          recipient_phone: normalized,
+          recipient_name: defaultName ?? null,
+          template_key: templateKey,
+          message_text: message,
+          payload_snapshot: payloadSnapshot ?? {},
+          status: "failed",
+        });
+      } catch {
+        // swallow secondary failure
+      }
       toast.error(msg);
     } finally {
       setSubmitting(false);
@@ -125,6 +157,16 @@ const SendWhatsAppDialog = ({
             Review the message, then open WhatsApp to send. The attempt will be logged.
           </DialogDescription>
         </DialogHeader>
+
+        {!typeEnabled && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              This WhatsApp message type is currently disabled in <strong>Settings → WhatsApp Automation</strong>.
+              Enable it to send.
+            </div>
+          </div>
+        )}
 
         <div className="space-y-3">
           <div className="space-y-1">
@@ -167,7 +209,10 @@ const SendWhatsAppDialog = ({
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={handleSend} disabled={!phoneValid || submitting || !message.trim()}>
+          <Button
+            onClick={handleSend}
+            disabled={!typeEnabled || !phoneValid || submitting || !message.trim()}
+          >
             <ExternalLink className="h-4 w-4 mr-1" />
             Open WhatsApp
           </Button>
