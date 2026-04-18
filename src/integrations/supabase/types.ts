@@ -3532,6 +3532,68 @@ export type Database = {
           },
         ]
       }
+      whatsapp_settings: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          default_country_code: string
+          enable_delivery_update: boolean
+          enable_invoice_share: boolean
+          enable_overdue_reminder: boolean
+          enable_payment_receipt: boolean
+          enable_quotation_share: boolean
+          prefer_manual_send: boolean
+          template_delivery_update: string | null
+          template_invoice_share: string | null
+          template_overdue_reminder: string | null
+          template_payment_receipt: string | null
+          template_quotation_share: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          default_country_code?: string
+          enable_delivery_update?: boolean
+          enable_invoice_share?: boolean
+          enable_overdue_reminder?: boolean
+          enable_payment_receipt?: boolean
+          enable_quotation_share?: boolean
+          prefer_manual_send?: boolean
+          template_delivery_update?: string | null
+          template_invoice_share?: string | null
+          template_overdue_reminder?: string | null
+          template_payment_receipt?: string | null
+          template_quotation_share?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          default_country_code?: string
+          enable_delivery_update?: boolean
+          enable_invoice_share?: boolean
+          enable_overdue_reminder?: boolean
+          enable_payment_receipt?: boolean
+          enable_quotation_share?: boolean
+          prefer_manual_send?: boolean
+          template_delivery_update?: string | null
+          template_invoice_share?: string | null
+          template_overdue_reminder?: string | null
+          template_payment_receipt?: string | null
+          template_quotation_share?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_settings_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: true
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
