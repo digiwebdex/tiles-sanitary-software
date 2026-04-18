@@ -113,9 +113,9 @@ export async function getOutstandingSummary(): Promise<OutstandingSummary | null
     console.warn("outstanding summary error:", error.message);
     return null;
   }
-  const obj = data as { error?: string } & OutstandingSummary;
+  const obj = data as unknown as { error?: string } & OutstandingSummary;
   if (obj?.error) return null;
-  return obj as OutstandingSummary;
+  return obj;
 }
 
 export async function getRecentPayments(limit = 10): Promise<RecentPayment[]> {
@@ -143,25 +143,47 @@ export async function listPortalQuotations(customerId: string) {
   return data ?? [];
 }
 
-export async function listPortalSales(customerId: string) {
+export interface PortalSale {
+  id: string;
+  invoice_number: string | null;
+  sale_date: string;
+  sale_status: string;
+  total_amount: number;
+  paid_amount: number;
+  due_amount: number;
+}
+
+export async function listPortalSales(customerId: string): Promise<PortalSale[]> {
   const { data, error } = await supabase
     .from("sales")
     .select(
-      "id, invoice_no, sale_date, status, total_amount, paid_amount, balance_due"
+      "id, invoice_number, sale_date, sale_status, total_amount, paid_amount, due_amount"
     )
     .eq("customer_id", customerId)
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as PortalSale[];
 }
 
-export async function listPortalDeliveries(customerId: string) {
-  // Two paths: deliveries linked via sale → filter by sale's customer_id
+export interface PortalDelivery {
+  id: string;
+  delivery_no: string | null;
+  delivery_date: string;
+  status: string | null;
+  sale_id: string | null;
+  receiver_name: string | null;
+  delivery_address: string | null;
+  notes: string | null;
+  invoice_number: string | null;
+}
+
+export async function listPortalDeliveries(customerId: string): Promise<PortalDelivery[]> {
   const { data: sales } = await supabase
     .from("sales")
-    .select("id, invoice_no")
+    .select("id, invoice_number")
     .eq("customer_id", customerId);
-  const saleIds = (sales ?? []).map((s) => s.id);
+  const saleRows = (sales ?? []) as { id: string; invoice_number: string | null }[];
+  const saleIds = saleRows.map((s) => s.id);
   if (saleIds.length === 0) return [];
 
   const { data, error } = await supabase
@@ -172,11 +194,11 @@ export async function listPortalDeliveries(customerId: string) {
     .in("sale_id", saleIds)
     .order("delivery_date", { ascending: false });
   if (error) throw error;
-  const byId = new Map((sales ?? []).map((s) => [s.id, s.invoice_no]));
+  const byId = new Map(saleRows.map((s) => [s.id, s.invoice_number]));
   return (data ?? []).map((d) => ({
     ...d,
-    invoice_no: byId.get(d.sale_id ?? "") ?? null,
-  }));
+    invoice_number: byId.get(d.sale_id ?? "") ?? null,
+  })) as PortalDelivery[];
 }
 
 export async function listPortalProjects(customerId: string) {

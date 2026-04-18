@@ -39,7 +39,7 @@ export default function PortalDashboardPage() {
   });
 
   const activeQuotes = (quotationsQ.data ?? []).filter((q) => q.status === "active").length;
-  const openOrders = (salesQ.data ?? []).filter((s) => s.status !== "cancelled").length;
+  const openOrders = (salesQ.data ?? []).filter((s) => s.sale_status !== "cancelled").length;
   const pendingDeliveries = (deliveriesQ.data ?? []).filter(
     (d) => d.status !== "delivered" && d.status !== "cancelled"
   ).length;
@@ -114,12 +114,12 @@ export default function PortalDashboardPage() {
               (salesQ.data ?? []).slice(0, 5).map((s) => (
                 <div key={s.id} className="flex justify-between border-b border-border last:border-0 pb-1.5">
                   <div>
-                    <div className="font-medium">{s.invoice_no ?? s.id.slice(0, 8)}</div>
+                    <div className="font-medium">{s.invoice_number ?? s.id.slice(0, 8)}</div>
                     <div className="text-xs text-muted-foreground">{s.sale_date}</div>
                   </div>
                   <div className="text-right">
                     <div>{fmtBDT(s.total_amount)}</div>
-                    <div className="text-xs text-muted-foreground">{s.status}</div>
+                    <div className="text-xs text-muted-foreground">{s.sale_status}</div>
                   </div>
                 </div>
               ))

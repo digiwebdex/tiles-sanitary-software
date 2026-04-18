@@ -42,7 +42,7 @@ export default function PortalDeliveriesPage() {
                 {data!.map((d) => (
                   <TableRow key={d.id}>
                     <TableCell className="font-medium">{d.delivery_no ?? d.id.slice(0, 8)}</TableCell>
-                    <TableCell>{d.invoice_no ?? "—"}</TableCell>
+                    <TableCell>{d.invoice_number ?? "—"}</TableCell>
                     <TableCell>{d.delivery_date}</TableCell>
                     <TableCell>{d.receiver_name ?? "—"}</TableCell>
                     <TableCell>

@@ -45,17 +45,17 @@ export default function PortalOrdersPage() {
               <TableBody>
                 {data!.map((s) => (
                   <TableRow key={s.id}>
-                    <TableCell className="font-medium">{s.invoice_no ?? s.id.slice(0, 8)}</TableCell>
+                    <TableCell className="font-medium">{s.invoice_number ?? s.id.slice(0, 8)}</TableCell>
                     <TableCell>{s.sale_date}</TableCell>
                     <TableCell>
-                      <Badge variant={s.status === "paid" ? "default" : "secondary"}>
-                        {s.status}
+                      <Badge variant={s.sale_status === "paid" ? "default" : "secondary"}>
+                        {s.sale_status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">{fmtBDT(s.total_amount)}</TableCell>
                     <TableCell className="text-right">{fmtBDT(s.paid_amount ?? 0)}</TableCell>
-                    <TableCell className={`text-right ${(s.balance_due ?? 0) > 0 ? "text-destructive font-semibold" : ""}`}>
-                      {fmtBDT(s.balance_due ?? 0)}
+                    <TableCell className={`text-right ${(s.due_amount ?? 0) > 0 ? "text-destructive font-semibold" : ""}`}>
+                      {fmtBDT(s.due_amount ?? 0)}
                     </TableCell>
                   </TableRow>
                 ))}
