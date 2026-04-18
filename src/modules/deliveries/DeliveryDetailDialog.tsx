@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { deliveryService } from "@/services/deliveryService";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
@@ -8,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
-import { Printer, X } from "lucide-react";
+import { Printer, X, MessageCircle } from "lucide-react";
+import SendWhatsAppDialog from "@/components/whatsapp/SendWhatsAppDialog";
+import { buildDeliveryUpdateMessage } from "@/services/whatsappService";
 
 interface Props {
   deliveryId: string | null;
