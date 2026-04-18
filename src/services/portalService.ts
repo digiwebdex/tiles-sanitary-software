@@ -316,3 +316,198 @@ export async function listPortalSites(customerId: string) {
   if (error) throw error;
   return data ?? [];
 }
+
+// ---------- Batch 3: Requests ----------
+
+export type PortalRequestType = "reorder" | "quote";
+export type PortalRequestStatus = "pending" | "reviewed" | "converted" | "closed";
+
+export interface PortalRequestItem {
+  product_id?: string | null;
+  product_name: string;
+  product_sku?: string | null;
+  unit_type?: string | null;
+  quantity: number;
+  rate?: number | null;
+  notes?: string | null;
+}
+
+export interface PortalRequest {
+  id: string;
+  dealer_id: string;
+  customer_id: string;
+  portal_user_id: string | null;
+  request_type: PortalRequestType;
+  status: PortalRequestStatus;
+  source_sale_id: string | null;
+  source_quotation_id: string | null;
+  project_id: string | null;
+  site_id: string | null;
+  message: string | null;
+  items: PortalRequestItem[];
+  review_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  converted_quotation_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const rpc = supabase.rpc as unknown as (
+  name: string,
+  args?: Record<string, unknown>,
+) => Promise<{ data: unknown; error: { message: string } | null }>;
+
+export async function submitPortalRequest(payload: {
+  request_type: PortalRequestType;
+  source_sale_id?: string | null;
+  source_quotation_id?: string | null;
+  project_id?: string | null;
+  site_id?: string | null;
+  message?: string | null;
+  items: PortalRequestItem[];
+}): Promise<string> {
+  const { data, error } = await rpc("submit_portal_request", {
+    _request_type: payload.request_type,
+    _source_sale_id: payload.source_sale_id ?? null,
+    _source_quotation_id: payload.source_quotation_id ?? null,
+    _project_id: payload.project_id ?? null,
+    _site_id: payload.site_id ?? null,
+    _message: payload.message ?? null,
+    _items: payload.items,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function listMyPortalRequests(): Promise<PortalRequest[]> {
+  const { data, error } = await supabase
+    .from("portal_requests" as never)
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as PortalRequest[]).map((r) => ({
+    ...r,
+    items: Array.isArray(r.items) ? r.items : [],
+  }));
+}
+
+export async function getPortalSaleItems(saleId: string): Promise<PortalRequestItem[]> {
+  const { data, error } = await rpc("get_portal_sale_items", { _sale_id: saleId });
+  if (error) throw new Error(error.message);
+  return ((data as PortalRequestItem[] | null) ?? []).map((r) => ({
+    ...r,
+    quantity: Number(r.quantity ?? 0),
+    rate: r.rate != null ? Number(r.rate) : null,
+  }));
+}
+
+// ---------- Batch 3: Documents ----------
+
+export interface PortalQuotationDoc {
+  quotation: Record<string, unknown>;
+  items: Record<string, unknown>[];
+  dealer: Record<string, unknown>;
+  customer: Record<string, unknown>;
+}
+
+export async function getPortalQuotationDoc(quotationId: string): Promise<PortalQuotationDoc | null> {
+  const { data, error } = await rpc("get_portal_quotation_doc", { _quotation_id: quotationId });
+  if (error) {
+    console.warn("portal quotation doc:", error.message);
+    return null;
+  }
+  return data as PortalQuotationDoc;
+}
+
+export interface PortalInvoiceDoc {
+  sale: Record<string, unknown>;
+  items: Record<string, unknown>[];
+  dealer: Record<string, unknown>;
+  customer: Record<string, unknown>;
+}
+
+export async function getPortalInvoiceDoc(saleId: string): Promise<PortalInvoiceDoc | null> {
+  const { data, error } = await rpc("get_portal_invoice_doc", { _sale_id: saleId });
+  if (error) {
+    console.warn("portal invoice doc:", error.message);
+    return null;
+  }
+  return data as PortalInvoiceDoc;
+}
+
+export interface PortalChallanDoc {
+  challan: Record<string, unknown>;
+  sale: Record<string, unknown>;
+  items: Record<string, unknown>[];
+  dealer: Record<string, unknown>;
+  customer: Record<string, unknown>;
+}
+
+export async function getPortalChallanDoc(challanId: string): Promise<PortalChallanDoc | null> {
+  const { data, error } = await rpc("get_portal_challan_doc", { _challan_id: challanId });
+  if (error) {
+    console.warn("portal challan doc:", error.message);
+    return null;
+  }
+  return data as PortalChallanDoc;
+}
+
+// ---------- Batch 3: WhatsApp tie-in ----------
+
+export interface PortalWhatsAppStatus {
+  message_type: string;
+  status: string;
+  sent_at: string | null;
+  created_at: string;
+}
+
+export async function getPortalWhatsAppStatus(
+  sourceType: "quotation" | "sale" | "delivery",
+  sourceId: string,
+): Promise<PortalWhatsAppStatus | null> {
+  const { data, error } = await rpc("get_portal_whatsapp_status", {
+    _source_type: sourceType,
+    _source_id: sourceId,
+  });
+  if (error) {
+    console.warn("portal wa status:", error.message);
+    return null;
+  }
+  return (data as PortalWhatsAppStatus | null) ?? null;
+}
+
+// ---------- Batch 3: Admin (dealer-side requests) ----------
+
+export async function listDealerPortalRequests(dealerId: string): Promise<PortalRequest[]> {
+  const { data, error } = await supabase
+    .from("portal_requests" as never)
+    .select("*")
+    .eq("dealer_id", dealerId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as PortalRequest[]).map((r) => ({
+    ...r,
+    items: Array.isArray(r.items) ? r.items : [],
+  }));
+}
+
+export async function updatePortalRequest(
+  id: string,
+  patch: {
+    status?: PortalRequestStatus;
+    review_note?: string | null;
+    reviewed_by?: string | null;
+    converted_quotation_id?: string | null;
+  },
+): Promise<void> {
+  const update: Record<string, unknown> = { ...patch };
+  if (patch.status && patch.status !== "pending") {
+    update.reviewed_at = new Date().toISOString();
+  }
+  const { error } = await supabase
+    .from("portal_requests" as never)
+    .update(update as never)
+    .eq("id", id);
+  if (error) throw error;
+}
