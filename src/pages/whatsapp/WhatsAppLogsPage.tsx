@@ -1,7 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { MessageCircle, Search, ExternalLink, CheckCircle2, XCircle, MoreHorizontal } from "lucide-react";
+import {
+  MessageCircle,
+  Search,
+  ExternalLink,
+  CheckCircle2,
+  XCircle,
+  MoreHorizontal,
+  RotateCw,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { useDealerId } from "@/hooks/useDealerId";
@@ -17,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -88,6 +97,7 @@ const WhatsAppLogsPage = () => {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<WhatsAppMessageType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<WhatsAppMessageStatus | "all">("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const { data, isLoading } = useQuery({
     queryKey: ["whatsapp-logs", dealerId, page, search, typeFilter, statusFilter],
@@ -102,11 +112,22 @@ const WhatsAppLogsPage = () => {
     enabled: !!dealerId,
   });
 
+  const { data: analytics } = useQuery({
+    queryKey: ["whatsapp-analytics", dealerId, 7],
+    queryFn: () => whatsappService.getAnalytics(dealerId, 7),
+    enabled: !!dealerId,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-logs"] });
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-analytics"] });
+  };
+
   const markSent = useMutation({
     mutationFn: (id: string) => whatsappService.markSent(id),
     onSuccess: () => {
       toast.success("Marked as sent");
-      queryClient.invalidateQueries({ queryKey: ["whatsapp-logs"] });
+      invalidate();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -116,7 +137,35 @@ const WhatsAppLogsPage = () => {
       whatsappService.markFailed(id, "Marked failed by user"),
     onSuccess: () => {
       toast.success("Marked as failed");
-      queryClient.invalidateQueries({ queryKey: ["whatsapp-logs"] });
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const retry = useMutation({
+    mutationFn: (id: string) => whatsappService.retryLog(id),
+    onSuccess: ({ waLink }) => {
+      window.open(waLink, "_blank", "noopener,noreferrer");
+      toast.success("Retry attempt logged. WhatsApp opened.");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const bulkUpdate = useMutation({
+    mutationFn: ({
+      ids,
+      status,
+    }: {
+      ids: string[];
+      status: WhatsAppMessageStatus;
+    }) => whatsappService.bulkUpdateStatus(ids, status),
+    onSuccess: (_d, vars) => {
+      toast.success(
+        `Updated ${vars.ids.length} message${vars.ids.length === 1 ? "" : "s"}.`,
+      );
+      setSelected(new Set());
+      invalidate();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -125,13 +174,30 @@ const WhatsAppLogsPage = () => {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE_WA));
 
-  // Quick stats
-  const sentToday = rows.filter(
-    (r) =>
-      (r.status === "sent" || r.status === "manual_handoff") &&
-      r.created_at.slice(0, 10) === new Date().toISOString().slice(0, 10)
-  ).length;
-  const failedCount = rows.filter((r) => r.status === "failed").length;
+  const allSelected = useMemo(
+    () => rows.length > 0 && rows.every((r) => selected.has(r.id)),
+    [rows, selected],
+  );
+  const someSelected = useMemo(
+    () => rows.some((r) => selected.has(r.id)),
+    [rows, selected],
+  );
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(rows.map((r) => r.id)));
+    }
+  };
+  const toggleOne = (id: string) => {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div className="container mx-auto p-4 space-y-4">
@@ -147,35 +213,47 @@ const WhatsAppLogsPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs uppercase text-muted-foreground">
-              On this page
+              Last 7 days
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{rows.length}</p>
+            <p className="text-2xl font-bold">{analytics?.totals.total ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs uppercase text-muted-foreground">
-              Sent today (this view)
+              Sent
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{sentToday}</p>
+            <p className="text-2xl font-bold">{analytics?.totals.sent ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs uppercase text-muted-foreground">
-              Failed (this view)
+              Opened
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-destructive">{failedCount}</p>
+            <p className="text-2xl font-bold">{analytics?.totals.handoff ?? 0}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs uppercase text-muted-foreground">
+              Failed
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-destructive">
+              {analytics?.totals.failed ?? 0}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -234,6 +312,45 @@ const WhatsAppLogsPage = () => {
             </Select>
           </div>
 
+          {someSelected && (
+            <div className="flex items-center gap-2 rounded-md border bg-muted/40 p-2 text-xs">
+              <span className="font-medium">{selected.size} selected</span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={bulkUpdate.isPending}
+                onClick={() =>
+                  bulkUpdate.mutate({
+                    ids: Array.from(selected),
+                    status: "sent",
+                  })
+                }
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Sent
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={bulkUpdate.isPending}
+                onClick={() =>
+                  bulkUpdate.mutate({
+                    ids: Array.from(selected),
+                    status: "failed",
+                  })
+                }
+              >
+                <XCircle className="h-3.5 w-3.5 mr-1" /> Mark Failed
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelected(new Set())}
+              >
+                Clear
+              </Button>
+            </div>
+          )}
+
           {isLoading ? (
             <p className="text-center py-8 text-muted-foreground text-sm">Loading…</p>
           ) : rows.length === 0 ? (
@@ -245,6 +362,13 @@ const WhatsAppLogsPage = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={toggleAll}
+                        aria-label="Select all"
+                      />
+                    </TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Recipient</TableHead>
@@ -256,7 +380,14 @@ const WhatsAppLogsPage = () => {
                 </TableHeader>
                 <TableBody>
                   {rows.map((r) => (
-                    <TableRow key={r.id}>
+                    <TableRow key={r.id} data-state={selected.has(r.id) ? "selected" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selected.has(r.id)}
+                          onCheckedChange={() => toggleOne(r.id)}
+                          aria-label={`Select ${r.id}`}
+                        />
+                      </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
                         {format(new Date(r.created_at), "dd MMM, HH:mm")}
                       </TableCell>
@@ -286,7 +417,7 @@ const WhatsAppLogsPage = () => {
                               <MoreHorizontal className="h-3.5 w-3.5" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuContent align="end" className="w-52">
                             <DropdownMenuItem
                               onClick={() =>
                                 window.open(
@@ -296,7 +427,13 @@ const WhatsAppLogsPage = () => {
                                 )
                               }
                             >
-                              <ExternalLink className="mr-2 h-4 w-4" /> Retry / Re-open
+                              <ExternalLink className="mr-2 h-4 w-4" /> Re-open in WhatsApp
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={retry.isPending}
+                              onClick={() => retry.mutate(r.id)}
+                            >
+                              <RotateCw className="mr-2 h-4 w-4" /> Retry (new attempt)
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
