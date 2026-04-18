@@ -72,6 +72,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
         <nav className="flex-1 space-y-1">
           {navItems.map((item) => {
+            if ((item as any).dealerAdminOnly && !isDealerAdmin && !isSuperAdmin) return null;
             const disabled = isReadonly && !item.readonlyAllowed;
             const active = location.pathname === item.path;
             return (
