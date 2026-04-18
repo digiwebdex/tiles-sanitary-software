@@ -48,8 +48,15 @@ const DeliveryList = ({ dealerId }: DeliveryListProps) => {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [siteId, setSiteId] = useState<string | null>(null);
+  const [waDialog, setWaDialog] = useState<null | {
+    deliveryId: string;
+    phone: string;
+    name: string;
+    message: string;
+  }>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: dealerInfo } = useDealerInfo();
 
   const { data, isLoading } = useQuery({
     queryKey: ["deliveries", dealerId, page, statusFilter, projectId, siteId],
