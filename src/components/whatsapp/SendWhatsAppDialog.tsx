@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageCircle, ExternalLink, AlertTriangle } from "lucide-react";
+import { MessageCircle, ExternalLink, AlertTriangle, Clock, CheckCircle2 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 import {
   Dialog,
@@ -84,7 +85,20 @@ const SendWhatsAppDialog = ({
     [phone, message, phoneValid]
   );
 
-  const handleSend = async () => {
+  // Cooldown lookup: warn dealer if same type was sent to same phone in last 24h
+  const { data: recentSend } = useQuery({
+    queryKey: ["whatsapp-recent", dealerId, messageType, normalized],
+    queryFn: () =>
+      whatsappService.getRecentSendForRecipient({
+        dealerId,
+        messageType,
+        recipientPhone: normalized,
+        cooldownHours: 24,
+      }),
+    enabled: !!dealerId && open && phoneValid,
+  });
+
+  const performSend = async (autoMarkSent: boolean) => {
     if (!typeEnabled) {
       toast.error("This WhatsApp message type is disabled in Settings.");
       return;
@@ -100,7 +114,6 @@ const SendWhatsAppDialog = ({
 
     setSubmitting(true);
     try {
-      // 1. Log the attempt (manual_handoff: dealer will hit Send in WhatsApp)
       const input: CreateLogInput = {
         dealer_id: dealerId,
         message_type: messageType,
@@ -111,18 +124,20 @@ const SendWhatsAppDialog = ({
         template_key: templateKey,
         message_text: message,
         payload_snapshot: payloadSnapshot ?? {},
-        status: "manual_handoff",
+        status: autoMarkSent ? "sent" : "manual_handoff",
       };
       await whatsappService.createLog(input);
 
-      // 2. Open WhatsApp in a new tab
       window.open(waLink, "_blank", "noopener,noreferrer");
 
-      toast.success("WhatsApp opened. Hit Send to deliver the message.");
+      toast.success(
+        autoMarkSent
+          ? "WhatsApp opened and logged as sent."
+          : "WhatsApp opened. Hit Send to deliver the message."
+      );
       onOpenChange(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to log WhatsApp send";
-      // Best-effort: also create a 'failed' log row so the dealer sees it in the log
       try {
         await whatsappService.createLog({
           dealer_id: dealerId,
@@ -145,6 +160,8 @@ const SendWhatsAppDialog = ({
     }
   };
 
+  const preferManual = settings?.prefer_manual_send ?? true;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -164,6 +181,20 @@ const SendWhatsAppDialog = ({
             <div>
               This WhatsApp message type is currently disabled in <strong>Settings → WhatsApp Automation</strong>.
               Enable it to send.
+            </div>
+          </div>
+        )}
+
+        {recentSend && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+            <Clock className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              A <strong>{(recentSend.message_type ?? "").replace("_", " ")}</strong> was already sent
+              to this number{" "}
+              <strong>
+                {formatDistanceToNow(new Date(recentSend.created_at), { addSuffix: true })}
+              </strong>
+              . Send again only if necessary.
             </div>
           </div>
         )}
@@ -205,12 +236,22 @@ const SendWhatsAppDialog = ({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
+          {!preferManual && (
+            <Button
+              variant="secondary"
+              onClick={() => performSend(true)}
+              disabled={!typeEnabled || !phoneValid || submitting || !message.trim()}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1" />
+              Send & Mark Sent
+            </Button>
+          )}
           <Button
-            onClick={handleSend}
+            onClick={() => performSend(false)}
             disabled={!typeEnabled || !phoneValid || submitting || !message.trim()}
           >
             <ExternalLink className="h-4 w-4 mr-1" />
