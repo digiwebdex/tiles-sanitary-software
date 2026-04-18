@@ -67,6 +67,15 @@ import SACmsPage from "./pages/super-admin/SACmsPage";
 import SABackupPage from "./pages/super-admin/SABackupPage";
 import SettingsPage from "./pages/settings/SettingsPage";
 import PricingTiersPage from "./pages/settings/PricingTiersPage";
+import PortalUsersPage from "./pages/admin/PortalUsersPage";
+import PortalLayout from "./pages/portal/PortalLayout";
+import PortalLoginPage from "./pages/portal/PortalLoginPage";
+import PortalDashboardPage from "./pages/portal/PortalDashboardPage";
+import PortalQuotationsPage from "./pages/portal/PortalQuotationsPage";
+import PortalOrdersPage from "./pages/portal/PortalOrdersPage";
+import PortalDeliveriesPage from "./pages/portal/PortalDeliveriesPage";
+import PortalProjectsPage from "./pages/portal/PortalProjectsPage";
+import PortalAccountPage from "./pages/portal/PortalAccountPage";
 
 const IS_PRODUCTION = import.meta.env.PROD;
 
@@ -163,6 +172,19 @@ const App = () => (
             <Route path="/referrals" element={<ProtectedRoute><AppLayout><ReferralSourcesPage /></AppLayout></ProtectedRoute>} />
             <Route path="/display-sample" element={<ProtectedRoute><AppLayout><DisplaySampleStockPage /></AppLayout></ProtectedRoute>} />
             <Route path="/whatsapp-logs" element={<ProtectedRoute><AppLayout><WhatsAppLogsPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/admin/portal-users" element={<ProtectedRoute><AppLayout><PortalUsersPage /></AppLayout></ProtectedRoute>} />
+
+            {/* Customer / Contractor Portal (external users) */}
+            <Route path="/portal/login" element={<PortalLoginPage />} />
+            <Route path="/portal" element={<PortalLayout />}>
+              <Route index element={<Navigate to="/portal/dashboard" replace />} />
+              <Route path="dashboard" element={<PortalDashboardPage />} />
+              <Route path="quotations" element={<PortalQuotationsPage />} />
+              <Route path="orders" element={<PortalOrdersPage />} />
+              <Route path="deliveries" element={<PortalDeliveriesPage />} />
+              <Route path="projects" element={<PortalProjectsPage />} />
+              <Route path="account" element={<PortalAccountPage />} />
+            </Route>
 
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1401,6 +1401,75 @@ export type Database = {
         }
         Relationships: []
       }
+      portal_users: {
+        Row: {
+          activated_at: string | null
+          auth_user_id: string | null
+          created_at: string
+          customer_id: string
+          dealer_id: string
+          email: string
+          id: string
+          invited_at: string
+          invited_by: string | null
+          last_login_at: string | null
+          name: string
+          phone: string | null
+          portal_role: Database["public"]["Enums"]["portal_role"]
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          activated_at?: string | null
+          auth_user_id?: string | null
+          created_at?: string
+          customer_id: string
+          dealer_id: string
+          email: string
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          last_login_at?: string | null
+          name: string
+          phone?: string | null
+          portal_role?: Database["public"]["Enums"]["portal_role"]
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          activated_at?: string | null
+          auth_user_id?: string | null
+          created_at?: string
+          customer_id?: string
+          dealer_id?: string
+          email?: string
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          last_login_at?: string | null
+          name?: string
+          phone?: string | null
+          portal_role?: Database["public"]["Enums"]["portal_role"]
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_users_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_users_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       price_tier_items: {
         Row: {
           created_at: string
@@ -3683,6 +3752,24 @@ export type Database = {
         Returns: string
       }
       get_next_project_code: { Args: { p_dealer_id: string }; Returns: string }
+      get_portal_context: {
+        Args: never
+        Returns: {
+          customer_id: string
+          dealer_id: string
+          portal_user_id: string
+        }[]
+      }
+      get_portal_outstanding_summary: { Args: never; Returns: Json }
+      get_portal_recent_payments: {
+        Args: { _limit?: number }
+        Returns: {
+          amount: number
+          description: string
+          entry_date: string
+          sale_id: string
+        }[]
+      }
       get_user_dealer_id: { Args: { _user_id: string }; Returns: string }
       has_active_subscription: { Args: never; Returns: boolean }
       has_role: {
@@ -3692,11 +3779,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_portal_user_for_customer: {
+        Args: { _customer_id: string }
+        Returns: boolean
+      }
       is_super_admin: { Args: never; Returns: boolean }
       link_quotation_to_sale: {
         Args: { _dealer_id: string; _quotation_id: string; _sale_id: string }
         Returns: undefined
       }
+      portal_bind_auth_user: { Args: never; Returns: undefined }
+      portal_touch_last_login: { Args: never; Returns: undefined }
       record_failed_login: {
         Args: { _email: string; _ip?: string }
         Returns: Json
@@ -3761,6 +3854,7 @@ export type Database = {
       ledger_type: "customer" | "supplier" | "cash" | "expense"
       payment_method_type: "cash" | "bank" | "mobile_banking"
       payment_status_type: "paid" | "partial" | "pending"
+      portal_role: "contractor" | "architect" | "project_customer"
       product_category: "tiles" | "sanitary"
       referral_source_type:
         | "salesman"
@@ -3957,6 +4051,7 @@ export const Constants = {
       ledger_type: ["customer", "supplier", "cash", "expense"],
       payment_method_type: ["cash", "bank", "mobile_banking"],
       payment_status_type: ["paid", "partial", "pending"],
+      portal_role: ["contractor", "architect", "project_customer"],
       product_category: ["tiles", "sanitary"],
       referral_source_type: [
         "salesman",
