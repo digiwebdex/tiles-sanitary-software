@@ -42,6 +42,15 @@ export interface RecentPayment {
   sale_id: string | null;
 }
 
+export interface LedgerHistoryRow {
+  entry_date: string;
+  entry_type: string;
+  amount: number;
+  description: string | null;
+  reference_no: string | null;
+  sale_id: string | null;
+}
+
 // ---------- Admin (dealer_admin) operations ----------
 
 export async function listPortalUsers(dealerId: string): Promise<PortalUser[]> {
@@ -127,6 +136,93 @@ export async function getRecentPayments(limit = 10): Promise<RecentPayment[]> {
     return [];
   }
   return (data ?? []) as RecentPayment[];
+}
+
+export async function getLedgerHistory(limit = 30): Promise<LedgerHistoryRow[]> {
+  const { data, error } = await (supabase.rpc as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message: string } | null }>)(
+    "get_portal_ledger_history",
+    { _limit: limit },
+  );
+  if (error) {
+    console.warn("ledger history error:", error.message);
+    return [];
+  }
+  return (data as LedgerHistoryRow[] | null) ?? [];
+}
+
+// ---------- Project detail (Batch 2) ----------
+
+export interface PortalProjectSummary {
+  project: {
+    id: string;
+    project_code: string;
+    project_name: string;
+    status: string;
+    start_date: string | null;
+    expected_end_date: string | null;
+    notes: string | null;
+  };
+  sites: Array<{
+    id: string;
+    site_name: string;
+    address: string | null;
+    status: string;
+  }>;
+  quotations: Array<{
+    id: string;
+    quotation_no: string;
+    revision_no: number;
+    quote_date: string;
+    status: string;
+    total_amount: number;
+  }>;
+  sales: Array<{
+    id: string;
+    invoice_number: string | null;
+    sale_date: string;
+    sale_status: string;
+    total_amount: number;
+    paid_amount: number;
+    due_amount: number;
+  }>;
+  deliveries: Array<{
+    id: string;
+    delivery_no: string | null;
+    delivery_date: string;
+    status: string | null;
+    sale_id: string | null;
+    invoice_number: string | null;
+  }>;
+  items: Array<{
+    product_id: string;
+    product_name: string;
+    product_sku: string;
+    unit_type: string;
+    ordered_qty: number;
+    delivered_qty: number;
+    pending_qty: number;
+  }>;
+}
+
+export async function getPortalProjectSummary(
+  projectId: string,
+): Promise<PortalProjectSummary | { error: string } | null> {
+  const { data, error } = await (supabase.rpc as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message: string } | null }>)(
+    "get_portal_project_summary",
+    { _project_id: projectId },
+  );
+  if (error) {
+    console.warn("project summary error:", error.message);
+    return null;
+  }
+  const obj = data as PortalProjectSummary | { error: string } | null;
+  return obj;
 }
 
 // ---------- Portal data fetchers (RLS-scoped) ----------

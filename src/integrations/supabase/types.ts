@@ -3760,7 +3760,22 @@ export type Database = {
           portal_user_id: string
         }[]
       }
+      get_portal_ledger_history: {
+        Args: { _limit?: number }
+        Returns: {
+          amount: number
+          description: string
+          entry_date: string
+          entry_type: string
+          reference_no: string
+          sale_id: string
+        }[]
+      }
       get_portal_outstanding_summary: { Args: never; Returns: Json }
+      get_portal_project_summary: {
+        Args: { _project_id: string }
+        Returns: Json
+      }
       get_portal_recent_payments: {
         Args: { _limit?: number }
         Returns: {
