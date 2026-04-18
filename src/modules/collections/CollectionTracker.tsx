@@ -97,6 +97,13 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
     date: string;
   } | null>(null);
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const [waDialog, setWaDialog] = useState<null | {
+    type: "payment_receipt" | "overdue_reminder";
+    phone: string;
+    name: string;
+    sourceId: string | null;
+    message: string;
+  }>(null);
 
   // Fetch all customers with outstanding balances + follow-up data
   const { data: customers = [], isLoading } = useQuery({
