@@ -17,6 +17,8 @@ const RESOURCE_TABLE: Record<ResourceName, string> = {
   CUSTOMERS: "customers",
   SUPPLIERS: "suppliers",
   PRODUCTS: "products",
+  STOCK: "stock",
+  BATCHES: "product_batches",
   SALES: "sales",
   QUOTATIONS: "quotations",
   DELIVERIES: "deliveries",

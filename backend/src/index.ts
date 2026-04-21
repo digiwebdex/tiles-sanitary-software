@@ -10,6 +10,9 @@ import authRoutes from './routes/auth';
 import healthRoutes from './routes/health';
 import suppliersRoutes from './routes/suppliers';
 import customersRoutes from './routes/customers';
+import productsRoutes from './routes/products';
+import stockRoutes from './routes/stock';
+import batchesRoutes from './routes/batches';
 
 const app = express();
 
@@ -44,6 +47,9 @@ app.use('/api/health', healthRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/customers', customersRoutes);
+app.use('/api/products', productsRoutes);
+app.use('/api/stock', stockRoutes);
+app.use('/api/batches', batchesRoutes);
 
 // ── 404 handler ──
 app.use((_req, res) => {

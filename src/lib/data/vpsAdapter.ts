@@ -18,6 +18,8 @@ const RESOURCE_PATH: Record<ResourceName, string> = {
   CUSTOMERS: "customers",
   SUPPLIERS: "suppliers",
   PRODUCTS: "products",
+  STOCK: "stock",
+  BATCHES: "batches",
   SALES: "sales",
   QUOTATIONS: "quotations",
   DELIVERIES: "deliveries",
