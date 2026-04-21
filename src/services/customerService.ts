@@ -1,4 +1,23 @@
+/**
+ * customerService — Phase 3C rewire.
+ *
+ * READS (`list`, `getById`) now go through the shared `dataClient` so that
+ * the per-resource flag `VITE_DATA_CUSTOMERS` controls the backend:
+ *
+ *   supabase (default) → identical legacy behavior
+ *   shadow             → Supabase remains primary; VPS read fired in
+ *                        parallel and any drift logged to
+ *                        `window.__vpsShadowStats` + scoped logger.
+ *   vps                → reads served from the self-hosted API (cutover).
+ *
+ * WRITES (`create`, `update`, `toggleStatus`) intentionally stay on
+ * Supabase in Phase 3C. The shadow phase is read-verification only — we
+ * do NOT want write traffic doubled or split until shadow runs clean.
+ *
+ * Public function signatures are UNCHANGED so no UI/page code touches.
+ */
 import { supabase } from "@/integrations/supabase/client";
+import { dataClient } from "@/lib/data/dataClient";
 
 export type CustomerType = "retailer" | "customer" | "project";
 
@@ -39,38 +58,85 @@ export interface CustomerFormData {
 
 const PAGE_SIZE = 25;
 
+// Memoized per (resource, backend) inside dataClient itself.
+const customersAdapter = dataClient<Customer>("CUSTOMERS");
+
 export const customerService = {
+  /**
+   * UI contract preserved: 1-indexed page, optional search, optional
+   * type filter. Search uses an OR-ilike across name/phone/reference_name
+   * which the adapter contract does not yet express, so when search is
+   * non-empty we keep the legacy direct Supabase path. Empty-search
+   * pages — the dominant traffic — flow through the adapter and are
+   * therefore eligible for shadow comparisons.
+   */
   async list(dealerId: string, search = "", typeFilter = "", page = 1) {
-    const from = (page - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
+    const trimmed = search.trim();
 
-    let query = supabase
-      .from("customers")
-      .select("*", { count: "exact" })
-      .eq("dealer_id", dealerId)
-      .order("name");
+    if (trimmed) {
+      // Legacy path — preserves OR-ilike search semantics exactly.
+      const from = (page - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
-    if (search.trim()) {
-      query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,reference_name.ilike.%${search}%`);
+      let query = supabase
+        .from("customers")
+        .select("*", { count: "exact" })
+        .eq("dealer_id", dealerId)
+        .or(
+          `name.ilike.%${trimmed}%,phone.ilike.%${trimmed}%,reference_name.ilike.%${trimmed}%`,
+        )
+        .order("name");
+
+      if (typeFilter) {
+        query = query.eq("type", typeFilter as CustomerType);
+      }
+
+      const { data, error, count } = await query.range(from, to);
+      if (error) throw new Error(error.message);
+      return { data: (data ?? []) as Customer[], total: count ?? 0 };
     }
 
-    if (typeFilter) {
-      query = query.eq("type", typeFilter as CustomerType);
-    }
-
-    const { data, error, count } = await query.range(from, to);
-    if (error) throw new Error(error.message);
-    return { data: (data ?? []) as Customer[], total: count ?? 0 };
+    // Adapter path — eligible for shadow comparisons.
+    const result = await customersAdapter.list({
+      dealerId,
+      page: Math.max(0, page - 1),
+      pageSize: PAGE_SIZE,
+      orderBy: { column: "name", direction: "asc" },
+      filters: typeFilter ? { type: typeFilter } : undefined,
+    });
+    return { data: result.rows, total: result.total };
   },
 
   async getById(id: string) {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("id", id)
-      .single();
-    if (error) throw new Error(error.message);
-    return data as Customer;
+    // Resolve dealerId from the current authenticated user so the adapter
+    // call stays tenant-scoped. Falls back to the legacy direct read if
+    // the profile lookup yields no dealerId (e.g. super_admin contexts).
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
+
+    let dealerId: string | null = null;
+    if (userId) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("dealer_id")
+        .eq("id", userId)
+        .maybeSingle();
+      dealerId = (profile?.dealer_id as string | null) ?? null;
+    }
+
+    if (!dealerId) {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (error) throw new Error(error.message);
+      return data as Customer;
+    }
+
+    const row = await customersAdapter.getById(id, dealerId);
+    if (!row) throw new Error("Customer not found");
+    return row;
   },
 
   /** Fetch customer due balance from customer_ledger (sum of all entries). */
@@ -93,6 +159,7 @@ export const customerService = {
     return Math.round(total * 100) / 100;
   },
 
+  // ── Writes stay on Supabase in Phase 3C ──────────────────────────────────
   async create(dealerId: string, form: CustomerFormData) {
     const { data, error } = await supabase
       .from("customers")
