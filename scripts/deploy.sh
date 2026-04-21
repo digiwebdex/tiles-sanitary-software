@@ -27,7 +27,7 @@ docker compose -f "$COMPOSE_FILE" up -d
 
 echo "[5/5] Verifying health..."
 sleep 5
-curl -sf http://localhost:4000/api/health || echo "⚠️  API health check failed"
+curl -sf http://localhost:3013/api/health || echo "⚠️  API health check failed"
 
 echo ""
 echo "═══════════════════════════════════════════"
