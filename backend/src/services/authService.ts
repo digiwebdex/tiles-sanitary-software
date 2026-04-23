@@ -33,7 +33,9 @@ export interface LockStatus {
 }
 
 function signAccessToken(payload: JwtPayload): string {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN as string | number });
+  return jwt.sign(payload, env.JWT_SECRET as jwt.Secret, {
+    expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+  });
 }
 
 function generateRefreshToken(): { token: string; hash: string; expiresAt: Date } {
