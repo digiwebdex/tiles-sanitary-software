@@ -135,14 +135,28 @@ Deno.serve(async (req) => {
       .update({ dealer_id: dealer.id, name: name.trim() })
       .eq("id", userId);
 
-    if (profileErr) console.error("Profile update error:", profileErr);
+    if (profileErr) {
+      console.error("Profile update error:", profileErr);
+      await serviceClient.auth.admin.deleteUser(userId);
+      await serviceClient.from("dealers").delete().eq("id", dealer.id);
+      return new Response(JSON.stringify({ error: "Failed to provision user profile" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ── 4. Assign dealer_admin role ──
     const { error: roleErr } = await serviceClient
       .from("user_roles")
       .insert({ user_id: userId, role: "dealer_admin" });
 
-    if (roleErr) console.error("Role insert error:", roleErr);
+    if (roleErr) {
+      console.error("Role insert error:", roleErr);
+      await serviceClient.auth.admin.deleteUser(userId);
+      await serviceClient.from("dealers").delete().eq("id", dealer.id);
+      return new Response(JSON.stringify({ error: "Failed to assign account role" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ── 5. Create invoice sequence ──
     await serviceClient
@@ -161,13 +175,29 @@ Deno.serve(async (req) => {
       const startDate = new Date().toISOString().split("T")[0];
       const endDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-      await serviceClient.from("subscriptions").insert({
+      const { error: subscriptionErr } = await serviceClient.from("subscriptions").insert({
         dealer_id: dealer.id,
         plan_id: plan.id,
         status: "active",
         billing_cycle: "monthly",
         start_date: startDate,
         end_date: endDate,
+      });
+
+      if (subscriptionErr) {
+        console.error("Subscription creation error:", subscriptionErr);
+        await serviceClient.auth.admin.deleteUser(userId);
+        await serviceClient.from("dealers").delete().eq("id", dealer.id);
+        return new Response(JSON.stringify({ error: "Failed to create trial subscription" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      console.error("Starter plan not found during self-signup");
+      await serviceClient.auth.admin.deleteUser(userId);
+      await serviceClient.from("dealers").delete().eq("id", dealer.id);
+      return new Response(JSON.stringify({ error: "Starter plan is not configured" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
