@@ -15,6 +15,7 @@ import stockRoutes from './routes/stock';
 import batchesRoutes from './routes/batches';
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ── Security ──
 app.use(helmet());
