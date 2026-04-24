@@ -639,6 +639,64 @@ const DealerManagement = () => {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* ─── Delete Dealer Confirm Dialog ─── */}
+      <Dialog
+        open={!!deleteDealer}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteDealer(null);
+            setDeleteConfirmName("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Delete Dealer Permanently</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the dealer <strong>{deleteDealer?.name}</strong> along with
+              <strong> ALL </strong> associated data: users, customers, products, sales, purchases,
+              quotations, ledgers, and subscriptions. This action <strong>cannot be undone</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-foreground">
+              <p>To confirm, type the dealer name exactly:</p>
+              <p className="mt-1 font-mono font-semibold">{deleteDealer?.name}</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Confirm dealer name</Label>
+              <Input
+                value={deleteConfirmName}
+                onChange={(e) => setDeleteConfirmName(e.target.value)}
+                placeholder="Type dealer name to confirm"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDealer(null);
+                setDeleteConfirmName("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteDealerMutation.mutate()}
+              disabled={
+                deleteDealerMutation.isPending ||
+                deleteConfirmName.trim() !== (deleteDealer?.name?.trim() ?? "")
+              }
+            >
+              {deleteDealerMutation.isPending ? "Deleting…" : "Delete Permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
