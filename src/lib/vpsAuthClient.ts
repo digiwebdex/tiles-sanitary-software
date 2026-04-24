@@ -168,6 +168,34 @@ export const vpsAuthApi = {
     return body.user as VpsUser;
   },
 
+  /**
+   * Self-signup. On success the new tokens are stored just like login,
+   * so the caller can immediately navigate into the authed app without
+   * a follow-up sign-in round-trip.
+   */
+  async register(input: {
+    name: string;
+    business_name: string;
+    phone: string;
+    email: string;
+    password: string;
+  }): Promise<VpsUser> {
+    const res = await fetch(`${env.VPS_API_BASE}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw makeError(body.error || "Signup failed", res.status, body);
+
+    vpsTokenStore.set({
+      accessToken: body.accessToken,
+      refreshToken: body.refreshToken,
+      user: body.user,
+    });
+    return body.user as VpsUser;
+  },
+
   async logout(): Promise<void> {
     const refreshToken = vpsTokenStore.refresh;
     try {
