@@ -32,6 +32,20 @@ export interface SignInResult {
   code?: string;
 }
 
+export interface SignUpInput {
+  name: string;
+  business_name: string;
+  phone: string;
+  email: string;
+  password: string;
+}
+
+export interface SignUpResult {
+  success: boolean;
+  message?: string;
+  code?: string;
+}
+
 export const authBridge = {
   backend: env.AUTH_BACKEND,
   isVps: env.AUTH_BACKEND === "vps",
@@ -118,6 +132,49 @@ export const authBridge = {
       return;
     }
     await supabase.auth.signOut();
+  },
+
+  /**
+   * Self-signup. On VPS path provisions dealer + 3-day trial + admin user
+   * and stores tokens (auto-login). On Supabase path falls back to the legacy
+   * self-signup edge function followed by signInWithPassword for parity.
+   */
+  async signUp(input: SignUpInput): Promise<SignUpResult> {
+    if (env.AUTH_BACKEND === "vps") {
+      try {
+        await vpsAuthApi.register(input);
+        return { success: true };
+      } catch (err: any) {
+        return {
+          success: false,
+          code: err.code,
+          message: err.message ?? "Signup failed",
+        };
+      }
+    }
+
+    // ── Supabase legacy path ────────────────────────────────────────────
+    try {
+      const { data, error } = await supabase.functions.invoke("self-signup", {
+        body: input,
+      });
+      if (error) return { success: false, message: "Signup failed. Please try again." };
+      if (data?.error) return { success: false, message: data.error };
+
+      const { error: loginErr } = await supabase.auth.signInWithPassword({
+        email: input.email.trim().toLowerCase(),
+        password: input.password,
+      });
+      if (loginErr) {
+        return {
+          success: false,
+          message: "Account created but login failed. Please sign in manually.",
+        };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, message: err.message ?? "Signup failed" };
+    }
   },
 
   /** Request a password reset email. Always succeeds (no enumeration). */
