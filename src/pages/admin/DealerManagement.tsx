@@ -394,6 +394,18 @@ const DealerManagement = () => {
                             >
                               {(d.status ?? "active") === "active" ? <Ban className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                setDeleteDealer(d);
+                                setDeleteConfirmName("");
+                              }}
+                              title="Delete Dealer"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
