@@ -70,7 +70,7 @@ const GetStartedPage = () => {
 
     setLoading(true);
     try {
-      const result = await authBridge.signUp({
+      const signupResult = await authBridge.signUp({
         name: result.data.name,
         business_name: result.data.business_name,
         phone: result.data.phone,
@@ -78,8 +78,8 @@ const GetStartedPage = () => {
         password: result.data.password,
       });
 
-      if (!result.success) {
-        throw new Error(result.message || "Signup failed. Please try again.");
+      if (!signupResult.success) {
+        throw new Error(signupResult.message || "Signup failed. Please try again.");
       }
 
       toast({
