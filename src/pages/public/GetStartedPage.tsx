@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { authBridge } from "@/lib/authBridge";
 import {
   Layers, ArrowRight, ArrowLeft, CheckCircle2, Loader2,
   Store, Shield, Zap, Package, BarChart2, Users, Eye, EyeOff,
@@ -70,32 +70,27 @@ const GetStartedPage = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("self-signup", {
-        body: {
-          name: result.data.name,
-          business_name: result.data.business_name,
-          phone: result.data.phone,
-          email: result.data.email,
-          password: result.data.password,
-        },
-      });
-
-      if (error) throw new Error("Signup failed. Please try again.");
-      if (data?.error) throw new Error(data.error);
-
-      const { error: loginErr } = await supabase.auth.signInWithPassword({
-        email: result.data.email.trim().toLowerCase(),
+      const result = await authBridge.signUp({
+        name: result.data.name,
+        business_name: result.data.business_name,
+        phone: result.data.phone,
+        email: result.data.email,
         password: result.data.password,
       });
 
-      if (loginErr) throw new Error("Account created but login failed. Please sign in manually.");
+      if (!result.success) {
+        throw new Error(result.message || "Signup failed. Please try again.");
+      }
 
       toast({
         title: "Welcome to TilesERP! 🎉",
         description: "Your account is ready. Redirecting to dashboard...",
       });
 
-      setTimeout(() => navigate("/dashboard", { replace: true }), 1000);
+      // Hard reload so the AuthContext picks up the freshly-stored VPS tokens.
+      setTimeout(() => {
+        window.location.assign("/dashboard");
+      }, 800);
     } catch (err: any) {
       toast({
         variant: "destructive",
