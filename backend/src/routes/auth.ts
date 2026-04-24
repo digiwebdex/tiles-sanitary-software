@@ -23,6 +23,14 @@ const resetSchema = z.object({
   password: z.string().min(6).max(72),
 });
 
+const registerSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  business_name: z.string().trim().min(1).max(150),
+  phone: z.string().trim().min(6).max(20),
+  email: z.string().trim().email().max(255),
+  password: z.string().min(6).max(72),
+});
+
 function getIp(req: Request): string | undefined {
   const fwd = req.headers['x-forwarded-for'];
   if (typeof fwd === 'string') return fwd.split(',')[0].trim();
@@ -41,6 +49,32 @@ router.get('/lock-status', async (req: Request, res: Response) => {
     res.json(status);
   } catch {
     res.json({ locked: false });
+  }
+});
+
+// POST /api/auth/register — public self-signup (3-day trial)
+router.post('/register', async (req: Request, res: Response) => {
+  try {
+    const data = registerSchema.parse(req.body);
+    const result = await authService.register({ ...data, ip: getIp(req) });
+
+    res.status(201).json({
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: result.user,
+      dealerId: result.dealerId,
+    });
+  } catch (err: any) {
+    if (err.code === 'EMAIL_TAKEN') {
+      res.status(409).json({ error: err.message, code: err.code });
+      return;
+    }
+    if (err?.issues) {
+      res.status(400).json({ error: 'Invalid signup data', issues: err.issues });
+      return;
+    }
+    console.error('[register] failed:', err);
+    res.status(500).json({ error: err.message || 'Signup failed' });
   }
 });
 

@@ -403,4 +403,124 @@ export const authService = {
 
     return user;
   },
+
+  /**
+   * Self-signup: provision a brand-new dealer + admin user + 3-day trial.
+   *
+   * All inserts run in a single transaction so a partial failure leaves
+   * no orphaned dealers, profiles, or roles. On success, issues an access
+   * + refresh token pair so the client can auto-login without a second
+   * round-trip.
+   */
+  async register(input: {
+    name: string;
+    business_name: string;
+    phone: string;
+    email: string;
+    password: string;
+    ip?: string;
+  }): Promise<TokenPair & { user: JwtPayload; dealerId: string }> {
+    const name = input.name.trim();
+    const businessName = input.business_name.trim();
+    const phone = input.phone.trim();
+    const email = input.email.toLowerCase().trim();
+    const password = input.password;
+
+    // Email uniqueness — surface a friendly 409 instead of a Postgres unique-violation.
+    const existing = await db('users').where({ email }).first();
+    if (existing) {
+      const err: any = new Error('An account with this email already exists. Please sign in.');
+      err.code = 'EMAIL_TAKEN';
+      throw err;
+    }
+
+    const passwordHash = await this.hashPassword(password);
+
+    const dealerId: string = await db.transaction(async (trx) => {
+      // 1. Dealer
+      const [dealer] = await trx('dealers')
+        .insert({ name: businessName, phone, status: 'active' })
+        .returning('id');
+      const dId: string = dealer.id ?? dealer;
+
+      // 2. User (replaces auth.users)
+      const [user] = await trx('users')
+        .insert({ email, password_hash: passwordHash, name })
+        .returning('*');
+
+      // 3. Profile (linked to dealer)
+      await trx('profiles').insert({
+        id: user.id,
+        name,
+        email,
+        dealer_id: dId,
+      });
+
+      // 4. Role
+      await trx('user_roles').insert({ user_id: user.id, role: 'dealer_admin' });
+
+      // 5. Invoice sequence (so first sale doesn't race the upsert)
+      await trx('invoice_sequences').insert({
+        dealer_id: dId,
+        next_invoice_no: 1,
+        next_challan_no: 1,
+      }).onConflict('dealer_id').ignore();
+
+      // 6. 3-day trial subscription on the cheapest active plan.
+      //    Falls back to creating a "Free Trial" plan row if no plans exist yet.
+      let plan = await trx('plans').orderBy('price_monthly', 'asc').first();
+      if (!plan) {
+        const [created] = await trx('plans')
+          .insert({ name: 'Free Trial', price_monthly: 0, price_yearly: 0, max_users: 1 })
+          .returning('*');
+        plan = created;
+      }
+
+      const startDate = new Date().toISOString().split('T')[0];
+      const endDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0];
+
+      await trx('subscriptions').insert({
+        dealer_id: dId,
+        plan_id: plan.id,
+        status: 'active',
+        billing_cycle: 'monthly',
+        start_date: startDate,
+        end_date: endDate,
+      });
+
+      // 7. Notification settings (best-effort; ignore if table shape differs)
+      try {
+        await trx('notification_settings').insert({
+          dealer_id: dId,
+          owner_email: email,
+          owner_phone: phone,
+          enable_sale_sms: true,
+          enable_sale_email: true,
+          enable_daily_summary_sms: true,
+          enable_daily_summary_email: true,
+        });
+      } catch (e) {
+        console.warn('[register] notification_settings insert skipped:', (e as Error).message);
+      }
+
+      return dId;
+    });
+
+    // Re-fetch the new user to issue tokens (cleaner than threading rows
+    // out of the transaction callback).
+    const newUser = await db('users').where({ email }).first();
+    const payload = await buildJwtPayload(newUser.id);
+    const accessToken = signAccessToken(payload);
+    const { token: refreshToken, hash, expiresAt } = generateRefreshToken();
+
+    await db('refresh_tokens').insert({
+      user_id: newUser.id,
+      token_hash: hash,
+      expires_at: expiresAt,
+    });
+
+    return { accessToken, refreshToken, user: payload, dealerId };
+  },
 };
