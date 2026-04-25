@@ -75,6 +75,30 @@ const LoginPage = () => {
         }
       } else {
         setLockInfo(null);
+
+        // Check if dealer is pending approval — sign out and warn.
+        try {
+          const { data: profile } = await import("@/integrations/supabase/client").then(({ supabase }) =>
+            supabase.from("profiles").select("dealer_id").eq("email", email.trim().toLowerCase()).maybeSingle()
+          );
+          if (profile?.dealer_id) {
+            const { supabase } = await import("@/integrations/supabase/client");
+            const { data: dealer } = await supabase.from("dealers").select("status").eq("id", profile.dealer_id).maybeSingle();
+            if (dealer?.status === "pending") {
+              await authBridge.signOut();
+              toast({
+                variant: "destructive",
+                title: "Awaiting Approval",
+                description: "Your account is pending Super Admin approval. You'll be notified by email once activated.",
+              });
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (checkErr) {
+          console.warn("[Login] pending-status check failed:", checkErr);
+        }
+
         // VPS path: AuthContext won't react — push manually.
         if (authBridge.isVps) {
           navigate("/dashboard", { replace: true });
