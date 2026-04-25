@@ -1,0 +1,1 @@
+UPDATE public.dealers SET status='pending' WHERE id='2b73d124-1b28-4f1e-8648-738aebc610cb';
