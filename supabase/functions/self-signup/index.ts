@@ -276,14 +276,14 @@ Deno.serve(async (req) => {
         message: dealerEmailBody,
       });
 
-      // Send SMS to admin (if admin phone available)
-      const envAdminPhone = Deno.env.get("ADMIN_PHONE");
-      if (envAdminPhone) {
+      // Send SMS to admin (env override > hardcoded default)
+      const adminPhone = Deno.env.get("ADMIN_PHONE") || DEFAULT_ADMIN_PHONE;
+      if (adminPhone) {
         await sendNotification(serviceClient, {
           dealer_id: dealer.id,
           channel: "sms",
           type: "new_signup",
-          recipient: envAdminPhone,
+          recipient: adminPhone,
           message: adminSmsMsg,
         });
       }
