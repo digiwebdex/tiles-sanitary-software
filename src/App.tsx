@@ -67,6 +67,7 @@ import SASystemPage from "./pages/super-admin/SASystemPage";
 import SASubscriptionStatusPage from "./pages/super-admin/SASubscriptionStatusPage";
 import SACmsPage from "./pages/super-admin/SACmsPage";
 import SABackupPage from "./pages/super-admin/SABackupPage";
+import SAUserGuidePage from "./pages/super-admin/SAUserGuidePage";
 import SettingsPage from "./pages/settings/SettingsPage";
 import PricingTiersPage from "./pages/settings/PricingTiersPage";
 import PortalUsersPage from "./pages/admin/PortalUsersPage";
@@ -152,6 +153,7 @@ const App = () => (
               <Route path="revenue" element={<SARevenuePage />} />
               <Route path="cms" element={<SACmsPage />} />
               <Route path="backups" element={<SABackupPage />} />
+              <Route path="user-guide" element={<SAUserGuidePage />} />
               <Route path="system" element={<SASystemPage />} />
             </Route>
 
