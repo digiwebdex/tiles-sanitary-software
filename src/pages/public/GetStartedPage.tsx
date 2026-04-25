@@ -41,6 +41,7 @@ const GetStartedPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [form, setForm] = useState<FormData>({
     name: "",
@@ -82,15 +83,12 @@ const GetStartedPage = () => {
         throw new Error(signupResult.message || "Signup failed. Please try again.");
       }
 
+      // Account created in PENDING state — no auto-login.
+      setSubmitted(true);
       toast({
-        title: "Welcome to TilesERP! 🎉",
-        description: "Your account is ready. Redirecting to dashboard...",
+        title: "Registration Submitted ✅",
+        description: "Your account is awaiting Super Admin approval.",
       });
-
-      // Hard reload so the AuthContext picks up the freshly-stored VPS tokens.
-      setTimeout(() => {
-        window.location.assign("/dashboard");
-      }, 800);
     } catch (err: any) {
       toast({
         variant: "destructive",
