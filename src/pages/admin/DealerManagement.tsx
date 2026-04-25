@@ -401,8 +401,12 @@ const DealerManagement = () => {
                             </Button>
                             <Button
                               size="sm"
-                              variant={(d.status ?? "active") === "active" ? "destructive" : "default"}
-                              className="h-7 text-xs"
+                              variant="outline"
+                              className={`h-7 text-xs ${
+                                (d.status ?? "active") === "active"
+                                  ? "border-amber-500 text-amber-500 hover:bg-amber-500/10"
+                                  : "border-green-500 text-green-500 hover:bg-green-500/10"
+                              }`}
                               onClick={() =>
                                 toggleStatusMutation.mutate({
                                   id: d.id,
