@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import { parseLocalDate } from "@/lib/utils";
 import { subLog } from "@/lib/logger";
+import { env } from "@/lib/env";
+import { vpsAuthApi, vpsTokenStore, type VpsUser } from "@/lib/vpsAuthClient";
 
 interface Profile {
   id: string;
