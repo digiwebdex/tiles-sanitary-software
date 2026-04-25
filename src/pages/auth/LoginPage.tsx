@@ -99,9 +99,10 @@ const LoginPage = () => {
           console.warn("[Login] pending-status check failed:", checkErr);
         }
 
-        // VPS path: AuthContext won't react — push manually.
+        // VPS path: AuthContext is notified via localStorage event; route by role immediately.
         if (authBridge.isVps) {
-          navigate("/dashboard", { replace: true });
+          const vpsUser = authBridge.getCurrentVpsUser();
+          navigate(vpsUser?.roles.includes("super_admin") ? "/super-admin" : "/dashboard", { replace: true });
         }
         // Supabase path: onAuthStateChange will trigger AuthContext + redirect.
       }
