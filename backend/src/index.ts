@@ -19,10 +19,25 @@ app.set('trust proxy', 1);
 
 // ── Security ──
 app.use(helmet());
-app.use(cors({
-  origin: env.CORS_ORIGIN.split(',').map(s => s.trim()),
+
+const allowedOrigins = env.CORS_ORIGIN.split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const corsOptions: cors.CorsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, origin || false);
+      return;
+    }
+
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true,
-}));
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // ── Rate limiting ──
 const limiter = rateLimit({
