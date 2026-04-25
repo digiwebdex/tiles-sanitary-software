@@ -88,7 +88,7 @@ const DealerManagement = () => {
       const subs = subsRes.data ?? [];
       const profiles = profilesRes.data ?? [];
 
-      return (dealersRes.data ?? []).map((d: any) => {
+      const mapped = (dealersRes.data ?? []).map((d: any) => {
         const latestSub = subs.find((s: any) => s.dealer_id === d.id);
         const dealerUsers = profiles.filter((p: any) => p.dealer_id === d.id);
         return {
@@ -97,6 +97,13 @@ const DealerManagement = () => {
           userCount: dealerUsers.length,
           users: dealerUsers,
         };
+      });
+
+      // Pending approvals float to the top so super admin sees them first.
+      return mapped.sort((a: any, b: any) => {
+        const aPending = a.status === "pending" ? 0 : 1;
+        const bPending = b.status === "pending" ? 0 : 1;
+        return aPending - bPending;
       });
     },
   });
