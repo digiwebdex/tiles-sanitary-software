@@ -92,13 +92,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── 1. Create dealer ──
+    // ── 1. Create dealer (PENDING — requires super admin approval) ──
     const { data: dealer, error: dealerErr } = await serviceClient
       .from("dealers")
       .insert({
         name: business_name.trim(),
         phone: phone.trim(),
-        status: "active",
+        status: "pending",
       })
       .select("id")
       .single();
@@ -304,7 +304,13 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, user_id: userId, dealer_id: dealer.id }),
+      JSON.stringify({
+        success: true,
+        pending_approval: true,
+        user_id: userId,
+        dealer_id: dealer.id,
+        message: "Account created. Awaiting Super Admin approval before you can log in.",
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
