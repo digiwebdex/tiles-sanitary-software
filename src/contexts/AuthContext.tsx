@@ -345,6 +345,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
+    if (env.AUTH_BACKEND === "vps") {
+      const applyVpsUser = (vpsUser: VpsUser | null) => {
+        if (!isMounted) return;
+        setSession(null);
+        setUser(vpsUser ? toSupabaseCompatibleUser(vpsUser) : null);
+        setProfile(vpsUser ? toProfile(vpsUser) : null);
+        setRoles(vpsUser ? toRoles(vpsUser) : []);
+        setSubscription(null);
+      };
+
+      const initializeVps = async () => {
+        setLoading(true);
+        try {
+          const me = await vpsAuthApi.me();
+          applyVpsUser(me ?? vpsTokenStore.user);
+        } catch (err) {
+          subLog.error("VPS auth init error:", err);
+          applyVpsUser(null);
+        } finally {
+          if (isMounted) setLoading(false);
+        }
+      };
+
+      const onAuthChange = () => applyVpsUser(vpsTokenStore.user);
+      const onStorage = (e: StorageEvent) => {
+        if (e.key === "vps.accessToken" || e.key === "vps.refreshToken" || e.key === "vps.user") {
+          applyVpsUser(vpsTokenStore.user);
+        }
+      };
+
+      initializeVps();
+      window.addEventListener("vps-auth-change", onAuthChange);
+      window.addEventListener("storage", onStorage);
+
+      return () => {
+        isMounted = false;
+        window.removeEventListener("vps-auth-change", onAuthChange);
+        window.removeEventListener("storage", onStorage);
+      };
+    }
+
     /**
      * Phase 1 — Initial session bootstrap.
      *
