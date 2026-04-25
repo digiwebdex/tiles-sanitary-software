@@ -234,20 +234,22 @@ Deno.serve(async (req) => {
         .select("user_id")
         .eq("role", "super_admin");
 
-      let adminEmail: string | null = null;
-      let adminPhone: string | null = null;
+      // Hardcoded admin contact (per project owner)
+      const DEFAULT_ADMIN_EMAIL = "digiwebdex@gmail.com";
+      const DEFAULT_ADMIN_PHONE = "+8801674533303";
+
+      let adminEmail: string | null = DEFAULT_ADMIN_EMAIL;
       if (saRoles && saRoles.length > 0) {
         const { data: saProfile } = await serviceClient
           .from("profiles")
           .select("email")
           .eq("id", saRoles[0].user_id)
           .single();
-        if (saProfile) adminEmail = saProfile.email;
-
-        // Check ADMIN_EMAIL secret as fallback
-        const envAdminEmail = Deno.env.get("ADMIN_EMAIL");
-        if (envAdminEmail) adminEmail = envAdminEmail;
+        if (saProfile?.email) adminEmail = saProfile.email;
       }
+      // Env override takes highest priority
+      const envAdminEmail = Deno.env.get("ADMIN_EMAIL");
+      if (envAdminEmail) adminEmail = envAdminEmail;
 
       const adminSmsMsg = `নতুন ডিলার রেজিস্ট্রেশন!\nনাম: ${name.trim()}\nব্যবসা: ${business_name.trim()}\nফোন: ${phone.trim()}\nইমেইল: ${emailLower}\nPlan: Starter (Trial)`;
       const adminEmailSubject = `New Dealer Registration - ${business_name.trim()}`;
@@ -274,14 +276,14 @@ Deno.serve(async (req) => {
         message: dealerEmailBody,
       });
 
-      // Send SMS to admin (if admin phone available)
-      const envAdminPhone = Deno.env.get("ADMIN_PHONE");
-      if (envAdminPhone) {
+      // Send SMS to admin (env override > hardcoded default)
+      const adminPhone = Deno.env.get("ADMIN_PHONE") || DEFAULT_ADMIN_PHONE;
+      if (adminPhone) {
         await sendNotification(serviceClient, {
           dealer_id: dealer.id,
           channel: "sms",
           type: "new_signup",
-          recipient: envAdminPhone,
+          recipient: adminPhone,
           message: adminSmsMsg,
         });
       }
