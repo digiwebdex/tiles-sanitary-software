@@ -352,12 +352,24 @@ const DealerManagement = () => {
                           })()}
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={(d.status ?? "active") === "active" ? "default" : "destructive"}
-                            className="capitalize text-xs"
-                          >
-                            {d.status ?? "active"}
-                          </Badge>
+                          {(() => {
+                            const status = (d.status ?? "active") as string;
+                            if (status === "pending") {
+                              return (
+                                <Badge className="bg-amber-500 text-white hover:bg-amber-600 capitalize text-xs">
+                                  Pending Approval
+                                </Badge>
+                              );
+                            }
+                            return (
+                              <Badge
+                                variant={status === "active" ? "default" : "destructive"}
+                                className="capitalize text-xs"
+                              >
+                                {status}
+                              </Badge>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
