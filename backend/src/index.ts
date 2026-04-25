@@ -1,5 +1,5 @@
 import express from 'express';
-import cors from 'cors';
+
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
@@ -19,10 +19,30 @@ app.set('trust proxy', 1);
 
 // ── Security ──
 app.use(helmet());
-app.use(cors({
-  origin: env.CORS_ORIGIN.split(',').map(s => s.trim()),
-  credentials: true,
-}));
+
+const allowedOrigins = env.CORS_ORIGIN.split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || 'content-type, authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+
+  next();
+});
 
 // ── Rate limiting ──
 const limiter = rateLimit({
