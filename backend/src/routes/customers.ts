@@ -221,7 +221,7 @@ router.post('/', requireRole('dealer_admin'), async (req: Request, res: Response
 });
 
 // ── PATCH /api/customers/:id ───────────────────────────────────────────────
-router.patch('/:id', async (req: Request, res: Response) => {
+router.patch('/:id', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
