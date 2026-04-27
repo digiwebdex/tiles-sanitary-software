@@ -442,10 +442,6 @@ const DealerManagement = () => {
                             >
                               <KeyRound className="h-3 w-3" />
                             </Button>
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEdit(d)} title="Edit">
-                              <Pencil className="h-3 w-3" />
-                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
