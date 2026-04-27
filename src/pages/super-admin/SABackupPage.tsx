@@ -219,7 +219,8 @@ const SABackupPage = () => {
       (b.file_name || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchType = typeFilter === "all" || b.backup_type === typeFilter;
     const matchStatus = statusFilter === "all" || b.status === statusFilter;
-    return matchSearch && matchType && matchStatus;
+    const matchSource = sourceFilter === "all" || (b.source || "auto") === sourceFilter;
+    return matchSearch && matchType && matchStatus && matchSource;
   });
 
   const handleRestoreClick = (backup: any) => {
