@@ -315,6 +315,8 @@ const VpsDealerManagement = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <EditDealerDialog dealer={editing} onClose={() => setEditing(null)} />
     </Card>
   );
 };
