@@ -219,6 +219,150 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/dealers/:id/reset-password — Super Admin force-resets the dealer
+ * admin's password. Two modes:
+ *   1) `mode: "temp"` (default) — generate a strong temporary password,
+ *      set it on the user, revoke all sessions, and send the temp password
+ *      to the dealer via Email + SMS. They can sign in immediately and
+ *      change it from settings.
+ *   2) `mode: "link"` — issue a single-use password-reset token (30-min
+ *      TTL) and email a reset link. SMS the same link short-coded.
+ *
+ * Always revokes existing refresh tokens so old sessions can't continue.
+ */
+const resetPasswordSchema = z.object({
+  mode: z.enum(['temp', 'link']).optional(),
+});
+
+function generateTempPassword(): string {
+  // 10 chars: upper + lower + digit + symbol — readable for SMS.
+  const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnpqrstuvwxyz';
+  const digit = '23456789';
+  const sym = '@#$%&';
+  const all = upper + lower + digit + sym;
+  const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
+  let pwd = pick(upper) + pick(lower) + pick(digit) + pick(sym);
+  for (let i = 0; i < 6; i++) pwd += pick(all);
+  return pwd.split('').sort(() => Math.random() - 0.5).join('');
+}
+
+router.post('/:id/reset-password', async (req: Request, res: Response) => {
+  try {
+    const dealerId = req.params.id;
+    const { mode = 'temp' } = resetPasswordSchema.parse(req.body || {});
+
+    const dealer = await db('dealers').where({ id: dealerId }).first();
+    if (!dealer) {
+      res.status(404).json({ error: 'Dealer not found' });
+      return;
+    }
+
+    const admin = await db('profiles as p')
+      .leftJoin('users as u', 'u.id', 'p.id')
+      .leftJoin('user_roles as ur', 'ur.user_id', 'u.id')
+      .where('p.dealer_id', dealerId)
+      .where('ur.role', 'dealer_admin')
+      .select('u.id', 'u.email', 'u.name')
+      .first();
+
+    if (!admin?.id || !admin?.email) {
+      res.status(400).json({ error: 'No dealer admin user found for this dealer' });
+      return;
+    }
+
+    // Lazy-load to avoid circular imports between dealers route and authService
+    const { authService } = await import('../services/authService');
+    const appBase =
+      process.env.APP_BASE_URL ||
+      process.env.PORTAL_BASE_URL ||
+      'https://app.sanitileserp.com';
+
+    if (mode === 'link') {
+      const result = await authService.requestPasswordReset(admin.email);
+      const token = result?.token;
+      if (!token) {
+        res.status(500).json({ error: 'Failed to issue reset token' });
+        return;
+      }
+      const link = `${appBase}/reset-password?token=${encodeURIComponent(token)}`;
+
+      sendEmail({
+        to: admin.email,
+        subject: 'Tiles & Sanitary ERP — Password reset link',
+        text:
+          `Dear ${admin.name || 'User'},\n\n` +
+          `A password reset has been initiated for your account by the system administrator.\n\n` +
+          `Reset link (valid for 30 minutes):\n${link}\n\n` +
+          `If you did not request this, please contact support at +880 1674 533303.\n\n` +
+          `— Tiles & Sanitary ERP`,
+      }).catch(() => {});
+
+      if (dealer.phone) {
+        sendSms({
+          to: dealer.phone,
+          message:
+            `আপনার পাসওয়ার্ড রিসেট লিংক (৩০ মিনিট): ${link}\n` +
+            `সাহায্য: +880 1674 533303`,
+        }).catch(() => {});
+      }
+
+      res.json({ success: true, mode: 'link' });
+      return;
+    }
+
+    // mode === 'temp'
+    const tempPassword = generateTempPassword();
+    const passwordHash = await authService.hashPassword(tempPassword);
+
+    await db.transaction(async (trx) => {
+      await trx('users').where({ id: admin.id }).update({
+        password_hash: passwordHash,
+        updated_at: new Date(),
+      });
+      // Revoke all sessions so old logins are kicked out.
+      await trx('refresh_tokens')
+        .where({ user_id: admin.id })
+        .whereNull('revoked_at')
+        .update({ revoked_at: new Date() });
+      // Clear lockout history so they can sign in immediately.
+      await trx('login_attempts')
+        .where({ email: admin.email.toLowerCase().trim() })
+        .del();
+    });
+
+    sendEmail({
+      to: admin.email,
+      subject: 'Tiles & Sanitary ERP — Your password has been reset',
+      text:
+        `Dear ${admin.name || 'User'},\n\n` +
+        `Your password was reset by the system administrator.\n\n` +
+        `Email: ${admin.email}\n` +
+        `Temporary password: ${tempPassword}\n\n` +
+        `Please sign in at ${appBase}/login and change your password from Settings immediately.\n\n` +
+        `If you did not expect this, contact support at +880 1674 533303.\n\n` +
+        `— Tiles & Sanitary ERP`,
+    }).catch(() => {});
+
+    if (dealer.phone) {
+      sendSms({
+        to: dealer.phone,
+        message:
+          `আপনার পাসওয়ার্ড রিসেট হয়েছে।\n` +
+          `Email: ${admin.email}\n` +
+          `New password: ${tempPassword}\n` +
+          `লগইন: ${appBase}/login`,
+      }).catch(() => {});
+    }
+
+    res.json({ success: true, mode: 'temp' });
+  } catch (err: any) {
+    console.error('[dealers:reset-password] failed:', err);
+    res.status(500).json({ error: err.message || 'Password reset failed' });
+  }
+});
+
 /** POST /api/dealers/:id/suspend — temporary disable for an active dealer. */
 router.post('/:id/suspend', async (req: Request, res: Response) => {
   try {
