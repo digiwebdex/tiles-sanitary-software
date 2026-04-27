@@ -353,6 +353,75 @@ const VpsDealerManagement = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteTarget(null);
+            setDeleteConfirmText("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">
+              Permanently delete dealer?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                {deleteTarget && (
+                  <div className="text-sm">
+                    Business: <b>{deleteTarget.name}</b>
+                    <br />Owner: {deleteTarget.admin_name || "—"} ({deleteTarget.admin_email || "—"})
+                    <br />Phone: {deleteTarget.phone || "—"}
+                  </div>
+                )}
+                <div className="rounded border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                  This will <b>permanently delete</b> the dealer, their admin user,
+                  all sales, purchases, products, customers, suppliers, payments,
+                  and every other record tied to this account. This action
+                  <b> cannot be undone</b>.
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delete-confirm" className="text-sm">
+                    Type the business name <b>{deleteTarget?.name}</b> to confirm:
+                  </Label>
+                  <Input
+                    id="delete-confirm"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder={deleteTarget?.name || ""}
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={
+                deleteMutation.isPending ||
+                !deleteTarget ||
+                deleteConfirmText.trim().toLowerCase() !==
+                  (deleteTarget?.name || "").trim().toLowerCase()
+              }
+              onClick={() =>
+                deleteTarget &&
+                deleteMutation.mutate({
+                  dealer: deleteTarget,
+                  confirmName: deleteTarget.name,
+                })
+              }
+            >
+              {deleteMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <EditDealerDialog dealer={editing} onClose={() => setEditing(null)} />
     </Card>
   );
