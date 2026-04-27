@@ -162,9 +162,14 @@ function setupSaleMocks() {
   });
   fromChains["sales"] = salesChain;
 
-  // Sale items
+  // Sale items — insert().select() must return inserted rows with ids
   const itemsChain = createChainMock();
-  itemsChain.insert = vi.fn().mockResolvedValue({ error: null });
+  itemsChain.insert = vi.fn().mockReturnValue({
+    select: vi.fn().mockResolvedValue({
+      data: [{ id: "sale-item-1", product_id: PRODUCT_ID }],
+      error: null,
+    }),
+  });
   fromChains["sale_items"] = itemsChain;
 }
 
