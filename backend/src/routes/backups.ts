@@ -33,6 +33,7 @@ import crypto from 'crypto';
 import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/roles';
+import { env } from '../config/env';
 
 const execAsync = promisify(exec);
 const router = Router();
@@ -51,6 +52,53 @@ const VPS_LOCAL_SUBDIR = 'vps_local';
 
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 const ALLOWED_EXT = ['.sql.gz', '.dump', '.dump.gz', '.archive.gz', '.tar.gz'];
+
+// ── Restore confirmation token (HMAC, single-use, short-lived) ─────
+// P0 hardening: /restore-local now requires a signed token issued via
+// POST /restore-local/token by the same authenticated super_admin. This
+// blocks accidental cross-tab clicks, replay across users, and CSRF-style
+// triggers from any compromised non-super_admin context.
+const RESTORE_TOKEN_TTL_MS = 2 * 60 * 1000; // 2 minutes
+const restoreTokenSecret = (): string =>
+  env.RESTORE_TOKEN_SECRET || env.JWT_SECRET;
+
+function signRestoreToken(payload: { backup_id: string; user_id: string; exp: number }): string {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', restoreTokenSecret())
+    .update(body)
+    .digest('base64url');
+  return `${body}.${sig}`;
+}
+
+function verifyRestoreToken(
+  token: string,
+  expected: { backup_id: string; user_id: string },
+): { ok: true } | { ok: false; reason: string } {
+  if (!token || typeof token !== 'string' || !token.includes('.')) {
+    return { ok: false, reason: 'malformed' };
+  }
+  const [body, sig] = token.split('.');
+  const want = crypto
+    .createHmac('sha256', restoreTokenSecret())
+    .update(body)
+    .digest('base64url');
+  // constant-time compare
+  const a = Buffer.from(sig);
+  const b = Buffer.from(want);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { ok: false, reason: 'signature' };
+  }
+  try {
+    const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (p.backup_id !== expected.backup_id) return { ok: false, reason: 'backup_id' };
+    if (p.user_id !== expected.user_id) return { ok: false, reason: 'user' };
+    if (typeof p.exp !== 'number' || Date.now() > p.exp) return { ok: false, reason: 'expired' };
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'payload' };
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────
 async function ensureDir(p: string) {
