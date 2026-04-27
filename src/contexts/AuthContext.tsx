@@ -5,6 +5,7 @@ import { parseLocalDate } from "@/lib/utils";
 import { subLog } from "@/lib/logger";
 import { env } from "@/lib/env";
 import { vpsAuthApi, vpsTokenStore, type VpsUser } from "@/lib/vpsAuthClient";
+import { saImpersonation } from "@/lib/saImpersonation";
 
 interface Profile {
   id: string;
@@ -262,7 +263,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isSuperAdmin = roles.some((r) => r.role === "super_admin");
   const isDealerAdmin = roles.some((r) => r.role === "dealer_admin");
-  const accessLevel = computeAccessLevel(subscription, roles, profile?.dealer_id ?? null);
+
+  // ── SA impersonation: override dealer_id when SA is "viewing as" a dealer ──
+  // Re-render whenever the impersonation target changes (custom event + storage).
+  const [impersonationVersion, setImpersonationVersion] = useState(0);
+  useEffect(() => saImpersonation.subscribe(() => setImpersonationVersion((v) => v + 1)), []);
+
+  const impersonation = isSuperAdmin ? saImpersonation.get() : null;
+  const effectiveProfile: Profile | null = profile && impersonation
+    ? { ...profile, dealer_id: impersonation.dealerId }
+    : profile;
+  // Touch the version so React picks up impersonation updates.
+  void impersonationVersion;
+
+  const accessLevel = computeAccessLevel(subscription, roles, effectiveProfile?.dealer_id ?? null);
 
   async function fetchUserRolesWithRetry(userId: string): Promise<UserRole[]> {
     for (let attempt = 1; attempt <= 4; attempt++) {
@@ -477,6 +491,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    saImpersonation.clear();
     if (env.AUTH_BACKEND === "vps") {
       await vpsAuthApi.logout();
     } else {
@@ -494,7 +509,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         session,
-        profile,
+        profile: effectiveProfile,
         roles,
         subscription,
         accessLevel,
