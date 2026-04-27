@@ -20,6 +20,13 @@ export interface VpsUser {
   email: string;
   dealerId: string | null;
   roles: string[];
+  subscription?: {
+    id: string;
+    planId: string;
+    status: "active" | "expired" | "suspended";
+    startDate: string;
+    endDate: string | null;
+  } | null;
 }
 
 export interface LockStatus {

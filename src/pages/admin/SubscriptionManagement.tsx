@@ -22,6 +22,8 @@ import { recordSubscriptionPayment } from "@/services/subscriptionPaymentService
 import { Plus, CalendarPlus, Play, Pause, RefreshCw, Banknote, AlertCircle, CheckCircle2 } from "lucide-react";
 import { differenceInDays, parseISO, format, addMonths, addYears } from "date-fns";
 import { checkYearlyDiscountEligibility } from "@/services/subscriptionPaymentService";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 interface SubRow {
   id: string;
@@ -35,6 +37,13 @@ interface SubRow {
 }
 
 const GRACE_DAYS = 3;
+
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 function getDisplayStatus(sub: SubRow) {
   if (sub.status === "suspended") return "suspended";
@@ -85,6 +94,10 @@ const SubscriptionManagement = () => {
   const { data: subscriptions = [], isLoading } = useQuery({
     queryKey: ["admin-subscriptions"],
     queryFn: async () => {
+      if (env.AUTH_BACKEND === "vps") {
+        const body = await vpsJson<{ subscriptions: SubRow[] }>("/api/subscriptions");
+        return body.subscriptions ?? [];
+      }
       const { data, error } = await supabase
         .from("subscriptions")
         .select("*, dealers(name), subscription_plans!subscriptions_plan_id_fkey(name, id)")
@@ -101,6 +114,10 @@ const SubscriptionManagement = () => {
   const { data: dealers = [] } = useQuery({
     queryKey: ["admin-dealers-list"],
     queryFn: async () => {
+      if (env.AUTH_BACKEND === "vps") {
+        const body = await vpsJson<{ dealers: any[]; plans: any[] }>("/api/subscriptions/lookups");
+        return body.dealers ?? [];
+      }
       const { data, error } = await supabase.from("dealers").select("id, name").order("name");
       if (error) throw new Error(error.message);
       return data;
@@ -110,6 +127,10 @@ const SubscriptionManagement = () => {
   const { data: plans = [] } = useQuery({
     queryKey: ["admin-plans-list"],
     queryFn: async () => {
+      if (env.AUTH_BACKEND === "vps") {
+        const body = await vpsJson<{ dealers: any[]; plans: any[] }>("/api/subscriptions/lookups");
+        return body.plans ?? [];
+      }
       const { data, error } = await supabase
         .from("subscription_plans")
         .select("id, name")
@@ -127,6 +148,10 @@ const SubscriptionManagement = () => {
   const assignMutation = useMutation({
     mutationFn: async () => {
       if (!assignForm.dealer_id || !assignForm.plan_id) throw new Error("Dealer and Plan are required");
+      if (env.AUTH_BACKEND === "vps") {
+        await vpsJson("/api/subscriptions", { method: "POST", body: JSON.stringify({ ...assignForm, status: "active" }) });
+        return;
+      }
       const { error } = await supabase.from("subscriptions").insert({
         dealer_id: assignForm.dealer_id,
         plan_id: assignForm.plan_id,
@@ -227,6 +252,17 @@ const SubscriptionManagement = () => {
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editSub) return;
+      if (env.AUTH_BACKEND === "vps") {
+        await vpsJson(`/api/subscriptions/${editSub.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            end_date: editForm.end_date || null,
+            status: editForm.status,
+            plan_id: editForm.plan_id,
+          }),
+        });
+        return;
+      }
       const { error } = await supabase
         .from("subscriptions")
         .update({
@@ -249,6 +285,13 @@ const SubscriptionManagement = () => {
   // Quick toggle status
   const toggleMutation = useMutation({
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: string }) => {
+      if (env.AUTH_BACKEND === "vps") {
+        await vpsJson(`/api/subscriptions/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: newStatus }),
+        });
+        return;
+      }
       const { error } = await supabase
         .from("subscriptions")
         .update({ status: newStatus as any })

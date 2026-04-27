@@ -160,7 +160,12 @@ router.post('/logout-all', authenticate, async (req: Request, res: Response) => 
 
 // GET /api/auth/me
 router.get('/me', authenticate, async (req: Request, res: Response) => {
-  res.json({ user: req.user });
+  try {
+    const user = await authService.getUserPayload(req.user!.userId);
+    res.json({ user });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to load account' });
+  }
 });
 
 // POST /api/auth/password-reset/request

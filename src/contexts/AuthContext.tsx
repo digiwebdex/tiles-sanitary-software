@@ -136,6 +136,20 @@ function toRoles(vpsUser: VpsUser): UserRole[] {
   return vpsUser.roles.map((role) => ({ role })) as UserRole[];
 }
 
+function toSubscription(vpsUser: VpsUser): Subscription | null {
+  const sub = vpsUser.subscription;
+  if (!sub || !vpsUser.dealerId) return null;
+
+  return {
+    id: sub.id,
+    dealer_id: vpsUser.dealerId,
+    plan_id: sub.planId,
+    status: sub.status,
+    start_date: sub.startDate,
+    end_date: sub.endDate,
+  };
+}
+
 /**
  * Validates and reconciles dealer subscription status against current date.
  * Mutates DB status to "expired" or "active" as needed.
@@ -366,7 +380,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(vpsUser ? toSupabaseCompatibleUser(vpsUser) : null);
         setProfile(vpsUser ? toProfile(vpsUser) : null);
         setRoles(vpsUser ? toRoles(vpsUser) : []);
-        setSubscription(null);
+        setSubscription(vpsUser ? toSubscription(vpsUser) : null);
       };
 
       const initializeVps = async () => {
