@@ -14,9 +14,23 @@ function toDateOnly(value: unknown): string | null {
   return String(value).slice(0, 10);
 }
 
+/**
+ * Reconciles subscription.status with end_date so the auth /me endpoint
+ * always returns a status that matches reality. Suspended is sticky.
+ */
+function deriveStatus(currentStatus: string, endDateStr: string | null): 'active' | 'expired' | 'suspended' {
+  if (currentStatus === 'suspended') return 'suspended';
+  if (!endDateStr) return 'expired';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(endDateStr + 'T00:00:00');
+  return today <= end ? 'active' : 'expired';
+}
+
 async function ensurePlan(planId?: string | null): Promise<string> {
   if (planId) return planId;
-  let plan = await db('plans').orderBy('price_monthly', 'asc').first();
+  let plan = await db('plans').where({ is_active: true }).orderBy('sort_order', 'asc').orderBy('price_monthly', 'asc').first();
+  if (!plan) plan = await db('plans').orderBy('price_monthly', 'asc').first();
   if (!plan) {
     [plan] = await db('plans')
       .insert({ name: 'Basic', price_monthly: 0, price_yearly: 0, max_users: 1 })
@@ -57,7 +71,11 @@ router.get('/lookups', async (_req: Request, res: Response) => {
   try {
     const [dealers, plans] = await Promise.all([
       db('dealers').select('id', 'name').whereIn('status', ['active', 'pending', 'suspended']).orderBy('name'),
-      db('plans').select('id', 'name', 'price_monthly', 'price_yearly', 'max_users').orderBy('price_monthly', 'asc'),
+      db('plans')
+        .where({ is_active: true })
+        .select('id', 'name', 'price_monthly', 'price_yearly', 'max_users')
+        .orderBy('sort_order', 'asc')
+        .orderBy('price_monthly', 'asc'),
     ]);
     res.json({ dealers, plans });
   } catch (err: any) {
@@ -78,15 +96,40 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const body = createSchema.parse(req.body || {});
     const planId = await ensurePlan(body.plan_id);
+
+    // Default end_date based on plan trial_days if not provided
+    let endDate = body.end_date;
+    if (!endDate) {
+      const plan = await db('plans').where({ id: planId }).first();
+      const trialDays = Number(plan?.trial_days ?? 0);
+      const days = trialDays > 0 ? trialDays : 30;
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      endDate = d.toISOString().slice(0, 10);
+    }
+
+    const startDate = body.start_date || new Date().toISOString().slice(0, 10);
+    const finalStatus = deriveStatus(body.status, endDate);
+
     const [row] = await db('subscriptions')
       .insert({
         dealer_id: body.dealer_id,
         plan_id: planId,
-        start_date: body.start_date || new Date().toISOString().slice(0, 10),
-        end_date: body.end_date || null,
-        status: body.status,
+        start_date: startDate,
+        end_date: endDate,
+        status: finalStatus,
       })
       .returning('*');
+
+    // Activate dealer + admin user so login works immediately
+    await db('dealers').where({ id: body.dealer_id }).update({ status: 'active', updated_at: new Date() });
+    const adminProfile = await db('profiles').where({ dealer_id: body.dealer_id }).first();
+    if (adminProfile) {
+      await db('users').where({ id: adminProfile.id }).update({ status: 'active', updated_at: new Date() });
+      // Force token refresh on next request so subscription is picked up
+      await db('refresh_tokens').where({ user_id: adminProfile.id }).update({ expires_at: new Date(Date.now() - 1000) });
+    }
+
     res.status(201).json({ subscription: row });
   } catch (err: any) {
     if (err?.issues) {
@@ -111,11 +154,30 @@ router.patch('/:id', async (req: Request, res: Response) => {
     const body = updateSchema.parse(req.body || {});
     const patch: Record<string, any> = { ...body };
     if (patch.end_date === '') patch.end_date = null;
-    const [row] = await db('subscriptions').where({ id: req.params.id }).update(patch).returning('*');
-    if (!row) {
+
+    const existing = await db('subscriptions').where({ id: req.params.id }).first();
+    if (!existing) {
       res.status(404).json({ error: 'Subscription not found' });
       return;
     }
+
+    const newEnd = patch.end_date !== undefined ? toDateOnly(patch.end_date) : toDateOnly(existing.end_date);
+    const baseStatus = patch.status ?? existing.status;
+    patch.status = deriveStatus(baseStatus, newEnd);
+
+    const [row] = await db('subscriptions').where({ id: req.params.id }).update(patch).returning('*');
+
+    // Activate dealer + admin and force token refresh so the dealer
+    // app picks up the new subscription on next API call.
+    if (patch.status === 'active') {
+      await db('dealers').where({ id: existing.dealer_id }).update({ status: 'active', updated_at: new Date() });
+      const adminProfile = await db('profiles').where({ dealer_id: existing.dealer_id }).first();
+      if (adminProfile) {
+        await db('users').where({ id: adminProfile.id }).update({ status: 'active', updated_at: new Date() });
+        await db('refresh_tokens').where({ user_id: adminProfile.id }).update({ expires_at: new Date(Date.now() - 1000) });
+      }
+    }
+
     res.json({ subscription: row });
   } catch (err: any) {
     if (err?.issues) {
