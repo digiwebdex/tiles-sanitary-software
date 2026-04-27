@@ -74,10 +74,63 @@ const SABackupPage = () => {
   const { data: restores, isLoading: restoresLoading, refetch: refetchRestores } = useQuery({
     queryKey: ["sa-restores"],
     queryFn: async () => {
+      if (isVps) {
+        const r = await vpsJson<{ restores: any[] }>("/api/backups/restores");
+        return r.restores || [];
+      }
       const { data, error } = await supabase.from("restore_logs").select("*").order("created_at", { ascending: false }).limit(100);
       if (error) throw error;
       return data || [];
     },
+  });
+
+  // Google Drive backup files (VPS only)
+  const { data: driveFiles, isLoading: driveLoading, refetch: refetchDrive } = useQuery({
+    queryKey: ["sa-drive-files", driveType],
+    queryFn: async () => {
+      if (!isVps) return [];
+      const r = await vpsJson<{ files: any[] }>(
+        `/api/backups/drive?type=${encodeURIComponent(driveType)}`,
+      );
+      return r.files || [];
+    },
+    enabled: isVps,
+  });
+
+  // Manual backup trigger
+  const runBackupMutation = useMutation({
+    mutationFn: async (type: string) => {
+      if (!isVps) throw new Error("Manual backup is only available on the VPS backend.");
+      return vpsJson<{ ok: boolean; message: string }>("/api/backups/run", {
+        method: "POST",
+        body: JSON.stringify({ type }),
+      });
+    },
+    onSuccess: (r) => {
+      toast.success(r.message || "Backup started");
+      setTimeout(() => refetchBackups(), 5000);
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  // Drive restore
+  const driveRestoreMutation = useMutation({
+    mutationFn: async (vars: {
+      type: string; database_name: string; remote_path: string; app_name?: string; confirm: string;
+    }) => {
+      return vpsJson<{ ok: boolean; restore_id: string; message: string }>(
+        "/api/backups/restore",
+        { method: "POST", body: JSON.stringify(vars) },
+      );
+    },
+    onSuccess: (r) => {
+      toast.success(r.message);
+      setDriveRestoreDialog(null);
+      setDriveDbName("");
+      setDriveConfirmText("");
+      refetchRestores();
+    },
+    onError: (err: any) => toast.error(err.message),
   });
 
   const stats = {
