@@ -508,7 +508,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         session,
-        profile,
+        profile: effectiveProfile,
         roles,
         subscription,
         accessLevel,
