@@ -23,7 +23,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink, KeyRound, Pencil } from "lucide-react";
+import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink, KeyRound, Pencil, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { env } from "@/lib/env";
 import { saImpersonation } from "@/lib/saImpersonation";
@@ -77,6 +79,8 @@ const VpsDealerManagement = () => {
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState<{ action: string; dealer: VpsDealer } | null>(null);
   const [editing, setEditing] = useState<VpsDealer | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VpsDealer | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const openErp = (d: VpsDealer) => {
     saImpersonation.start(d.id, d.name, false);
@@ -130,6 +134,26 @@ const VpsDealerManagement = () => {
     },
     onError: (e: Error) => {
       toast({ variant: "destructive", title: "Reset failed", description: e.message });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async ({ dealer, confirmName }: { dealer: VpsDealer; confirmName: string }) => {
+      return vpsJson(`/api/dealers/${dealer.id}?confirm=${encodeURIComponent(confirmName)}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: (_res, vars) => {
+      toast({
+        title: "Dealer deleted",
+        description: `${vars.dealer.name} and all associated data have been permanently removed.`,
+      });
+      qc.invalidateQueries({ queryKey: ["vps-dealers"] });
+      setDeleteTarget(null);
+      setDeleteConfirmText("");
+    },
+    onError: (e: Error) => {
+      toast({ variant: "destructive", title: "Delete failed", description: e.message });
     },
   });
 
@@ -265,6 +289,19 @@ const VpsDealerManagement = () => {
                         <KeyRound className="h-4 w-4 mr-1" /> Reset Password
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setDeleteTarget(d);
+                        setDeleteConfirmText("");
+                      }}
+                      disabled={deleteMutation.isPending}
+                      title="Permanently delete dealer and all data"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" /> Delete
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
@@ -311,6 +348,75 @@ const VpsDealerManagement = () => {
             >
               {decisionMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteTarget(null);
+            setDeleteConfirmText("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">
+              Permanently delete dealer?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                {deleteTarget && (
+                  <div className="text-sm">
+                    Business: <b>{deleteTarget.name}</b>
+                    <br />Owner: {deleteTarget.admin_name || "—"} ({deleteTarget.admin_email || "—"})
+                    <br />Phone: {deleteTarget.phone || "—"}
+                  </div>
+                )}
+                <div className="rounded border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                  This will <b>permanently delete</b> the dealer, their admin user,
+                  all sales, purchases, products, customers, suppliers, payments,
+                  and every other record tied to this account. This action
+                  <b> cannot be undone</b>.
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delete-confirm" className="text-sm">
+                    Type the business name <b>{deleteTarget?.name}</b> to confirm:
+                  </Label>
+                  <Input
+                    id="delete-confirm"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder={deleteTarget?.name || ""}
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={
+                deleteMutation.isPending ||
+                !deleteTarget ||
+                deleteConfirmText.trim().toLowerCase() !==
+                  (deleteTarget?.name || "").trim().toLowerCase()
+              }
+              onClick={() =>
+                deleteTarget &&
+                deleteMutation.mutate({
+                  dealer: deleteTarget,
+                  confirmName: deleteTarget.name,
+                })
+              }
+            >
+              {deleteMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete permanently
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

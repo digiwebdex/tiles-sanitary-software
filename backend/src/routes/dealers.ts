@@ -644,4 +644,88 @@ router.patch('/:id', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * DELETE /api/dealers/:id — permanently delete a dealer and ALL associated
+ * data (admin/users, profiles, roles, subscriptions, refresh tokens, login
+ * attempts, and any tenant-scoped records). This is irreversible.
+ *
+ * Requires `?confirm=<dealer_name>` query param matching the dealer's name
+ * (case-insensitive) as a safety check.
+ */
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const dealerId = req.params.id;
+    const confirm = String(req.query.confirm || '').trim().toLowerCase();
+
+    const dealer = await db('dealers').where({ id: dealerId }).first();
+    if (!dealer) {
+      res.status(404).json({ error: 'Dealer not found' });
+      return;
+    }
+
+    if (!confirm || confirm !== String(dealer.name || '').trim().toLowerCase()) {
+      res.status(400).json({
+        error: 'Confirmation required: pass ?confirm=<exact dealer name> to delete.',
+      });
+      return;
+    }
+
+    const profileIds: string[] = await db('profiles')
+      .where({ dealer_id: dealerId })
+      .pluck('id');
+
+    await db.transaction(async (trx) => {
+      // Best-effort cleanup of tenant-scoped tables. We swallow "table does
+      // not exist" errors so the delete works even on partially-migrated DBs.
+      const tenantTables = [
+        'sale_items', 'sales',
+        'purchase_items', 'purchases',
+        'sales_returns', 'purchase_returns',
+        'deliveries', 'challans',
+        'payments', 'subscription_payments',
+        'ledger_entries', 'expenses',
+        'product_batches', 'stock_movements', 'stock_reservations',
+        'products', 'customers', 'suppliers',
+        'quotations', 'projects', 'project_sites',
+        'campaign_gifts', 'commissions',
+        'audit_logs', 'notifications',
+        'subscriptions',
+      ];
+      for (const t of tenantTables) {
+        try {
+          await trx(t).where({ dealer_id: dealerId }).del();
+        } catch (e: any) {
+          // ignore missing tables / missing columns in older schemas
+          if (!/does not exist|undefined column/i.test(e?.message || '')) {
+            // Re-throw real errors
+            throw e;
+          }
+        }
+      }
+
+      // User-scoped cleanup
+      if (profileIds.length) {
+        await trx('refresh_tokens').whereIn('user_id', profileIds).del().catch(() => {});
+        await trx('user_roles').whereIn('user_id', profileIds).del().catch(() => {});
+        const emails: string[] = await trx('users').whereIn('id', profileIds).pluck('email');
+        if (emails.length) {
+          await trx('login_attempts')
+            .whereIn(trx.raw('LOWER(email)') as any, emails.map((e) => (e || '').toLowerCase()))
+            .del()
+            .catch(() => {});
+        }
+        await trx('profiles').whereIn('id', profileIds).del();
+        await trx('users').whereIn('id', profileIds).del();
+      }
+
+      await trx('dealers').where({ id: dealerId }).del();
+    });
+
+    res.json({ success: true, dealer_id: dealerId, deleted: true });
+  } catch (err: any) {
+    console.error('[dealers:delete] failed:', err);
+    res.status(500).json({ error: err.message || 'Delete failed' });
+  }
+});
+
 export default router;
