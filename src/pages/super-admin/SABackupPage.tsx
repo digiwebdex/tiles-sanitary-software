@@ -334,6 +334,11 @@ const SABackupPage = () => {
               </Button>
             </>
           )}
+          {isVps && (
+            <Button variant="outline" size="sm" onClick={() => setUploadDialog(true)}>
+              <Upload className="h-4 w-4 mr-2" /> Upload Backup
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => { refetchBackups(); refetchRestores(); refetchDrive(); }}>
             <RefreshCw className="h-4 w-4 mr-2" /> Refresh
           </Button>
