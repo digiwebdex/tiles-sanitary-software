@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +14,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
   Database, HardDrive, CheckCircle, XCircle, Clock, Download, RotateCcw, Search,
-  Shield, AlertTriangle, FileArchive, RefreshCw, Activity,
+  Shield, AlertTriangle, FileArchive, RefreshCw, Activity, Play, Cloud,
 } from "lucide-react";
 import { format } from "date-fns";
+
+const isVps = env.AUTH_BACKEND === "vps";
+
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 const formatBytes = (bytes: number) => {
   if (!bytes || bytes === 0) return "0 B";
