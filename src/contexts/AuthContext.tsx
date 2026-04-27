@@ -491,6 +491,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    saImpersonation.clear();
     if (env.AUTH_BACKEND === "vps") {
       await vpsAuthApi.logout();
     } else {
