@@ -678,6 +678,81 @@ rclone ls gdrive:TilesERP-Backups/`}</pre>
         </DialogContent>
       </Dialog>
 
+      {/* ── Drive Restore Dialog ── */}
+      <Dialog open={!!driveRestoreDialog} onOpenChange={() => setDriveRestoreDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Restore from Google Drive
+            </DialogTitle>
+            <DialogDescription>
+              This will overwrite the target database. A safety backup will be created automatically by the restore script.
+            </DialogDescription>
+          </DialogHeader>
+
+          {driveRestoreDialog && (
+            <div className="space-y-4">
+              <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 space-y-2 text-xs">
+                <div><span className="text-muted-foreground">Type:</span> <span className="font-medium">{driveRestoreDialog.type?.toUpperCase()}</span></div>
+                <div><span className="text-muted-foreground">File:</span> <span className="font-mono">{driveRestoreDialog.path}</span></div>
+                <div><span className="text-muted-foreground">Size:</span> <span className="font-medium">{formatBytes(driveRestoreDialog.size || 0)}</span></div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">Target database name:</p>
+                <Input
+                  value={driveDbName}
+                  onChange={(e) => setDriveDbName(e.target.value)}
+                  placeholder="e.g. tilessaas"
+                  className="font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium text-destructive">
+                  Type the database name again to confirm:
+                </p>
+                <Input
+                  value={driveConfirmText}
+                  onChange={(e) => setDriveConfirmText(e.target.value)}
+                  placeholder="Re-type database name"
+                  className="font-mono"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDriveRestoreDialog(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!driveDbName || driveConfirmText !== driveDbName) {
+                  toast.error("Database name and confirmation must match");
+                  return;
+                }
+                driveRestoreMutation.mutate({
+                  type: driveRestoreDialog.type,
+                  database_name: driveDbName,
+                  remote_path: driveRestoreDialog.path,
+                  app_name: driveRestoreDialog.path.split("/")[1] || "unknown",
+                  confirm: driveConfirmText,
+                });
+              }}
+              disabled={
+                driveRestoreMutation.isPending ||
+                !driveDbName ||
+                driveConfirmText !== driveDbName
+              }
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              {driveRestoreMutation.isPending ? "Starting…" : "Start Restore"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Restore Logs Dialog ── */}
       <Dialog open={!!restoreLogsDialog} onOpenChange={() => setRestoreLogsDialog(null)}>
         <DialogContent className="sm:max-w-2xl">
