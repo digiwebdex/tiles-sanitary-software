@@ -79,6 +79,8 @@ const VpsDealerManagement = () => {
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState<{ action: string; dealer: VpsDealer } | null>(null);
   const [editing, setEditing] = useState<VpsDealer | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VpsDealer | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const openErp = (d: VpsDealer) => {
     saImpersonation.start(d.id, d.name, false);
