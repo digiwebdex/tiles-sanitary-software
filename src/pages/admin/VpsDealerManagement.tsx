@@ -10,6 +10,7 @@
  * used by the rest of the VPS data layer).
  */
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,9 +23,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink } from "lucide-react";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { env } from "@/lib/env";
+import { saImpersonation } from "@/lib/saImpersonation";
 
 interface VpsDealer {
   id: string;
