@@ -1,5 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 import { addMonths, format } from "date-fns";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 interface RecordPaymentInput {
   subscription_id: string;
