@@ -137,6 +137,26 @@ const VpsDealerManagement = () => {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async ({ dealer, confirmName }: { dealer: VpsDealer; confirmName: string }) => {
+      return vpsJson(`/api/dealers/${dealer.id}?confirm=${encodeURIComponent(confirmName)}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: (_res, vars) => {
+      toast({
+        title: "Dealer deleted",
+        description: `${vars.dealer.name} and all associated data have been permanently removed.`,
+      });
+      qc.invalidateQueries({ queryKey: ["vps-dealers"] });
+      setDeleteTarget(null);
+      setDeleteConfirmText("");
+    },
+    onError: (e: Error) => {
+      toast({ variant: "destructive", title: "Delete failed", description: e.message });
+    },
+  });
+
   if (env.AUTH_BACKEND !== "vps") {
     return (
       <Card>
