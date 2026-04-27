@@ -13,6 +13,7 @@ import customersRoutes from './routes/customers';
 import productsRoutes from './routes/products';
 import stockRoutes from './routes/stock';
 import batchesRoutes from './routes/batches';
+import dealersRoutes from './routes/dealers';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -71,6 +72,7 @@ app.use('/api/customers', customersRoutes);
 app.use('/api/products', productsRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/batches', batchesRoutes);
+app.use('/api/dealers', dealersRoutes);
 
 // ── 404 handler ──
 app.use((_req, res) => {

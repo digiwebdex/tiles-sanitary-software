@@ -52,17 +52,21 @@ router.get('/lock-status', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/auth/register — public self-signup (3-day trial)
+// POST /api/auth/register — public self-signup (creates account in PENDING state).
+// No tokens are returned: the user must wait for Super Admin approval before
+// they can log in. The frontend reads `pending: true` and shows the
+// "Awaiting approval" success screen.
 router.post('/register', async (req: Request, res: Response) => {
   try {
     const data = registerSchema.parse(req.body);
     const result = await authService.register({ ...data, ip: getIp(req) });
 
     res.status(201).json({
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      user: result.user,
-      dealerId: result.dealerId,
+      success: true,
+      pending: true,
+      message: 'Account created. Awaiting Super Admin approval before you can log in.',
+      user_id: result.userId,
+      dealer_id: result.dealerId,
     });
   } catch (err: any) {
     if (err.code === 'EMAIL_TAKEN') {
@@ -100,6 +104,10 @@ router.post('/login', async (req: Request, res: Response) => {
     }
     if (code === 'INVALID_CREDENTIALS') {
       res.status(401).json({ error: err.message, code, lock });
+      return;
+    }
+    if (code === 'PENDING_APPROVAL') {
+      res.status(403).json({ error: err.message, code });
       return;
     }
     if (code === 'SUSPENDED') {

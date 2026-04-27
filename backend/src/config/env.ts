@@ -20,6 +20,8 @@ const envSchema = z.object({
   BULKSMSBD_API_KEY: z.string().optional(),
   BULKSMSBD_API_URL: z.string().optional(),
   BULKSMSBD_SENDER_ID: z.string().optional(),
+  ADMIN_EMAIL: z.string().email().optional(),
+  ADMIN_PHONE: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
