@@ -182,6 +182,12 @@ export async function recordSubscriptionPayment(input: RecordPaymentInput) {
  * Returns true if they have NEVER received a yearly discount before.
  */
 export async function checkYearlyDiscountEligibility(dealer_id: string): Promise<boolean> {
+  if (env.AUTH_BACKEND === "vps") {
+    const r = await vpsJson<{ eligible: boolean }>(
+      `/api/subscriptions/yearly-discount-eligibility?dealer_id=${encodeURIComponent(dealer_id)}`,
+    );
+    return !!r.eligible;
+  }
   const { data, error } = await supabase
     .from("subscriptions")
     .select("id")
