@@ -186,7 +186,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // ── POST /api/customers ────────────────────────────────────────────────────
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
