@@ -252,6 +252,17 @@ const SubscriptionManagement = () => {
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editSub) return;
+      if (env.AUTH_BACKEND === "vps") {
+        await vpsJson(`/api/subscriptions/${editSub.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            end_date: editForm.end_date || null,
+            status: editForm.status,
+            plan_id: editForm.plan_id,
+          }),
+        });
+        return;
+      }
       const { error } = await supabase
         .from("subscriptions")
         .update({
@@ -274,6 +285,13 @@ const SubscriptionManagement = () => {
   // Quick toggle status
   const toggleMutation = useMutation({
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: string }) => {
+      if (env.AUTH_BACKEND === "vps") {
+        await vpsJson(`/api/subscriptions/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: newStatus }),
+        });
+        return;
+      }
       const { error } = await supabase
         .from("subscriptions")
         .update({ status: newStatus as any })
