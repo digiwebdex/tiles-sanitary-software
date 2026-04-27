@@ -434,6 +434,15 @@ const SABackupPage = () => {
                 <SelectItem value="pending">Pending</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Source" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="auto">Automatic</SelectItem>
+                <SelectItem value="vps_local">VPS Local Copy</SelectItem>
+                <SelectItem value="uploaded">Manual Upload</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <Card>
