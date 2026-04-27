@@ -259,7 +259,7 @@ router.patch('/:id', requireRole('dealer_admin'), async (req: Request, res: Resp
 });
 
 // ── DELETE /api/suppliers/:id ──────────────────────────────────────────────
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
