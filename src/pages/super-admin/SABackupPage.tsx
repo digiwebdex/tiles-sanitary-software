@@ -17,6 +17,7 @@ import {
   Shield, AlertTriangle, FileArchive, RefreshCw, Activity, Play, Cloud,
 } from "lucide-react";
 import { format } from "date-fns";
+import { GoogleDriveConnectCard } from "./GoogleDriveConnectCard";
 
 const isVps = env.AUTH_BACKEND === "vps";
 
@@ -474,6 +475,7 @@ const SABackupPage = () => {
         {/* ── Google Drive Restore ── */}
         {isVps && (
           <TabsContent value="drive" className="space-y-4">
+            <GoogleDriveConnectCard onRestoreStarted={() => refetchRestores()} />
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>

@@ -22,6 +22,10 @@ const envSchema = z.object({
   BULKSMSBD_SENDER_ID: z.string().optional(),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PHONE: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().optional(),
+  APP_PUBLIC_URL: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
