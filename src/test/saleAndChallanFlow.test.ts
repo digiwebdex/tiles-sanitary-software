@@ -130,10 +130,17 @@ function setupSaleMocks() {
   });
   fromChains["products"] = productsChain;
 
-  // Stock
+  // Stock — must include box_qty/piece_qty so shortage check passes
   const stockChain = createChainMock();
   stockChain.in = vi.fn().mockResolvedValue({
-    data: [{ product_id: PRODUCT_ID, average_cost_per_unit: 30 }],
+    data: [{
+      product_id: PRODUCT_ID,
+      average_cost_per_unit: 30,
+      box_qty: 1000,
+      piece_qty: 1000,
+      reserved_box_qty: 0,
+      reserved_piece_qty: 0,
+    }],
     error: null,
   });
   fromChains["stock"] = stockChain;
