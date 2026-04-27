@@ -184,7 +184,7 @@ router.post('/restore', async (req: Request, res: Response) => {
         type,
         database_name,
         app_name,
-        req.user?.id || null,
+        req.user?.userId || null,
         req.user?.email || 'super_admin',
         `Restore initiated at ${new Date().toISOString()} from ${RCLONE_REMOTE}/${remote_path}`,
       ],
