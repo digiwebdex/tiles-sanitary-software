@@ -61,7 +61,14 @@ const statusVariant: Record<string, "default" | "secondary" | "destructive" | "o
 const VpsDealerManagement = () => {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [confirm, setConfirm] = useState<{ action: string; dealer: VpsDealer } | null>(null);
+
+  const openErp = (d: VpsDealer) => {
+    saImpersonation.start(d.id, d.name, false);
+    toast({ title: `Opening ERP as ${d.name}`, description: "Read-only by default. Toggle Edit mode in the banner to make changes." });
+    navigate("/dashboard");
+  };
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["vps-dealers"],
