@@ -205,7 +205,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Product not found' });
       return;
     }
-    res.json({ row });
+    res.json({ row: stripCostForSalesman(req, row) });
   } catch (err: any) {
     console.error('[products/get]', err.message);
     res.status(500).json({ error: 'Failed to load product' });
@@ -213,9 +213,8 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // ── POST /api/products ─────────────────────────────────────────────────────
-// Phase 3D: implemented for parity but FRONTEND DOES NOT CALL THIS.
-// Product writes remain on Supabase until shadow runs clean.
-router.post('/', async (req: Request, res: Response) => {
+// P0: dealer_admin / super_admin only. Salesmen cannot create products.
+router.post('/', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
