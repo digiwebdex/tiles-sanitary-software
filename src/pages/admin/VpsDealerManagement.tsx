@@ -233,7 +233,7 @@ const VpsDealerManagement = () => {
                         size="sm"
                         variant="outline"
                         onClick={() => {
-                          if (confirm(`Reset password for ${d.name}?\n\nA new temporary password will be emailed to ${d.admin_email} and SMS-sent to ${d.phone || "the registered phone"}. All current sessions will be signed out.`)) {
+                          if (window.confirm(`Reset password for ${d.name}?\n\nA new temporary password will be emailed to ${d.admin_email} and SMS-sent to ${d.phone || "the registered phone"}. All current sessions will be signed out.`)) {
                             resetPasswordMutation.mutate({ dealer: d, mode: "temp" });
                           }
                         }}
@@ -244,6 +244,7 @@ const VpsDealerManagement = () => {
                       </Button>
                     )}
                   </TableCell>
+                </TableRow>
               ))
             )}
           </TableBody>
