@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { tenantGuard } from '../middleware/tenant';
+import { requireRole } from '../middleware/roles';
 
 const router = Router();
 
