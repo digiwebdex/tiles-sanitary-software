@@ -94,6 +94,10 @@ const SubscriptionManagement = () => {
   const { data: subscriptions = [], isLoading } = useQuery({
     queryKey: ["admin-subscriptions"],
     queryFn: async () => {
+      if (env.AUTH_BACKEND === "vps") {
+        const body = await vpsJson<{ subscriptions: SubRow[] }>("/api/subscriptions");
+        return body.subscriptions ?? [];
+      }
       const { data, error } = await supabase
         .from("subscriptions")
         .select("*, dealers(name), subscription_plans!subscriptions_plan_id_fkey(name, id)")
@@ -110,6 +114,10 @@ const SubscriptionManagement = () => {
   const { data: dealers = [] } = useQuery({
     queryKey: ["admin-dealers-list"],
     queryFn: async () => {
+      if (env.AUTH_BACKEND === "vps") {
+        const body = await vpsJson<{ dealers: any[]; plans: any[] }>("/api/subscriptions/lookups");
+        return body.dealers ?? [];
+      }
       const { data, error } = await supabase.from("dealers").select("id, name").order("name");
       if (error) throw new Error(error.message);
       return data;
@@ -119,6 +127,10 @@ const SubscriptionManagement = () => {
   const { data: plans = [] } = useQuery({
     queryKey: ["admin-plans-list"],
     queryFn: async () => {
+      if (env.AUTH_BACKEND === "vps") {
+        const body = await vpsJson<{ dealers: any[]; plans: any[] }>("/api/subscriptions/lookups");
+        return body.plans ?? [];
+      }
       const { data, error } = await supabase
         .from("subscription_plans")
         .select("id, name")
@@ -136,6 +148,10 @@ const SubscriptionManagement = () => {
   const assignMutation = useMutation({
     mutationFn: async () => {
       if (!assignForm.dealer_id || !assignForm.plan_id) throw new Error("Dealer and Plan are required");
+      if (env.AUTH_BACKEND === "vps") {
+        await vpsJson("/api/subscriptions", { method: "POST", body: JSON.stringify({ ...assignForm, status: "active" }) });
+        return;
+      }
       const { error } = await supabase.from("subscriptions").insert({
         dealer_id: assignForm.dealer_id,
         plan_id: assignForm.plan_id,
