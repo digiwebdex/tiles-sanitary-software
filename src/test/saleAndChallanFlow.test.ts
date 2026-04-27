@@ -312,6 +312,7 @@ describe("Full Sale + Challan Workflow", () => {
 
       // NO stock deduction in challan mode
       expect(mockDeductStock).not.toHaveBeenCalled();
+      expect(mockBatchDeductUnbatched).not.toHaveBeenCalled();
 
       // NO ledger entries in challan mode
       expect(mockCustomerLedgerAdd).not.toHaveBeenCalled();
