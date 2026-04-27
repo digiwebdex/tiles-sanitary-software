@@ -34,6 +34,18 @@ interface VpsDealer {
   name: string;
   phone: string | null;
   address: string | null;
+  email: string | null;
+  owner_name: string | null;
+  business_type: string | null;
+  city: string | null;
+  district: string | null;
+  country: string | null;
+  postal_code: string | null;
+  tax_id: string | null;
+  trade_license_no: string | null;
+  website: string | null;
+  logo_url: string | null;
+  notes: string | null;
   status: string;
   created_at: string;
   admin_email: string | null;
