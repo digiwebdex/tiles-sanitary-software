@@ -47,6 +47,32 @@ export async function recordSubscriptionPayment(input: RecordPaymentInput) {
     billing_cycle = "monthly",
   } = input;
 
+  // VPS path: when running against the self-hosted backend (e.g. live custom
+  // domain), Supabase RLS does not apply — record via authed VPS endpoint.
+  if (env.AUTH_BACKEND === "vps") {
+    const result = await vpsJson<{
+      payment: { id: string };
+      yearly_discount_applied: boolean;
+    }>("/api/subscriptions/payments", {
+      method: "POST",
+      body: JSON.stringify({
+        subscription_id,
+        dealer_id,
+        amount,
+        payment_date,
+        payment_method,
+        payment_status,
+        note,
+        extend_months,
+        billing_cycle,
+      }),
+    });
+    return {
+      payment: result.payment,
+      yearlyDiscountApplied: result.yearly_discount_applied,
+    };
+  }
+
   // 1. Duplicate check: prevent full payment if one already exists for this subscription
   if (payment_status === "paid") {
     const { data: existing, error: dupError } = await supabase
