@@ -30,6 +30,15 @@ vi.mock("@/integrations/supabase/client", () => ({
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } } }),
     },
+    rpc: vi.fn().mockImplementation((fnName: string) => {
+      if (fnName === "generate_next_challan_no") {
+        return Promise.resolve({ data: "CH-00001", error: null });
+      }
+      if (fnName === "generate_next_invoice_no") {
+        return Promise.resolve({ data: "INV-00006", error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    }),
   },
 }));
 
@@ -48,6 +57,20 @@ vi.mock("@/services/stockService", () => ({
     unreserveStock: (...args: any[]) => mockUnreserveStock(...args),
     deductReservedStock: (...args: any[]) => mockDeductReservedStock(...args),
     updateAverageCost: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+// Mock batchService — new code path for stock deduction
+const mockBatchDeductUnbatched = vi.fn().mockResolvedValue(undefined);
+const mockBatchPlanFIFO = vi.fn().mockResolvedValue({ allocations: [] });
+const mockBatchExecuteAlloc = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("@/services/batchService", () => ({
+  batchService: {
+    deductStockUnbatched: (...args: any[]) => mockBatchDeductUnbatched(...args),
+    planFIFOAllocation: (...args: any[]) => mockBatchPlanFIFO(...args),
+    executeSaleAllocation: (...args: any[]) => mockBatchExecuteAlloc(...args),
+    restoreSaleBatches: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -121,10 +144,17 @@ function setupSaleMocks() {
   });
   fromChains["products"] = productsChain;
 
-  // Stock
+  // Stock — must include box_qty/piece_qty so shortage check passes
   const stockChain = createChainMock();
   stockChain.in = vi.fn().mockResolvedValue({
-    data: [{ product_id: PRODUCT_ID, average_cost_per_unit: 30 }],
+    data: [{
+      product_id: PRODUCT_ID,
+      average_cost_per_unit: 30,
+      box_qty: 1000,
+      piece_qty: 1000,
+      reserved_box_qty: 0,
+      reserved_piece_qty: 0,
+    }],
     error: null,
   });
   fromChains["stock"] = stockChain;
@@ -146,9 +176,14 @@ function setupSaleMocks() {
   });
   fromChains["sales"] = salesChain;
 
-  // Sale items
+  // Sale items — insert().select() must return inserted rows with ids
   const itemsChain = createChainMock();
-  itemsChain.insert = vi.fn().mockResolvedValue({ error: null });
+  itemsChain.insert = vi.fn().mockReturnValue({
+    select: vi.fn().mockResolvedValue({
+      data: [{ id: "sale-item-1", product_id: PRODUCT_ID }],
+      error: null,
+    }),
+  });
   fromChains["sale_items"] = itemsChain;
 }
 
@@ -176,8 +211,10 @@ describe("Full Sale + Challan Workflow", () => {
       expect(result).toBeDefined();
       expect(result!.id).toBe(SALE_ID);
 
-      // Stock deducted for direct invoice
-      expect(mockDeductStock).toHaveBeenCalledWith(PRODUCT_ID, 10, DEALER_ID);
+      // Stock deducted for direct invoice (via batchService unbatched fallback)
+      expect(mockBatchDeductUnbatched).toHaveBeenCalledWith(
+        PRODUCT_ID, DEALER_ID, 10, "box_sft", 3.5
+      );
 
       // Customer ledger: sale entry
       expect(mockCustomerLedgerAdd).toHaveBeenCalledWith(
@@ -275,6 +312,7 @@ describe("Full Sale + Challan Workflow", () => {
 
       // NO stock deduction in challan mode
       expect(mockDeductStock).not.toHaveBeenCalled();
+      expect(mockBatchDeductUnbatched).not.toHaveBeenCalled();
 
       // NO ledger entries in challan mode
       expect(mockCustomerLedgerAdd).not.toHaveBeenCalled();
