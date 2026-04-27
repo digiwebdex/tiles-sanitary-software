@@ -127,7 +127,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (adminProfile) {
       await db('users').where({ id: adminProfile.id }).update({ status: 'active', updated_at: new Date() });
       // Force token refresh on next request so subscription is picked up
-      await db('refresh_tokens').where({ user_id: adminProfile.id }).update({ expires_at: new Date(Date.now() - 1000) });
+      // Refresh tokens left intact; access token will pick up the new subscription via /me on next request.
     }
 
     res.status(201).json({ subscription: row });
@@ -174,7 +174,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
       const adminProfile = await db('profiles').where({ dealer_id: existing.dealer_id }).first();
       if (adminProfile) {
         await db('users').where({ id: adminProfile.id }).update({ status: 'active', updated_at: new Date() });
-        await db('refresh_tokens').where({ user_id: adminProfile.id }).update({ expires_at: new Date(Date.now() - 1000) });
+        // Refresh tokens left intact; access token will pick up the new subscription via /me on next request.
       }
     }
 
