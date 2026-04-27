@@ -161,6 +161,22 @@ const SABackupPage = () => {
       return;
     }
 
+    // VPS path: actually execute restore via backend
+    if (isVps) {
+      const remotePath =
+        restoreDialog.remote_path ||
+        `${restoreDialog.backup_type}/${restoreDialog.app_name}/${restoreDialog.file_name}`;
+      driveRestoreMutation.mutate({
+        type: restoreDialog.backup_type,
+        database_name: restoreDialog.database_name,
+        remote_path: remotePath,
+        app_name: restoreDialog.app_name,
+        confirm: restoreDialog.database_name,
+      });
+      setRestoreDialog(null);
+      return;
+    }
+
     try {
       const { error } = await supabase.from("restore_logs").insert({
         backup_log_id: restoreDialog.id,
@@ -173,7 +189,7 @@ const SABackupPage = () => {
         logs: `Restore requested for ${restoreDialog.file_name} at ${new Date().toISOString()}.\n\nTo execute on VPS, run:\n  bash /opt/tileserp-backup/restore.sh ${restoreDialog.backup_type} ${restoreDialog.database_name} ${restoreDialog.backup_type}/${restoreDialog.app_name}/<date>/${restoreDialog.file_name}`,
       });
       if (error) throw error;
-      
+
       toast.success("Restore request logged. Execute the restore command on VPS.");
       setRestoreDialog(null);
       refetchRestores();
