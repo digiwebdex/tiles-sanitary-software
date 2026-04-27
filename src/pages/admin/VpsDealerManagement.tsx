@@ -192,6 +192,14 @@ const VpsDealerManagement = () => {
                     <Badge variant={statusVariant[d.status] || "outline"}>{d.status}</Badge>
                   </TableCell>
                   <TableCell className="text-right space-x-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditing(d)}
+                      title="Edit dealer information"
+                    >
+                      <Pencil className="h-4 w-4 mr-1" /> Edit
+                    </Button>
                     {d.status === "pending" && (
                       <>
                         <Button
