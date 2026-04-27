@@ -23,6 +23,18 @@ import { z } from 'zod';
 import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { tenantGuard } from '../middleware/tenant';
+import { requireRole, hasRole } from '../middleware/roles';
+
+/**
+ * Strip cost_price for users that lack 'dealer_admin' or 'super_admin'.
+ * Salesmen MUST NOT see margins / cost data — enforced server-side.
+ */
+function stripCostForSalesman<T extends Record<string, any>>(req: Request, row: T | undefined): T | undefined {
+  if (!row) return row;
+  if (hasRole(req, 'dealer_admin') || hasRole(req, 'super_admin')) return row;
+  const { cost_price: _omit, ...safe } = row;
+  return safe as T;
+}
 
 const router = Router();
 const TABLE = 'products';
@@ -166,7 +178,8 @@ router.get('/', async (req: Request, res: Response) => {
       .limit(pageSize);
 
     const [countRow] = await countQ;
-    const rows = await rowsQ;
+    const rawRows = await rowsQ;
+    const rows = rawRows.map((r: any) => stripCostForSalesman(req, r));
 
     res.json({
       rows,
@@ -192,7 +205,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Product not found' });
       return;
     }
-    res.json({ row });
+    res.json({ row: stripCostForSalesman(req, row) });
   } catch (err: any) {
     console.error('[products/get]', err.message);
     res.status(500).json({ error: 'Failed to load product' });
@@ -200,9 +213,8 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // ── POST /api/products ─────────────────────────────────────────────────────
-// Phase 3D: implemented for parity but FRONTEND DOES NOT CALL THIS.
-// Product writes remain on Supabase until shadow runs clean.
-router.post('/', async (req: Request, res: Response) => {
+// P0: dealer_admin / super_admin only. Salesmen cannot create products.
+router.post('/', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
@@ -241,7 +253,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // ── PATCH /api/products/:id ────────────────────────────────────────────────
-router.patch('/:id', async (req: Request, res: Response) => {
+router.patch('/:id', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
@@ -287,7 +299,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // ── DELETE /api/products/:id ───────────────────────────────────────────────
 // Frontend never deletes products in practice (uses toggleActive).
 // Implemented for completeness; not used by UI in Phase 3D.
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;

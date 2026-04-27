@@ -33,6 +33,7 @@ import crypto from 'crypto';
 import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/roles';
+import { env } from '../config/env';
 
 const execAsync = promisify(exec);
 const router = Router();
@@ -51,6 +52,53 @@ const VPS_LOCAL_SUBDIR = 'vps_local';
 
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 const ALLOWED_EXT = ['.sql.gz', '.dump', '.dump.gz', '.archive.gz', '.tar.gz'];
+
+// ── Restore confirmation token (HMAC, single-use, short-lived) ─────
+// P0 hardening: /restore-local now requires a signed token issued via
+// POST /restore-local/token by the same authenticated super_admin. This
+// blocks accidental cross-tab clicks, replay across users, and CSRF-style
+// triggers from any compromised non-super_admin context.
+const RESTORE_TOKEN_TTL_MS = 2 * 60 * 1000; // 2 minutes
+const restoreTokenSecret = (): string =>
+  env.RESTORE_TOKEN_SECRET || env.JWT_SECRET;
+
+function signRestoreToken(payload: { backup_id: string; user_id: string; exp: number }): string {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', restoreTokenSecret())
+    .update(body)
+    .digest('base64url');
+  return `${body}.${sig}`;
+}
+
+function verifyRestoreToken(
+  token: string,
+  expected: { backup_id: string; user_id: string },
+): { ok: true } | { ok: false; reason: string } {
+  if (!token || typeof token !== 'string' || !token.includes('.')) {
+    return { ok: false, reason: 'malformed' };
+  }
+  const [body, sig] = token.split('.');
+  const want = crypto
+    .createHmac('sha256', restoreTokenSecret())
+    .update(body)
+    .digest('base64url');
+  // constant-time compare
+  const a = Buffer.from(sig);
+  const b = Buffer.from(want);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { ok: false, reason: 'signature' };
+  }
+  try {
+    const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (p.backup_id !== expected.backup_id) return { ok: false, reason: 'backup_id' };
+    if (p.user_id !== expected.user_id) return { ok: false, reason: 'user' };
+    if (typeof p.exp !== 'number' || Date.now() > p.exp) return { ok: false, reason: 'expired' };
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'payload' };
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────
 async function ensureDir(p: string) {
@@ -387,6 +435,29 @@ router.get('/download/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ── POST /restore-local/token — issue one-shot signed confirmation token ─
+// Caller must be the same super_admin that will then call /restore-local
+// within RESTORE_TOKEN_TTL_MS. Token is HMAC-bound to (backup_id, user_id).
+const restoreTokenSchema = z.object({
+  backup_id: z.string().uuid(),
+});
+
+router.post('/restore-local/token', async (req: Request, res: Response) => {
+  const parsed = restoreTokenSchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+
+  const userId = (req.user as any)?.userId;
+  if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+  const exp = Date.now() + RESTORE_TOKEN_TTL_MS;
+  const token = signRestoreToken({
+    backup_id: parsed.data.backup_id,
+    user_id: userId,
+    exp,
+  });
+  return res.json({ token, expires_at: new Date(exp).toISOString() });
+});
+
 // ── POST /restore-local — restore from a vps_local / uploaded id ───
 const restoreLocalSchema = z.object({
   backup_id: z.string().uuid(),
@@ -394,17 +465,29 @@ const restoreLocalSchema = z.object({
   type: z.enum(['postgresql', 'mysql', 'mongodb']).optional(),
   confirm: z.string().min(1),
   notes: z.string().optional(),
+  // P0: signed token from /restore-local/token. Required.
+  restore_token: z.string().min(1),
 });
 
 router.post('/restore-local', async (req: Request, res: Response) => {
   const parsed = restoreLocalSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
 
-  const { backup_id, database_name, confirm, notes } = parsed.data;
+  const { backup_id, database_name, confirm, notes, restore_token } = parsed.data;
   let { type } = parsed.data;
 
   if (confirm !== 'RESTORE') {
     return res.status(400).json({ error: 'Type RESTORE to confirm.' });
+  }
+
+  const userId = (req.user as any)?.userId;
+  if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+  const verdict = verifyRestoreToken(restore_token, { backup_id, user_id: userId });
+  if (!verdict.ok) {
+    return res
+      .status(403)
+      .json({ error: `Restore token invalid (${verdict.reason}). Re-confirm to retry.` });
   }
 
   // Look up the backup row
@@ -423,7 +506,6 @@ router.post('/restore-local', async (req: Request, res: Response) => {
 
   type = type || (backup.backup_type as any) || 'postgresql';
 
-  const userId = (req.user as any)?.userId || null;
   const initiator = req.user?.email || 'super_admin';
 
   let restoreId: string;

@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { tenantGuard } from '../middleware/tenant';
+import { requireRole } from '../middleware/roles';
 
 const router = Router();
 
@@ -185,7 +186,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // ── POST /api/customers ────────────────────────────────────────────────────
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
@@ -220,7 +221,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // ── PATCH /api/customers/:id ───────────────────────────────────────────────
-router.patch('/:id', async (req: Request, res: Response) => {
+router.patch('/:id', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
@@ -266,7 +267,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 });
 
 // ── DELETE /api/customers/:id ──────────────────────────────────────────────
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
