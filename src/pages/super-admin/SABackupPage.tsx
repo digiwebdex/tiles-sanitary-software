@@ -886,6 +886,40 @@ rclone ls gdrive:TilesERP-Backups/`}</pre>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Upload Backup Dialog ── */}
+      <Dialog open={uploadDialog} onOpenChange={(o) => !uploading && setUploadDialog(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-primary" /> Upload Backup File
+            </DialogTitle>
+            <DialogDescription>
+              Upload a previously downloaded backup (.sql.gz, .dump, .archive.gz). It will be stored in the project's isolated VPS backup directory.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input type="file" accept=".gz,.dump,.tar,.archive"
+              onChange={(e) => setUploadFile(e.target.files?.[0] || null)} />
+            <Input placeholder="Database name (optional, e.g. tilessaas)"
+              value={uploadDbName} onChange={(e) => setUploadDbName(e.target.value)} />
+            <Input placeholder="Notes (optional)"
+              value={uploadNotes} onChange={(e) => setUploadNotes(e.target.value)} />
+            {uploadFile && (
+              <p className="text-xs text-muted-foreground">
+                {uploadFile.name} — {formatBytes(uploadFile.size)}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUploadDialog(false)} disabled={uploading}>Cancel</Button>
+            <Button onClick={handleUpload} disabled={!uploadFile || uploading}>
+              <Upload className="h-4 w-4 mr-2" />
+              {uploading ? "Uploading…" : "Upload"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
