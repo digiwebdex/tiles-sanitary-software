@@ -337,6 +337,10 @@ export const authService = {
     return jwt.verify(token, env.JWT_SECRET) as JwtPayload;
   },
 
+  async getUserPayload(userId: string): Promise<JwtPayload> {
+    return buildJwtPayload(userId);
+  },
+
   // ── Password reset ──
 
   /**
