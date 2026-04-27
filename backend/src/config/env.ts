@@ -26,6 +26,10 @@ const envSchema = z.object({
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
   GOOGLE_OAUTH_REDIRECT_URI: z.string().optional(),
   APP_PUBLIC_URL: z.string().optional(),
+  // P0: HMAC secret for signing one-shot /restore-local confirmation tokens.
+  // Falls back to JWT_SECRET so existing deployments keep working, but
+  // a dedicated secret is strongly recommended.
+  RESTORE_TOKEN_SECRET: z.string().min(16).optional(),
 });
 
 export const env = envSchema.parse(process.env);
