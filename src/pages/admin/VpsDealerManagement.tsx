@@ -76,6 +76,7 @@ const VpsDealerManagement = () => {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState<{ action: string; dealer: VpsDealer } | null>(null);
+  const [editing, setEditing] = useState<VpsDealer | null>(null);
 
   const openErp = (d: VpsDealer) => {
     saImpersonation.start(d.id, d.name, false);
