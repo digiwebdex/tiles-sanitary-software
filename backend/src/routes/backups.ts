@@ -435,6 +435,29 @@ router.get('/download/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ── POST /restore-local/token — issue one-shot signed confirmation token ─
+// Caller must be the same super_admin that will then call /restore-local
+// within RESTORE_TOKEN_TTL_MS. Token is HMAC-bound to (backup_id, user_id).
+const restoreTokenSchema = z.object({
+  backup_id: z.string().uuid(),
+});
+
+router.post('/restore-local/token', async (req: Request, res: Response) => {
+  const parsed = restoreTokenSchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+
+  const userId = (req.user as any)?.userId;
+  if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+  const exp = Date.now() + RESTORE_TOKEN_TTL_MS;
+  const token = signRestoreToken({
+    backup_id: parsed.data.backup_id,
+    user_id: userId,
+    exp,
+  });
+  return res.json({ token, expires_at: new Date(exp).toISOString() });
+});
+
 // ── POST /restore-local — restore from a vps_local / uploaded id ───
 const restoreLocalSchema = z.object({
   backup_id: z.string().uuid(),
@@ -442,17 +465,29 @@ const restoreLocalSchema = z.object({
   type: z.enum(['postgresql', 'mysql', 'mongodb']).optional(),
   confirm: z.string().min(1),
   notes: z.string().optional(),
+  // P0: signed token from /restore-local/token. Required.
+  restore_token: z.string().min(1),
 });
 
 router.post('/restore-local', async (req: Request, res: Response) => {
   const parsed = restoreLocalSchema.safeParse(req.body || {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
 
-  const { backup_id, database_name, confirm, notes } = parsed.data;
+  const { backup_id, database_name, confirm, notes, restore_token } = parsed.data;
   let { type } = parsed.data;
 
   if (confirm !== 'RESTORE') {
     return res.status(400).json({ error: 'Type RESTORE to confirm.' });
+  }
+
+  const userId = (req.user as any)?.userId;
+  if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+  const verdict = verifyRestoreToken(restore_token, { backup_id, user_id: userId });
+  if (!verdict.ok) {
+    return res
+      .status(403)
+      .json({ error: `Restore token invalid (${verdict.reason}). Re-confirm to retry.` });
   }
 
   // Look up the backup row
