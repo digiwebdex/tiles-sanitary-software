@@ -57,6 +57,12 @@ function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function dateOnly(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
 function parseDuration(dur: string): number {
   const match = dur.match(/^(\d+)([smhd])$/);
   if (!match) return 7 * 24 * 60 * 60 * 1000;
@@ -88,8 +94,8 @@ async function buildJwtPayload(userId: string): Promise<JwtPayload> {
         id: sub.id,
         planId: sub.plan_id,
         status: sub.status,
-        startDate: String(sub.start_date).slice(0, 10),
-        endDate: sub.end_date ? String(sub.end_date).slice(0, 10) : null,
+        startDate: dateOnly(sub.start_date) ?? '',
+        endDate: dateOnly(sub.end_date),
       };
     }
   }
