@@ -234,8 +234,19 @@ const SABackupPage = () => {
       return;
     }
 
-    // VPS path: actually execute restore via backend
     if (isVps) {
+      const src = restoreDialog.source || "auto";
+      // Local file restore (VPS local copy or uploaded)
+      if ((src === "vps_local" || src === "uploaded") && restoreDialog.local_path) {
+        localRestoreMutation.mutate({
+          backup_id: restoreDialog.id,
+          database_name: restoreDialog.database_name || "tilessaas",
+          type: restoreDialog.backup_type,
+          confirm: "RESTORE",
+        });
+        return;
+      }
+      // Otherwise treat as Google Drive remote restore
       const remotePath =
         restoreDialog.remote_path ||
         `${restoreDialog.backup_type}/${restoreDialog.app_name}/${restoreDialog.file_name}`;
@@ -259,7 +270,7 @@ const SABackupPage = () => {
         app_name: restoreDialog.app_name,
         initiated_by_name: "Super Admin (UI)",
         status: "pending",
-        logs: `Restore requested for ${restoreDialog.file_name} at ${new Date().toISOString()}.\n\nTo execute on VPS, run:\n  bash /opt/tileserp-backup/restore.sh ${restoreDialog.backup_type} ${restoreDialog.database_name} ${restoreDialog.backup_type}/${restoreDialog.app_name}/<date>/${restoreDialog.file_name}`,
+        logs: `Restore requested for ${restoreDialog.file_name} at ${new Date().toISOString()}.`,
       });
       if (error) throw error;
 
