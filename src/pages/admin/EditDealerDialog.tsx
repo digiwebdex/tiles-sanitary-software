@@ -4,8 +4,13 @@
  * Loads from the in-list dealer object so it opens instantly, then PATCHes
  * to /api/dealers/:id on save. Empty strings clear a field. Validation is
  * intentionally light here — the backend Zod schema is the source of truth.
+ *
+ * Includes a "Set New Password" section with a strong-password generator,
+ * a strength meter, show/hide toggle, copy-to-clipboard, and an option to
+ * notify the dealer via Email + SMS. Leaving the password field empty
+ * keeps the existing password unchanged.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -14,8 +19,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Wand2, Eye, EyeOff, Copy, Check } from "lucide-react";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export interface EditableDealer {
@@ -46,6 +52,61 @@ interface Props {
 
 const blank = (v: string | null | undefined) => (v ?? "");
 
+/** Cryptographically-strong password generator (default 14 chars, mixed classes). */
+function generateStrongPassword(length = 14): string {
+  // Avoid visually ambiguous chars (O/0, l/1/I) so the password is easy to read aloud.
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghijkmnpqrstuvwxyz";
+  const digit = "23456789";
+  const sym = "!@#$%&*?-_";
+  const all = upper + lower + digit + sym;
+
+  const rand = (n: number) => {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] % n;
+  };
+  const pick = (s: string) => s[rand(s.length)];
+
+  // Guarantee at least one of each class.
+  const out = [pick(upper), pick(lower), pick(digit), pick(sym)];
+  for (let i = out.length; i < length; i++) out.push(pick(all));
+
+  // Fisher-Yates shuffle so guaranteed chars aren't always at the front.
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = rand(i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out.join("");
+}
+
+interface Strength {
+  score: 0 | 1 | 2 | 3 | 4;
+  label: string;
+  color: string;
+}
+
+function scorePassword(pwd: string): Strength {
+  if (!pwd) return { score: 0, label: "—", color: "bg-muted" };
+  let score = 0;
+  if (pwd.length >= 8) score++;
+  if (pwd.length >= 12) score++;
+  if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++;
+  if (/\d/.test(pwd) && /[^A-Za-z0-9]/.test(pwd)) score++;
+  // Penalise obvious patterns.
+  if (/(.)\1{2,}/.test(pwd) || /(0123|1234|abcd|qwer|password)/i.test(pwd)) {
+    score = Math.max(0, score - 1);
+  }
+  const map: Record<number, Strength> = {
+    0: { score: 0, label: "Very weak", color: "bg-destructive" },
+    1: { score: 1, label: "Weak", color: "bg-destructive" },
+    2: { score: 2, label: "Fair", color: "bg-amber-500" },
+    3: { score: 3, label: "Strong", color: "bg-emerald-500" },
+    4: { score: 4, label: "Very strong", color: "bg-emerald-600" },
+  };
+  return map[score as 0 | 1 | 2 | 3 | 4];
+}
+
 export default function EditDealerDialog({ dealer, onClose }: Props) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -56,6 +117,13 @@ export default function EditDealerDialog({ dealer, onClose }: Props) {
     tax_id: "", trade_license_no: "", website: "", logo_url: "", notes: "",
     admin_name: "", admin_email: "",
   });
+
+  // Password section state — kept separate so we only PATCH it when the user
+  // actually intends to change the password.
+  const [newPassword, setNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [notifyPassword, setNotifyPassword] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!dealer) return;
@@ -78,24 +146,64 @@ export default function EditDealerDialog({ dealer, onClose }: Props) {
       admin_name: blank(dealer.admin_name),
       admin_email: blank(dealer.admin_email),
     });
+    setNewPassword("");
+    setShowPassword(false);
+    setNotifyPassword(true);
+    setCopied(false);
   }, [dealer]);
 
   const setField = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const strength = useMemo(() => scorePassword(newPassword), [newPassword]);
+  const passwordTooShort = !!newPassword && newPassword.length < 8;
+
+  const handleGenerate = () => {
+    const pwd = generateStrongPassword(14);
+    setNewPassword(pwd);
+    setShowPassword(true);
+    setCopied(false);
+  };
+
+  const handleCopy = async () => {
+    if (!newPassword) return;
+    try {
+      await navigator.clipboard.writeText(newPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast({ variant: "destructive", title: "Copy failed", description: "Clipboard not available." });
+    }
+  };
+
   const save = useMutation({
     mutationFn: async () => {
       if (!dealer) throw new Error("No dealer");
+      if (newPassword && newPassword.length < 8) {
+        throw new Error("Password must be at least 8 characters.");
+      }
+      const payload: Record<string, unknown> = { ...form };
+      if (newPassword) {
+        payload.new_password = newPassword;
+        payload.notify_password = notifyPassword;
+      }
       const res = await vpsAuthedFetch(`/api/dealers/${dealer.id}`, {
         method: "PATCH",
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || `Update failed (${res.status})`);
-      return body;
+      return body as { password_updated?: boolean };
     },
-    onSuccess: () => {
-      toast({ title: "Dealer updated" });
+    onSuccess: (body) => {
+      toast({
+        title: "Dealer updated",
+        description: body?.password_updated
+          ? notifyPassword
+            ? "Password set and sent to the dealer."
+            : "Password set. Share it with the dealer manually."
+          : undefined,
+      });
       qc.invalidateQueries({ queryKey: ["vps-dealers"] });
       onClose();
     },
@@ -190,8 +298,99 @@ export default function EditDealerDialog({ dealer, onClose }: Props) {
               </Field>
             </div>
             <p className="text-xs text-muted-foreground">
-              Changing the admin email also changes the dealer's login email. Use Reset Password if they need new credentials.
+              Changing the admin email also changes the dealer's login email.
             </p>
+          </section>
+
+          {/* Set new password */}
+          <section className="space-y-3 rounded-md border border-border/60 p-4 bg-muted/30">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Set New Password
+              </h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleGenerate}
+                className="gap-1.5"
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                Suggest strong
+              </Button>
+            </div>
+
+            <Field label="New password (leave blank to keep unchanged)">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => { setNewPassword(e.target.value); setCopied(false); }}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    className="pr-9 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopy}
+                  disabled={!newPassword}
+                  aria-label="Copy password"
+                  title="Copy password"
+                >
+                  {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </Field>
+
+            {/* Strength meter */}
+            {newPassword && (
+              <div className="space-y-1.5">
+                <div className="flex h-1.5 gap-1 overflow-hidden rounded-full bg-muted">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className={`flex-1 transition-colors ${i <= strength.score ? strength.color : "bg-muted"}`}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    Strength: <span className="font-medium text-foreground">{strength.label}</span>
+                  </span>
+                  {passwordTooShort && (
+                    <span className="text-destructive">Min 8 characters</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              Tip: use 12+ characters mixing upper/lower case, digits and symbols.
+              Setting a new password will sign the dealer out of all active sessions.
+            </p>
+
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={notifyPassword}
+                onCheckedChange={(v) => setNotifyPassword(v === true)}
+                disabled={!newPassword}
+              />
+              <span className={!newPassword ? "text-muted-foreground" : ""}>
+                Send the new password to the dealer via Email + SMS
+              </span>
+            </label>
           </section>
 
           {/* Notes */}
@@ -208,7 +407,10 @@ export default function EditDealerDialog({ dealer, onClose }: Props) {
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={save.isPending}>Cancel</Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending || !form.name.trim()}>
+          <Button
+            onClick={() => save.mutate()}
+            disabled={save.isPending || !form.name.trim() || passwordTooShort}
+          >
             {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Save changes
           </Button>
