@@ -16,6 +16,15 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Mail, MessageSquare, Clock, Users, Check, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as any)?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 interface PlanForm {
   name: string;
@@ -47,8 +56,12 @@ const PlanManagement = () => {
   const [form, setForm] = useState<PlanForm>(emptyForm);
 
   const { data: plans = [], isLoading } = useQuery({
-    queryKey: ["admin-subscription-plans"],
+    queryKey: ["admin-subscription-plans", env.AUTH_BACKEND],
     queryFn: async () => {
+      if (env.AUTH_BACKEND === "vps") {
+        const body = await vpsJson<{ plans: any[] }>("/api/plans");
+        return body.plans ?? [];
+      }
       const { data, error } = await supabase
         .from("subscription_plans")
         .select("*")
@@ -71,6 +84,14 @@ const PlanManagement = () => {
         daily_summary_enabled: form.daily_summary_enabled,
         is_active: form.is_active,
       };
+      if (env.AUTH_BACKEND === "vps") {
+        if (editId) {
+          await vpsJson(`/api/plans/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
+        } else {
+          await vpsJson(`/api/plans`, { method: "POST", body: JSON.stringify(payload) });
+        }
+        return;
+      }
       if (editId) {
         const { error } = await supabase.from("subscription_plans").update(payload).eq("id", editId);
         if (error) throw new Error(error.message);

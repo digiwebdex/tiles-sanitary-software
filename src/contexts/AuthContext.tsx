@@ -403,14 +403,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       };
 
+      // Re-fetch /me when the tab regains focus so subscription/role
+      // changes from Super Admin propagate without forcing a re-login.
+      const onFocus = async () => {
+        if (!vpsTokenStore.access) return;
+        try {
+          const me = await vpsAuthApi.me();
+          if (me) {
+            vpsTokenStore.set({
+              accessToken: vpsTokenStore.access!,
+              refreshToken: vpsTokenStore.refresh ?? "",
+              user: me,
+            });
+            applyVpsUser(me);
+          }
+        } catch (err) {
+          subLog.warn("VPS me() refresh on focus failed:", err);
+        }
+      };
+
       initializeVps();
       window.addEventListener("vps-auth-change", onAuthChange);
       window.addEventListener("storage", onStorage);
+      window.addEventListener("focus", onFocus);
+
+      // Periodic refresh every 60s (in case tab stays focused but sub changes)
+      const intervalId = window.setInterval(onFocus, 60_000);
 
       return () => {
         isMounted = false;
         window.removeEventListener("vps-auth-change", onAuthChange);
         window.removeEventListener("storage", onStorage);
+        window.removeEventListener("focus", onFocus);
+        window.clearInterval(intervalId);
       };
     }
 
