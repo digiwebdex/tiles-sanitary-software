@@ -1,0 +1,247 @@
+/**
+ * Super Admin → Dealers (VPS-backed).
+ *
+ * Lists every dealer from the self-hosted backend with their primary admin
+ * user, plan, and subscription expiry. Pending sign-ups float to the top
+ * with Approve / Reject actions; active dealers can be Suspended/Reactivated.
+ *
+ * All requests go through vpsAuthedFetch so the super_admin JWT travels
+ * automatically and gets re-issued on 401 (the same single-flight refresh
+ * used by the rest of the VPS data layer).
+ */
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2 } from "lucide-react";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+import { env } from "@/lib/env";
+
+interface VpsDealer {
+  id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  status: string;
+  created_at: string;
+  admin_email: string | null;
+  admin_name: string | null;
+  admin_user_id: string | null;
+  admin_status: string | null;
+  subscription_status: string | null;
+  subscription_end: string | null;
+  plan_name: string | null;
+}
+
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+  return body as T;
+}
+
+const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  pending: "secondary",
+  active: "default",
+  suspended: "destructive",
+  rejected: "outline",
+};
+
+const VpsDealerManagement = () => {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [confirm, setConfirm] = useState<{ action: string; dealer: VpsDealer } | null>(null);
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["vps-dealers"],
+    queryFn: () => vpsJson<{ dealers: VpsDealer[] }>("/api/dealers"),
+  });
+
+  const dealers = (data?.dealers ?? []).slice().sort((a, b) => {
+    // Pending first, then by created_at desc
+    if (a.status === "pending" && b.status !== "pending") return -1;
+    if (a.status !== "pending" && b.status === "pending") return 1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  const decisionMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: string }) => {
+      return vpsJson(`/api/dealers/${id}/${action}`, { method: "POST", body: JSON.stringify({}) });
+    },
+    onSuccess: (_res, vars) => {
+      const verb = {
+        approve: "approved", reject: "rejected",
+        suspend: "suspended", reactivate: "reactivated",
+      }[vars.action] || vars.action;
+      toast({ title: `Dealer ${verb}` });
+      qc.invalidateQueries({ queryKey: ["vps-dealers"] });
+      setConfirm(null);
+    },
+    onError: (e: Error) => {
+      toast({ variant: "destructive", title: "Action failed", description: e.message });
+    },
+  });
+
+  if (env.AUTH_BACKEND !== "vps") {
+    return (
+      <Card>
+        <CardContent className="p-6 text-sm text-muted-foreground">
+          This page is connected to the self-hosted backend. Auth backend is currently
+          set to <code>{env.AUTH_BACKEND}</code> — switch to <code>vps</code> to use it.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>All Dealers</CardTitle>
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {error && (
+          <div className="mb-4 rounded border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {(error as Error).message}
+          </div>
+        )}
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Business</TableHead>
+              <TableHead>Owner / Email</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Plan</TableHead>
+              <TableHead>Expiry</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={7} className="text-center py-6"><Loader2 className="h-4 w-4 animate-spin inline" /></TableCell></TableRow>
+            ) : dealers.length === 0 ? (
+              <TableRow><TableCell colSpan={7} className="text-center py-6 text-muted-foreground">No dealers</TableCell></TableRow>
+            ) : (
+              dealers.map((d) => (
+                <TableRow key={d.id} className={d.status === "pending" ? "bg-amber-500/5" : ""}>
+                  <TableCell className="font-medium">{d.name}</TableCell>
+                  <TableCell>
+                    <div className="text-sm">{d.admin_name || "—"}</div>
+                    <div className="text-xs text-muted-foreground">{d.admin_email || "—"}</div>
+                  </TableCell>
+                  <TableCell className="text-sm">{d.phone || "—"}</TableCell>
+                  <TableCell className="text-sm">{d.plan_name || "—"}</TableCell>
+                  <TableCell className="text-sm">{d.subscription_end || "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant[d.status] || "outline"}>{d.status}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    {d.status === "pending" && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => setConfirm({ action: "approve", dealer: d })}
+                          disabled={decisionMutation.isPending}
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setConfirm({ action: "reject", dealer: d })}
+                          disabled={decisionMutation.isPending}
+                        >
+                          <XCircle className="h-4 w-4 mr-1" /> Reject
+                        </Button>
+                      </>
+                    )}
+                    {d.status === "active" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setConfirm({ action: "suspend", dealer: d })}
+                        disabled={decisionMutation.isPending}
+                      >
+                        <Ban className="h-4 w-4 mr-1" /> Suspend
+                      </Button>
+                    )}
+                    {d.status === "suspended" && (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => setConfirm({ action: "reactivate", dealer: d })}
+                        disabled={decisionMutation.isPending}
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-1" /> Reactivate
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+
+      <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirm?.action === "approve" && "Approve dealer?"}
+              {confirm?.action === "reject" && "Reject dealer?"}
+              {confirm?.action === "suspend" && "Suspend dealer?"}
+              {confirm?.action === "reactivate" && "Reactivate dealer?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm && (
+                <>
+                  Business: <b>{confirm.dealer.name}</b>
+                  <br />Owner: {confirm.dealer.admin_name || "—"} ({confirm.dealer.admin_email || "—"})
+                  <br />Phone: {confirm.dealer.phone || "—"}
+                  <br /><br />
+                  {confirm.action === "approve" &&
+                    "The dealer will be notified by SMS and email and will be able to log in immediately."}
+                  {confirm.action === "reject" &&
+                    "The dealer will receive a notification that their registration was not approved. They will not be able to log in."}
+                  {confirm.action === "suspend" &&
+                    "All active sessions will be revoked. The dealer cannot log in until reactivated."}
+                  {confirm.action === "reactivate" &&
+                    "The dealer will be able to log in again."}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={decisionMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                confirm && decisionMutation.mutate({ id: confirm.dealer.id, action: confirm.action })
+              }
+              disabled={decisionMutation.isPending}
+            >
+              {decisionMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+};
+
+export default VpsDealerManagement;
