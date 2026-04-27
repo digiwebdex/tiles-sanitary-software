@@ -471,6 +471,88 @@ const SABackupPage = () => {
         </TabsContent>
 
         {/* ── Setup Guide ── */}
+        {/* ── Google Drive Restore ── */}
+        {isVps && (
+          <TabsContent value="drive" className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Cloud className="h-5 w-5 text-primary" /> Google Drive Backups
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Browse backup files stored on Google Drive (via rclone) and restore directly.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={driveType} onValueChange={setDriveType}>
+                    <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                      <SelectItem value="mysql">MySQL</SelectItem>
+                      <SelectItem value="mongodb">MongoDB</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={() => refetchDrive()}>
+                    <RefreshCw className="h-4 w-4 mr-2" /> Reload
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {driveLoading ? (
+                  <div className="p-8 text-center text-muted-foreground">Loading Google Drive…</div>
+                ) : (driveFiles || []).length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Cloud className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">No backup files found on Google Drive</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ensure rclone is configured (remote: gdrive:tileserp-backups)
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="text-left p-3 font-medium">Modified</th>
+                          <th className="text-left p-3 font-medium">Path</th>
+                          <th className="text-left p-3 font-medium">Size</th>
+                          <th className="text-left p-3 font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(driveFiles || []).map((f: any) => (
+                          <tr key={f.path} className="border-b hover:bg-muted/30">
+                            <td className="p-3 text-xs whitespace-nowrap">
+                              {f.modified_at ? format(new Date(f.modified_at), "MMM dd, yyyy HH:mm") : "-"}
+                            </td>
+                            <td className="p-3 text-xs font-mono max-w-[420px] truncate" title={f.path}>{f.path}</td>
+                            <td className="p-3 text-xs">{formatBytes(f.size || 0)}</td>
+                            <td className="p-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1 text-xs"
+                                onClick={() => {
+                                  setDriveRestoreDialog({ ...f, type: driveType });
+                                  setDriveDbName("");
+                                  setDriveConfirmText("");
+                                }}
+                              >
+                                <RotateCcw className="h-3 w-3" /> Restore
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
         <TabsContent value="guide" className="space-y-4">
           <Card>
             <CardHeader>
