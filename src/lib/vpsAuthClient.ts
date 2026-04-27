@@ -179,9 +179,10 @@ export const vpsAuthApi = {
   },
 
   /**
-   * Self-signup. On success the new tokens are stored just like login,
-   * so the caller can immediately navigate into the authed app without
-   * a follow-up sign-in round-trip.
+   * Self-signup. Returns the new dealer/user IDs but does NOT store any
+   * tokens — the backend creates the account in 'pending' state and the
+   * user must wait for Super Admin approval before they can log in.
+   * The success screen surfaces the awaiting-approval message.
    */
   async register(input: {
     name: string;
@@ -189,7 +190,7 @@ export const vpsAuthApi = {
     phone: string;
     email: string;
     password: string;
-  }): Promise<VpsUser> {
+  }): Promise<{ pending: true; userId: string; dealerId: string; message?: string }> {
     const res = await fetch(`${env.VPS_API_BASE}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -198,12 +199,12 @@ export const vpsAuthApi = {
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw makeError(body.error || "Signup failed", res.status, body);
 
-    vpsTokenStore.set({
-      accessToken: body.accessToken,
-      refreshToken: body.refreshToken,
-      user: body.user,
-    });
-    return body.user as VpsUser;
+    return {
+      pending: true,
+      userId: body.user_id,
+      dealerId: body.dealer_id,
+      message: body.message,
+    };
   },
 
   async logout(): Promise<void> {
