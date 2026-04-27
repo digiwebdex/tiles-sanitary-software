@@ -51,7 +51,11 @@ export function formatAmount(amount: number | string | null | undefined): string
  */
 export function parseLocalDate(dateStr: string | null | undefined): Date | null {
   if (!dateStr) return null;
-  const parts = dateStr.split("-").map(Number);
+  // PostgreSQL date fields from the VPS backend may arrive as full ISO strings
+  // (e.g. "2026-04-30T00:00:00.000Z"). Keep only the calendar date so
+  // subscription checks stay timezone-safe and don't fail parsing.
+  const dateOnly = dateStr.slice(0, 10);
+  const parts = dateOnly.split("-").map(Number);
   if (parts.length !== 3 || parts.some(isNaN)) return null;
   const [year, month, day] = parts;
   return new Date(year, month - 1, day); // local midnight — no UTC offset
