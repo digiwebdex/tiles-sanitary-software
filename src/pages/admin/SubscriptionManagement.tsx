@@ -442,9 +442,9 @@ const SubscriptionManagement = () => {
                 </Button>
               </div>
               {editForm.duration_type === "custom" && (
-                <div className="flex gap-2 items-end mt-2">
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs">Months</Label>
+                <div className="grid grid-cols-2 gap-2 items-end mt-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Months from now</Label>
                     <Input
                       type="number"
                       min="1"
@@ -457,6 +457,14 @@ const SubscriptionManagement = () => {
                         const newEnd = addMonths(startBase, months);
                         setEditForm({ ...editForm, custom_months: e.target.value, end_date: format(newEnd, "yyyy-MM-dd") });
                       }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Or pick End Date</Label>
+                    <Input
+                      type="date"
+                      value={editForm.end_date}
+                      onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
                     />
                   </div>
                 </div>
