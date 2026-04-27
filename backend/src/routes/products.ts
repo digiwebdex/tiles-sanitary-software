@@ -299,7 +299,7 @@ router.patch('/:id', requireRole('dealer_admin'), async (req: Request, res: Resp
 // ── DELETE /api/products/:id ───────────────────────────────────────────────
 // Frontend never deletes products in practice (uses toggleActive).
 // Implemented for completeness; not used by UI in Phase 3D.
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireRole('dealer_admin'), async (req: Request, res: Response) => {
   try {
     const dealerId = resolveDealerScope(req, res);
     if (!dealerId) return;
