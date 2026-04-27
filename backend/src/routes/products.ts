@@ -178,7 +178,8 @@ router.get('/', async (req: Request, res: Response) => {
       .limit(pageSize);
 
     const [countRow] = await countQ;
-    const rows = await rowsQ;
+    const rawRows = await rowsQ;
+    const rows = rawRows.map((r: any) => stripCostForSalesman(req, r));
 
     res.json({
       rows,
