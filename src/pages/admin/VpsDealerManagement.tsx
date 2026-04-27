@@ -179,6 +179,16 @@ const VpsDealerManagement = () => {
                         </Button>
                       </>
                     )}
+                    {(d.status === "active" || d.status === "suspended") && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => openErp(d)}
+                        title="Open this dealer's ERP as Super Admin"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-1" /> Open ERP
+                      </Button>
+                    )}
                     {d.status === "active" && (
                       <Button
                         size="sm"
