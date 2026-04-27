@@ -23,10 +23,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink, KeyRound } from "lucide-react";
+import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink, KeyRound, Pencil } from "lucide-react";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { env } from "@/lib/env";
 import { saImpersonation } from "@/lib/saImpersonation";
+import EditDealerDialog from "./EditDealerDialog";
 
 interface VpsDealer {
   id: string;
