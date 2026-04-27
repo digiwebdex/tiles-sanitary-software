@@ -60,6 +60,20 @@ vi.mock("@/services/stockService", () => ({
   },
 }));
 
+// Mock batchService — new code path for stock deduction
+const mockBatchDeductUnbatched = vi.fn().mockResolvedValue(undefined);
+const mockBatchPlanFIFO = vi.fn().mockResolvedValue({ allocations: [] });
+const mockBatchExecuteAlloc = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("@/services/batchService", () => ({
+  batchService: {
+    deductStockUnbatched: (...args: any[]) => mockBatchDeductUnbatched(...args),
+    planFIFOAllocation: (...args: any[]) => mockBatchPlanFIFO(...args),
+    executeSaleAllocation: (...args: any[]) => mockBatchExecuteAlloc(...args),
+    restoreSaleBatches: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 const mockCustomerLedgerAdd = vi.fn().mockResolvedValue(undefined);
 const mockCashLedgerAdd = vi.fn().mockResolvedValue(undefined);
 
