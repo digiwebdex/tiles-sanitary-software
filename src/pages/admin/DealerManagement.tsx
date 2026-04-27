@@ -21,8 +21,11 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Ban, CheckCircle, UserPlus, Eye, Trash2 } from "lucide-react";
+import { Plus, Pencil, Ban, CheckCircle, UserPlus, Eye, Trash2, ExternalLink, KeyRound } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
+import { saImpersonation } from "@/lib/saImpersonation";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 interface DealerForm {
   name: string;
@@ -50,6 +53,34 @@ const emptySubForm: SubscriptionForm = { plan_id: "", start_date: todayStr, end_
 const DealerManagement = () => {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+
+  const openErp = (d: any) => {
+    saImpersonation.start(d.id, d.name, false);
+    toast({ title: `Opening ERP as ${d.name}`, description: "Read-only by default. Toggle Edit mode in the banner to make changes." });
+    navigate("/dashboard");
+  };
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (dealer: any) => {
+      const res = await vpsAuthedFetch(`/api/dealers/${dealer.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ mode: "temp" }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Reset failed (${res.status})`);
+      return dealer;
+    },
+    onSuccess: (dealer: any) => {
+      toast({
+        title: "Password reset sent",
+        description: `New temporary password emailed and SMS-sent to ${dealer.name}'s admin. Old sessions revoked.`,
+      });
+    },
+    onError: (e: Error) => {
+      toast({ variant: "destructive", title: "Reset failed", description: e.message });
+    },
+  });
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
