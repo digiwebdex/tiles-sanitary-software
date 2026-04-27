@@ -25,6 +25,13 @@ export interface JwtPayload {
   email: string;
   dealerId: string | null;
   roles: string[];
+  subscription?: {
+    id: string;
+    planId: string;
+    status: 'active' | 'expired' | 'suspended';
+    startDate: string;
+    endDate: string | null;
+  } | null;
 }
 
 export interface LockStatus {
@@ -66,11 +73,33 @@ function parseDuration(dur: string): number {
 async function buildJwtPayload(userId: string): Promise<JwtPayload> {
   const profile = await db('profiles').where({ id: userId }).first();
   const roles = await db('user_roles').where({ user_id: userId }).select('role');
+  const roleNames = roles.map((r: any) => r.role);
+  let subscription: JwtPayload['subscription'] = null;
+
+  if (profile?.dealer_id && roleNames.some((r: string) => r === 'dealer_admin' || r === 'salesman')) {
+    const sub = await db('subscriptions')
+      .where({ dealer_id: profile.dealer_id })
+      .orderBy('start_date', 'desc')
+      .orderBy('created_at', 'desc')
+      .first();
+
+    if (sub) {
+      subscription = {
+        id: sub.id,
+        planId: sub.plan_id,
+        status: sub.status,
+        startDate: String(sub.start_date).slice(0, 10),
+        endDate: sub.end_date ? String(sub.end_date).slice(0, 10) : null,
+      };
+    }
+  }
+
   return {
     userId,
     email: profile?.email ?? '',
     dealerId: profile?.dealer_id ?? null,
-    roles: roles.map((r: any) => r.role),
+    roles: roleNames,
+    subscription,
   };
 }
 
