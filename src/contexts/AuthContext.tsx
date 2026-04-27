@@ -5,6 +5,7 @@ import { parseLocalDate } from "@/lib/utils";
 import { subLog } from "@/lib/logger";
 import { env } from "@/lib/env";
 import { vpsAuthApi, vpsTokenStore, type VpsUser } from "@/lib/vpsAuthClient";
+import { saImpersonation } from "@/lib/saImpersonation";
 
 interface Profile {
   id: string;
