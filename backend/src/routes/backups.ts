@@ -506,7 +506,6 @@ router.post('/restore-local', async (req: Request, res: Response) => {
 
   type = type || (backup.backup_type as any) || 'postgresql';
 
-  const userId = (req.user as any)?.userId || null;
   const initiator = req.user?.email || 'super_admin';
 
   let restoreId: string;
