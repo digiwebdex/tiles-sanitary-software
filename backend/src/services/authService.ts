@@ -410,12 +410,14 @@ export const authService = {
   },
 
   /**
-   * Self-signup: provision a brand-new dealer + admin user + 3-day trial.
+   * Self-signup: provision a brand-new dealer + admin user + 3-day trial,
+   * but leave both the dealer and the admin user in 'pending' state until
+   * a Super Admin approves them. We DO NOT issue tokens here — login is
+   * blocked until approval. The login route translates the 'pending'
+   * status into a friendly 'awaiting approval' error.
    *
    * All inserts run in a single transaction so a partial failure leaves
-   * no orphaned dealers, profiles, or roles. On success, issues an access
-   * + refresh token pair so the client can auto-login without a second
-   * round-trip.
+   * no orphaned dealers, profiles, or roles.
    */
   async register(input: {
     name: string;
@@ -424,7 +426,7 @@ export const authService = {
     email: string;
     password: string;
     ip?: string;
-  }): Promise<TokenPair & { user: JwtPayload; dealerId: string }> {
+  }): Promise<{ dealerId: string; userId: string; pending: true }> {
     const name = input.name.trim();
     const businessName = input.business_name.trim();
     const phone = input.phone.trim();
@@ -441,16 +443,16 @@ export const authService = {
 
     const passwordHash = await this.hashPassword(password);
 
-    const dealerId: string = await db.transaction(async (trx) => {
-      // 1. Dealer
+    const { dealerId, userId } = await db.transaction(async (trx) => {
+      // 1. Dealer in PENDING state — invisible to login flows until approved.
       const [dealer] = await trx('dealers')
-        .insert({ name: businessName, phone, status: 'active' })
+        .insert({ name: businessName, phone, status: 'pending' })
         .returning('id');
       const dId: string = dealer.id ?? dealer;
 
-      // 2. User (replaces auth.users)
+      // 2. User in PENDING state — login throws PENDING_APPROVAL until SA approves.
       const [user] = await trx('users')
-        .insert({ email, password_hash: passwordHash, name })
+        .insert({ email, password_hash: passwordHash, name, status: 'pending' })
         .returning('*');
 
       // 3. Profile (linked to dealer)
@@ -510,22 +512,24 @@ export const authService = {
         console.warn('[register] notification_settings insert skipped:', (e as Error).message);
       }
 
-      return dId;
+      return { dealerId: dId, userId: user.id };
     });
 
-    // Re-fetch the new user to issue tokens (cleaner than threading rows
-    // out of the transaction callback).
-    const newUser = await db('users').where({ email }).first();
-    const payload = await buildJwtPayload(newUser.id);
-    const accessToken = signAccessToken(payload);
-    const { token: refreshToken, hash, expiresAt } = generateRefreshToken();
-
-    await db('refresh_tokens').insert({
-      user_id: newUser.id,
-      token_hash: hash,
-      expires_at: expiresAt,
+    // ── Fire-and-forget signup notifications (SMS + email to dealer & admin) ──
+    // Never blocks the response — the user gets their "pending approval" screen
+    // immediately and the dispatcher logs failures.
+    dispatchSignupNotifications({
+      dealerName: name,
+      businessName,
+      dealerPhone: phone,
+      dealerEmail: email,
+      adminPhone: env.ADMIN_PHONE,
+      adminEmail: env.ADMIN_EMAIL,
+    }).catch((err) => {
+      console.error('[register] signup notification dispatch failed:', err);
     });
 
-    return { accessToken, refreshToken, user: payload, dealerId };
+    return { dealerId, userId, pending: true };
   },
 };
+
