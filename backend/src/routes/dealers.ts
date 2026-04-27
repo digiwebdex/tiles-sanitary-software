@@ -514,15 +514,20 @@ router.patch('/:id', async (req: Request, res: Response) => {
     }
 
     let adminUpdated = false;
-    if (body.admin_name || body.admin_email) {
-      const admin = await db('profiles as p')
+    let passwordUpdated = false;
+    const wantsAdminChange = !!(body.admin_name || body.admin_email || body.new_password);
+
+    let adminRow: { id: string; email: string | null; name: string | null } | null = null;
+    if (wantsAdminChange) {
+      adminRow = await db('profiles as p')
+        .leftJoin('users as u', 'u.id', 'p.id')
         .leftJoin('user_roles as ur', 'ur.user_id', 'p.id')
         .where('p.dealer_id', dealerId)
         .where('ur.role', 'dealer_admin')
-        .select('p.id')
+        .select('p.id', 'u.email', 'u.name')
         .first();
 
-      if (!admin?.id) {
+      if (!adminRow?.id) {
         res.status(400).json({ error: 'No dealer_admin user found for this dealer' });
         return;
       }
@@ -531,14 +536,22 @@ router.patch('/:id', async (req: Request, res: Response) => {
         const lower = body.admin_email.toLowerCase().trim();
         const clash = await db('users')
           .whereRaw('LOWER(email) = ?', [lower])
-          .whereNot({ id: admin.id })
+          .whereNot({ id: adminRow.id })
           .first();
         if (clash) {
           res.status(409).json({ error: 'That email is already used by another user' });
           return;
         }
       }
+    }
 
+    let newPasswordHash: string | null = null;
+    if (body.new_password && adminRow) {
+      const { authService } = await import('../services/authService');
+      newPasswordHash = await authService.hashPassword(body.new_password);
+    }
+
+    if (wantsAdminChange && adminRow) {
       await db.transaction(async (trx) => {
         if (Object.keys(dealerUpdate).length > 0) {
           await trx('dealers').where({ id: dealerId }).update(dealerUpdate);
@@ -553,12 +566,63 @@ router.patch('/:id', async (req: Request, res: Response) => {
           userPatch.email = body.admin_email.toLowerCase().trim();
           profilePatch.email = body.admin_email.toLowerCase().trim();
         }
-        await trx('users').where({ id: admin.id }).update(userPatch);
+        if (newPasswordHash) {
+          userPatch.password_hash = newPasswordHash;
+          // Revoke active sessions and clear lockouts so the new password is effective immediately.
+          await trx('refresh_tokens')
+            .where({ user_id: adminRow!.id })
+            .whereNull('revoked_at')
+            .update({ revoked_at: new Date() });
+          const oldEmail = (adminRow!.email || '').toLowerCase().trim();
+          if (oldEmail) {
+            await trx('login_attempts').where({ email: oldEmail }).del();
+          }
+          if (body.admin_email) {
+            await trx('login_attempts').where({ email: body.admin_email.toLowerCase().trim() }).del();
+          }
+          passwordUpdated = true;
+        }
+        await trx('users').where({ id: adminRow!.id }).update(userPatch);
         if (Object.keys(profilePatch).length > 0) {
-          await trx('profiles').where({ id: admin.id }).update(profilePatch);
+          await trx('profiles').where({ id: adminRow!.id }).update(profilePatch);
         }
       });
       adminUpdated = true;
+
+      // Optional: notify the dealer of the new password.
+      if (passwordUpdated && body.notify_password && body.new_password) {
+        const targetEmail = body.admin_email
+          ? body.admin_email.toLowerCase().trim()
+          : adminRow.email;
+        const appBase =
+          process.env.APP_BASE_URL ||
+          process.env.PORTAL_BASE_URL ||
+          'https://app.sanitileserp.com';
+        if (targetEmail) {
+          sendEmail({
+            to: targetEmail,
+            subject: 'Tiles & Sanitary ERP — Your password has been updated',
+            text:
+              `Dear ${body.admin_name || adminRow.name || 'User'},\n\n` +
+              `Your password was set by the system administrator.\n\n` +
+              `Email: ${targetEmail}\n` +
+              `New password: ${body.new_password}\n\n` +
+              `Please sign in at ${appBase}/login and change it from Settings.\n\n` +
+              `If you did not expect this, contact support at +880 1674 533303.\n\n` +
+              `— Tiles & Sanitary ERP`,
+          }).catch(() => {});
+        }
+        if (dealer.phone) {
+          sendSms({
+            to: dealer.phone,
+            message:
+              `আপনার পাসওয়ার্ড আপডেট হয়েছে।\n` +
+              `Email: ${targetEmail || ''}\n` +
+              `New password: ${body.new_password}\n` +
+              `লগইন: ${appBase}/login`,
+          }).catch(() => {});
+        }
+      }
     } else if (Object.keys(dealerUpdate).length > 0) {
       await db('dealers').where({ id: dealerId }).update(dealerUpdate);
     }
@@ -569,7 +633,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
     }
 
     const updated = await db('dealers').where({ id: dealerId }).first();
-    res.json({ success: true, dealer: updated });
+    res.json({ success: true, dealer: updated, password_updated: passwordUpdated });
   } catch (err: any) {
     if (err?.issues) {
       res.status(400).json({ error: err.issues[0]?.message || 'Invalid input' });
