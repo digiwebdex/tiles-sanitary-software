@@ -50,6 +50,7 @@ const SABackupPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [restoreDialog, setRestoreDialog] = useState<any>(null);
   const [confirmText, setConfirmText] = useState("");
   const [restoreLogsDialog, setRestoreLogsDialog] = useState<any>(null);
@@ -58,6 +59,11 @@ const SABackupPage = () => {
   const [driveDbName, setDriveDbName] = useState("");
   const [driveConfirmText, setDriveConfirmText] = useState("");
   const [manualType, setManualType] = useState<string>("all");
+  const [uploadDialog, setUploadDialog] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadDbName, setUploadDbName] = useState("");
+  const [uploadNotes, setUploadNotes] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const { data: backups, isLoading: backupsLoading, refetch: refetchBackups } = useQuery({
     queryKey: ["sa-backups"],
