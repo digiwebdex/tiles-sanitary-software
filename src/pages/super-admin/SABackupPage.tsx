@@ -461,6 +461,7 @@ const SABackupPage = () => {
                     <thead>
                       <tr className="border-b bg-muted/50">
                         <th className="text-left p-3 font-medium">Date</th>
+                        <th className="text-left p-3 font-medium">Source</th>
                         <th className="text-left p-3 font-medium">Type</th>
                         <th className="text-left p-3 font-medium">App</th>
                         <th className="text-left p-3 font-medium">Database</th>
@@ -476,14 +477,26 @@ const SABackupPage = () => {
                           <td className="p-3 text-xs whitespace-nowrap">
                             {b.created_at ? format(new Date(b.created_at), "MMM dd, yyyy HH:mm") : "-"}
                           </td>
+                          <td className="p-3 text-xs">
+                            <Badge variant="outline" className="text-[10px]">
+                              {(b.source || "auto") === "auto" ? "Automatic"
+                                : (b.source === "vps_local" ? "VPS Local" : "Uploaded")}
+                            </Badge>
+                          </td>
                           <td className="p-3"><TypeBadge type={b.backup_type} /></td>
                           <td className="p-3 font-medium">{b.app_name}</td>
                           <td className="p-3">{b.database_name}</td>
                           <td className="p-3 text-xs max-w-[200px] truncate" title={b.file_name || ""}>{b.file_name || "-"}</td>
                           <td className="p-3 text-xs">{formatBytes(b.file_size || 0)}</td>
                           <td className="p-3"><StatusBadge status={b.status} /></td>
-                          <td className="p-3">
-                            {b.status === "uploaded" && (
+                          <td className="p-3 flex gap-1">
+                            {isVps && b.local_path && (
+                              <Button variant="ghost" size="sm" className="gap-1 text-xs"
+                                onClick={() => handleDownload(b)}>
+                                <Download className="h-3 w-3" /> Download
+                              </Button>
+                            )}
+                            {(b.status === "uploaded" || b.source === "vps_local" || b.source === "uploaded") && (
                               <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => handleRestoreClick(b)}>
                                 <RotateCcw className="h-3 w-3" /> Restore
                               </Button>
