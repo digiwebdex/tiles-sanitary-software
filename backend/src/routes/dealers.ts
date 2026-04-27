@@ -477,6 +477,11 @@ const updateDealerSchema = z.object({
   // Admin user fields (live on users + profiles, not on dealers)
   admin_name: z.string().trim().min(1).max(200).optional(),
   admin_email: z.string().trim().email().max(200).optional(),
+  // Optional: set a new password for the dealer_admin (Super Admin direct set).
+  // Min 8 chars; recommended ≥12 with mixed character classes (frontend enforces).
+  new_password: z.string().min(8).max(128).optional(),
+  // If true and new_password is set, deliver the password via Email + SMS too.
+  notify_password: z.boolean().optional(),
 });
 
 router.patch('/:id', async (req: Request, res: Response) => {
