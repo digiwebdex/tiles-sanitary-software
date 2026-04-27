@@ -1,5 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 import { addMonths, format } from "date-fns";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 interface RecordPaymentInput {
   subscription_id: string;
@@ -37,6 +46,32 @@ export async function recordSubscriptionPayment(input: RecordPaymentInput) {
     extend_months = 1,
     billing_cycle = "monthly",
   } = input;
+
+  // VPS path: when running against the self-hosted backend (e.g. live custom
+  // domain), Supabase RLS does not apply — record via authed VPS endpoint.
+  if (env.AUTH_BACKEND === "vps") {
+    const result = await vpsJson<{
+      payment: { id: string };
+      yearly_discount_applied: boolean;
+    }>("/api/subscriptions/payments", {
+      method: "POST",
+      body: JSON.stringify({
+        subscription_id,
+        dealer_id,
+        amount,
+        payment_date,
+        payment_method,
+        payment_status,
+        note,
+        extend_months,
+        billing_cycle,
+      }),
+    });
+    return {
+      payment: result.payment,
+      yearlyDiscountApplied: result.yearly_discount_applied,
+    };
+  }
 
   // 1. Duplicate check: prevent full payment if one already exists for this subscription
   if (payment_status === "paid") {
@@ -147,6 +182,12 @@ export async function recordSubscriptionPayment(input: RecordPaymentInput) {
  * Returns true if they have NEVER received a yearly discount before.
  */
 export async function checkYearlyDiscountEligibility(dealer_id: string): Promise<boolean> {
+  if (env.AUTH_BACKEND === "vps") {
+    const r = await vpsJson<{ eligible: boolean }>(
+      `/api/subscriptions/yearly-discount-eligibility?dealer_id=${encodeURIComponent(dealer_id)}`,
+    );
+    return !!r.eligible;
+  }
   const { data, error } = await supabase
     .from("subscriptions")
     .select("id")
