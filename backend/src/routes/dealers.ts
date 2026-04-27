@@ -674,50 +674,105 @@ router.delete('/:id', async (req: Request, res: Response) => {
       .where({ dealer_id: dealerId })
       .pluck('id');
 
+    // Discover every public table that has a dealer_id column. This avoids
+    // blowing up on schemas where some optional tables don't exist or don't
+    // have a dealer_id column. We delete from these first (children before
+    // parents is handled by ordering known FKs at the end).
+    const dealerScopedRows = await db.raw<{ rows: { table_name: string }[] }>(
+      `SELECT table_name
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND column_name  = 'dealer_id'`,
+    );
+    const dealerScopedTables: string[] = (dealerScopedRows.rows || [])
+      .map((r) => r.table_name)
+      // Defer these — they're parents of other dealer-scoped rows or we
+      // handle them explicitly below.
+      .filter((t) => !['dealers', 'subscriptions', 'profiles'].includes(t));
+
+    // Order: child-ish tables first (line items / movements), then parents.
+    // Anything not in the priority list runs in the middle.
+    const priorityFirst = [
+      'sale_items', 'purchase_items',
+      'sales_return_items', 'purchase_return_items',
+      'delivery_items', 'challan_items',
+      'quotation_items',
+      'stock_movements', 'stock_reservations',
+      'product_batches',
+      'ledger_entries', 'audit_logs', 'notifications',
+      'commissions', 'campaign_gifts',
+      'payments', 'subscription_payments',
+      'expenses',
+    ];
+    const priorityLast = [
+      'sales', 'purchases', 'sales_returns', 'purchase_returns',
+      'deliveries', 'challans', 'quotations',
+      'products', 'customers', 'suppliers',
+      'projects', 'project_sites',
+    ];
+    const ordered = [
+      ...priorityFirst.filter((t) => dealerScopedTables.includes(t)),
+      ...dealerScopedTables.filter(
+        (t) => !priorityFirst.includes(t) && !priorityLast.includes(t),
+      ),
+      ...priorityLast.filter((t) => dealerScopedTables.includes(t)),
+    ];
+
     await db.transaction(async (trx) => {
-      // Best-effort cleanup of tenant-scoped tables. We swallow "table does
-      // not exist" errors so the delete works even on partially-migrated DBs.
-      const tenantTables = [
-        'sale_items', 'sales',
-        'purchase_items', 'purchases',
-        'sales_returns', 'purchase_returns',
-        'deliveries', 'challans',
-        'payments', 'subscription_payments',
-        'ledger_entries', 'expenses',
-        'product_batches', 'stock_movements', 'stock_reservations',
-        'products', 'customers', 'suppliers',
-        'quotations', 'projects', 'project_sites',
-        'campaign_gifts', 'commissions',
-        'audit_logs', 'notifications',
-        'subscriptions',
-      ];
-      for (const t of tenantTables) {
+      // Delete each table inside its own SAVEPOINT so a failure on one
+      // (e.g. FK violation, missing column on a partial schema) doesn't
+      // abort the whole outer transaction.
+      for (const t of ordered) {
         try {
-          await trx(t).where({ dealer_id: dealerId }).del();
+          await trx.transaction(async (sp) => {
+            await sp(t).where({ dealer_id: dealerId }).del();
+          });
         } catch (e: any) {
-          // ignore missing tables / missing columns in older schemas
-          if (!/does not exist|undefined column/i.test(e?.message || '')) {
-            // Re-throw real errors
-            throw e;
+          console.warn(
+            `[dealers:delete] skipped table "${t}":`,
+            e?.message || e,
+          );
+        }
+      }
+
+      // Now drop subscriptions explicitly (deferred above) — also savepointed.
+      try {
+        await trx.transaction(async (sp) => {
+          await sp('subscriptions').where({ dealer_id: dealerId }).del();
+        });
+      } catch (e: any) {
+        console.warn('[dealers:delete] skipped subscriptions:', e?.message || e);
+      }
+
+      // User-scoped cleanup, each step savepointed.
+      if (profileIds.length) {
+        const userSteps: Array<() => Promise<void>> = [
+          async () => { await trx('refresh_tokens').whereIn('user_id', profileIds).del(); },
+          async () => { await trx('user_roles').whereIn('user_id', profileIds).del(); },
+          async () => {
+            const emails: string[] = await trx('users').whereIn('id', profileIds).pluck('email');
+            if (emails.length) {
+              const lowered = emails.map((e) => (e || '').toLowerCase()).filter(Boolean);
+              if (lowered.length) {
+                await trx('login_attempts')
+                  .whereRaw('LOWER(email) = ANY(?)', [lowered])
+                  .del();
+              }
+            }
+          },
+          async () => { await trx('profiles').whereIn('id', profileIds).del(); },
+          async () => { await trx('users').whereIn('id', profileIds).del(); },
+        ];
+        for (const step of userSteps) {
+          try {
+            await trx.transaction(async () => { await step(); });
+          } catch (e: any) {
+            console.warn('[dealers:delete] user-step skipped:', e?.message || e);
           }
         }
       }
 
-      // User-scoped cleanup
-      if (profileIds.length) {
-        await trx('refresh_tokens').whereIn('user_id', profileIds).del().catch(() => {});
-        await trx('user_roles').whereIn('user_id', profileIds).del().catch(() => {});
-        const emails: string[] = await trx('users').whereIn('id', profileIds).pluck('email');
-        if (emails.length) {
-          await trx('login_attempts')
-            .whereIn(trx.raw('LOWER(email)') as any, emails.map((e) => (e || '').toLowerCase()))
-            .del()
-            .catch(() => {});
-        }
-        await trx('profiles').whereIn('id', profileIds).del();
-        await trx('users').whereIn('id', profileIds).del();
-      }
-
+      // Finally, the dealer row itself. If this fails we want to rollback.
       await trx('dealers').where({ id: dealerId }).del();
     });
 
