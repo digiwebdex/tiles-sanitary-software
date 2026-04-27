@@ -30,6 +30,15 @@ vi.mock("@/integrations/supabase/client", () => ({
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } } }),
     },
+    rpc: vi.fn().mockImplementation((fnName: string) => {
+      if (fnName === "generate_next_challan_no") {
+        return Promise.resolve({ data: "CH-00001", error: null });
+      }
+      if (fnName === "generate_next_invoice_no") {
+        return Promise.resolve({ data: "INV-00006", error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    }),
   },
 }));
 
