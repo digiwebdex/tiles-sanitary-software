@@ -492,8 +492,9 @@ function runRestoreScript(restoreId: string, args: string[]) {
     }
   });
 
-  // Pipe "RESTORE" into stdin so the script's interactive prompt passes
-  try { child.stdin?.end?.('RESTORE\n'); } catch { /* stdin closed already */ }
+  // Pipe "RESTORE" into stdin so the script's interactive prompt passes.
+  // (stdin is 'ignore' on this spawn — we rely on RESTORE_AUTO_CONFIRM env
+  // and the restore.sh `read -r` line being adjusted to honor it.)
   child.unref();
 }
 
