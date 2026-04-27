@@ -140,14 +140,22 @@ const SABackupPage = () => {
     onError: (err: any) => toast.error(err.message),
   });
 
-  // Local restore (vps_local / uploaded)
+  // Local restore (vps_local / uploaded) — P0: now requires a signed token
+  // issued by /api/backups/restore-local/token. The token is HMAC-bound to
+  // (backup_id, current super_admin user_id) and expires in 2 minutes.
   const localRestoreMutation = useMutation({
     mutationFn: async (vars: {
       backup_id: string; database_name: string; type?: string; confirm: string; notes?: string;
     }) => {
+      // Step 1: get signed confirmation token
+      const { token } = await vpsJson<{ token: string; expires_at: string }>(
+        "/api/backups/restore-local/token",
+        { method: "POST", body: JSON.stringify({ backup_id: vars.backup_id }) },
+      );
+      // Step 2: actually trigger the restore with the token attached
       return vpsJson<{ ok: boolean; restore_id: string; message: string }>(
         "/api/backups/restore-local",
-        { method: "POST", body: JSON.stringify(vars) },
+        { method: "POST", body: JSON.stringify({ ...vars, restore_token: token }) },
       );
     },
     onSuccess: (r) => {
