@@ -211,8 +211,10 @@ describe("Full Sale + Challan Workflow", () => {
       expect(result).toBeDefined();
       expect(result!.id).toBe(SALE_ID);
 
-      // Stock deducted for direct invoice
-      expect(mockDeductStock).toHaveBeenCalledWith(PRODUCT_ID, 10, DEALER_ID);
+      // Stock deducted for direct invoice (via batchService unbatched fallback)
+      expect(mockBatchDeductUnbatched).toHaveBeenCalledWith(
+        PRODUCT_ID, DEALER_ID, 10, "box_sft", 3.5
+      );
 
       // Customer ledger: sale entry
       expect(mockCustomerLedgerAdd).toHaveBeenCalledWith(
