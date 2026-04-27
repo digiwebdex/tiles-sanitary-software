@@ -12,6 +12,7 @@
     "seed": "knex seed:run --knexfile src/db/knexfile.ts"
   },
   "dependencies": {
+    "@types/multer": "^2.1.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -20,6 +21,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "knex": "^3.1.0",
+    "multer": "^2.1.1",
     "nodemailer": "^8.0.6",
     "pg": "^8.13.0",
     "uuid": "^10.0.0",

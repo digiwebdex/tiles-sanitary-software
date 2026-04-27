@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
   Database, HardDrive, CheckCircle, XCircle, Clock, Download, RotateCcw, Search,
-  Shield, AlertTriangle, FileArchive, RefreshCw, Activity, Play, Cloud,
+  Shield, AlertTriangle, FileArchive, RefreshCw, Activity, Play, Cloud, Upload,
 } from "lucide-react";
 import { format } from "date-fns";
 import { GoogleDriveConnectCard } from "./GoogleDriveConnectCard";
@@ -50,6 +50,7 @@ const SABackupPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [restoreDialog, setRestoreDialog] = useState<any>(null);
   const [confirmText, setConfirmText] = useState("");
   const [restoreLogsDialog, setRestoreLogsDialog] = useState<any>(null);
@@ -58,6 +59,11 @@ const SABackupPage = () => {
   const [driveDbName, setDriveDbName] = useState("");
   const [driveConfirmText, setDriveConfirmText] = useState("");
   const [manualType, setManualType] = useState<string>("all");
+  const [uploadDialog, setUploadDialog] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadDbName, setUploadDbName] = useState("");
+  const [uploadNotes, setUploadNotes] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const { data: backups, isLoading: backupsLoading, refetch: refetchBackups } = useQuery({
     queryKey: ["sa-backups"],
@@ -134,6 +140,71 @@ const SABackupPage = () => {
     onError: (err: any) => toast.error(err.message),
   });
 
+  // Local restore (vps_local / uploaded)
+  const localRestoreMutation = useMutation({
+    mutationFn: async (vars: {
+      backup_id: string; database_name: string; type?: string; confirm: string; notes?: string;
+    }) => {
+      return vpsJson<{ ok: boolean; restore_id: string; message: string }>(
+        "/api/backups/restore-local",
+        { method: "POST", body: JSON.stringify(vars) },
+      );
+    },
+    onSuccess: (r) => {
+      toast.success(r.message);
+      setRestoreDialog(null);
+      setConfirmText("");
+      refetchRestores();
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  // Upload
+  const handleUpload = async () => {
+    if (!uploadFile) { toast.error("Choose a backup file first."); return; }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      if (uploadDbName) fd.append("database_name", uploadDbName);
+      if (uploadNotes) fd.append("notes", uploadNotes);
+      const res = await vpsAuthedFetch("/api/backups/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Upload failed (${res.status})`);
+      toast.success(body.message || "Upload complete");
+      setUploadDialog(false);
+      setUploadFile(null);
+      setUploadDbName("");
+      setUploadNotes("");
+      refetchBackups();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = async (b: any) => {
+    try {
+      const res = await vpsAuthedFetch(`/api/backups/download/${b.id}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = b.file_name || "backup";
+      document.body.appendChild(a); a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) { toast.error(err.message); }
+  };
+
   const stats = {
     total: backups?.length || 0,
     successful: backups?.filter((b) => b.status === "uploaded").length || 0,
@@ -148,7 +219,8 @@ const SABackupPage = () => {
       (b.file_name || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchType = typeFilter === "all" || b.backup_type === typeFilter;
     const matchStatus = statusFilter === "all" || b.status === statusFilter;
-    return matchSearch && matchType && matchStatus;
+    const matchSource = sourceFilter === "all" || (b.source || "auto") === sourceFilter;
+    return matchSearch && matchType && matchStatus && matchSource;
   });
 
   const handleRestoreClick = (backup: any) => {
@@ -162,8 +234,19 @@ const SABackupPage = () => {
       return;
     }
 
-    // VPS path: actually execute restore via backend
     if (isVps) {
+      const src = restoreDialog.source || "auto";
+      // Local file restore (VPS local copy or uploaded)
+      if ((src === "vps_local" || src === "uploaded") && restoreDialog.local_path) {
+        localRestoreMutation.mutate({
+          backup_id: restoreDialog.id,
+          database_name: restoreDialog.database_name || "tilessaas",
+          type: restoreDialog.backup_type,
+          confirm: "RESTORE",
+        });
+        return;
+      }
+      // Otherwise treat as Google Drive remote restore
       const remotePath =
         restoreDialog.remote_path ||
         `${restoreDialog.backup_type}/${restoreDialog.app_name}/${restoreDialog.file_name}`;
@@ -187,7 +270,7 @@ const SABackupPage = () => {
         app_name: restoreDialog.app_name,
         initiated_by_name: "Super Admin (UI)",
         status: "pending",
-        logs: `Restore requested for ${restoreDialog.file_name} at ${new Date().toISOString()}.\n\nTo execute on VPS, run:\n  bash /opt/tileserp-backup/restore.sh ${restoreDialog.backup_type} ${restoreDialog.database_name} ${restoreDialog.backup_type}/${restoreDialog.app_name}/<date>/${restoreDialog.file_name}`,
+        logs: `Restore requested for ${restoreDialog.file_name} at ${new Date().toISOString()}.`,
       });
       if (error) throw error;
 
@@ -250,6 +333,11 @@ const SABackupPage = () => {
                 {runBackupMutation.isPending ? "Starting…" : "Run Backup Now"}
               </Button>
             </>
+          )}
+          {isVps && (
+            <Button variant="outline" size="sm" onClick={() => setUploadDialog(true)}>
+              <Upload className="h-4 w-4 mr-2" /> Upload Backup
+            </Button>
           )}
           <Button variant="outline" size="sm" onClick={() => { refetchBackups(); refetchRestores(); refetchDrive(); }}>
             <RefreshCw className="h-4 w-4 mr-2" /> Refresh
@@ -346,6 +434,15 @@ const SABackupPage = () => {
                 <SelectItem value="pending">Pending</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Source" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="auto">Automatic</SelectItem>
+                <SelectItem value="vps_local">VPS Local Copy</SelectItem>
+                <SelectItem value="uploaded">Manual Upload</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <Card>
@@ -364,6 +461,7 @@ const SABackupPage = () => {
                     <thead>
                       <tr className="border-b bg-muted/50">
                         <th className="text-left p-3 font-medium">Date</th>
+                        <th className="text-left p-3 font-medium">Source</th>
                         <th className="text-left p-3 font-medium">Type</th>
                         <th className="text-left p-3 font-medium">App</th>
                         <th className="text-left p-3 font-medium">Database</th>
@@ -379,14 +477,26 @@ const SABackupPage = () => {
                           <td className="p-3 text-xs whitespace-nowrap">
                             {b.created_at ? format(new Date(b.created_at), "MMM dd, yyyy HH:mm") : "-"}
                           </td>
+                          <td className="p-3 text-xs">
+                            <Badge variant="outline" className="text-[10px]">
+                              {(b.source || "auto") === "auto" ? "Automatic"
+                                : (b.source === "vps_local" ? "VPS Local" : "Uploaded")}
+                            </Badge>
+                          </td>
                           <td className="p-3"><TypeBadge type={b.backup_type} /></td>
                           <td className="p-3 font-medium">{b.app_name}</td>
                           <td className="p-3">{b.database_name}</td>
                           <td className="p-3 text-xs max-w-[200px] truncate" title={b.file_name || ""}>{b.file_name || "-"}</td>
                           <td className="p-3 text-xs">{formatBytes(b.file_size || 0)}</td>
                           <td className="p-3"><StatusBadge status={b.status} /></td>
-                          <td className="p-3">
-                            {b.status === "uploaded" && (
+                          <td className="p-3 flex gap-1">
+                            {isVps && b.local_path && (
+                              <Button variant="ghost" size="sm" className="gap-1 text-xs"
+                                onClick={() => handleDownload(b)}>
+                                <Download className="h-3 w-3" /> Download
+                              </Button>
+                            )}
+                            {(b.status === "uploaded" || b.source === "vps_local" || b.source === "uploaded") && (
                               <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => handleRestoreClick(b)}>
                                 <RotateCcw className="h-3 w-3" /> Restore
                               </Button>
@@ -774,6 +884,40 @@ rclone ls gdrive:TilesERP-Backups/`}</pre>
               <strong>Error:</strong> {restoreLogsDialog.error_message}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Upload Backup Dialog ── */}
+      <Dialog open={uploadDialog} onOpenChange={(o) => !uploading && setUploadDialog(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-primary" /> Upload Backup File
+            </DialogTitle>
+            <DialogDescription>
+              Upload a previously downloaded backup (.sql.gz, .dump, .archive.gz). It will be stored in the project's isolated VPS backup directory.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input type="file" accept=".gz,.dump,.tar,.archive"
+              onChange={(e) => setUploadFile(e.target.files?.[0] || null)} />
+            <Input placeholder="Database name (optional, e.g. tilessaas)"
+              value={uploadDbName} onChange={(e) => setUploadDbName(e.target.value)} />
+            <Input placeholder="Notes (optional)"
+              value={uploadNotes} onChange={(e) => setUploadNotes(e.target.value)} />
+            {uploadFile && (
+              <p className="text-xs text-muted-foreground">
+                {uploadFile.name} — {formatBytes(uploadFile.size)}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUploadDialog(false)} disabled={uploading}>Cancel</Button>
+            <Button onClick={handleUpload} disabled={!uploadFile || uploading}>
+              <Upload className="h-4 w-4 mr-2" />
+              {uploading ? "Uploading…" : "Upload"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

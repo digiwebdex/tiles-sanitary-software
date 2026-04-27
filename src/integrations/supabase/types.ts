@@ -254,44 +254,65 @@ export type Database = {
         Row: {
           app_name: string
           backup_type: string
+          checksum_sha256: string | null
           completed_at: string | null
           created_at: string | null
+          created_by: string | null
+          created_by_name: string | null
           database_name: string
           error_message: string | null
           file_name: string | null
           file_size: number | null
           id: string
+          local_path: string | null
+          notes: string | null
+          source: string
           started_at: string | null
           status: string
           storage_location: string | null
+          version: string | null
         }
         Insert: {
           app_name?: string
           backup_type: string
+          checksum_sha256?: string | null
           completed_at?: string | null
           created_at?: string | null
+          created_by?: string | null
+          created_by_name?: string | null
           database_name: string
           error_message?: string | null
           file_name?: string | null
           file_size?: number | null
           id?: string
+          local_path?: string | null
+          notes?: string | null
+          source?: string
           started_at?: string | null
           status?: string
           storage_location?: string | null
+          version?: string | null
         }
         Update: {
           app_name?: string
           backup_type?: string
+          checksum_sha256?: string | null
           completed_at?: string | null
           created_at?: string | null
+          created_by?: string | null
+          created_by_name?: string | null
           database_name?: string
           error_message?: string | null
           file_name?: string | null
           file_size?: number | null
           id?: string
+          local_path?: string | null
+          notes?: string | null
+          source?: string
           started_at?: string | null
           status?: string
           storage_location?: string | null
+          version?: string | null
         }
         Relationships: []
       }
@@ -2614,7 +2635,9 @@ export type Database = {
           initiated_by: string | null
           initiated_by_name: string | null
           logs: string | null
+          notes: string | null
           pre_restore_backup_taken: boolean | null
+          source: string | null
           started_at: string | null
           status: string
         }
@@ -2631,7 +2654,9 @@ export type Database = {
           initiated_by?: string | null
           initiated_by_name?: string | null
           logs?: string | null
+          notes?: string | null
           pre_restore_backup_taken?: boolean | null
+          source?: string | null
           started_at?: string | null
           status?: string
         }
@@ -2648,7 +2673,9 @@ export type Database = {
           initiated_by?: string | null
           initiated_by_name?: string | null
           logs?: string | null
+          notes?: string | null
           pre_restore_backup_taken?: boolean | null
+          source?: string | null
           started_at?: string | null
           status?: string
         }

@@ -157,8 +157,13 @@ echo "║  From:     ${BACKUP_PATH}"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
 echo "This will OVERWRITE the current ${DB_NAME} database."
-echo "Type RESTORE to confirm:"
-read -r CONFIRM
+if [[ -n "${RESTORE_AUTO_CONFIRM:-}" ]]; then
+  CONFIRM="${RESTORE_AUTO_CONFIRM}"
+  echo "(auto-confirmed via RESTORE_AUTO_CONFIRM)"
+else
+  echo "Type RESTORE to confirm:"
+  read -r CONFIRM
+fi
 [[ "${CONFIRM}" != "RESTORE" ]] && { echo "Aborted."; exit 1; }
 
 log "=========================================="
