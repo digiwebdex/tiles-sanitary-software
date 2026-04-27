@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
   Database, HardDrive, CheckCircle, XCircle, Clock, Download, RotateCcw, Search,
-  Shield, AlertTriangle, FileArchive, RefreshCw, Activity, Play, Cloud,
+  Shield, AlertTriangle, FileArchive, RefreshCw, Activity, Play, Cloud, Upload,
 } from "lucide-react";
 import { format } from "date-fns";
 import { GoogleDriveConnectCard } from "./GoogleDriveConnectCard";
