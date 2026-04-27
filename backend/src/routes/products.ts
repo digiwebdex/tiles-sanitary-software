@@ -23,6 +23,18 @@ import { z } from 'zod';
 import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { tenantGuard } from '../middleware/tenant';
+import { requireRole, hasRole } from '../middleware/roles';
+
+/**
+ * Strip cost_price for users that lack 'dealer_admin' or 'super_admin'.
+ * Salesmen MUST NOT see margins / cost data — enforced server-side.
+ */
+function stripCostForSalesman<T extends Record<string, any>>(req: Request, row: T | undefined): T | undefined {
+  if (!row) return row;
+  if (hasRole(req, 'dealer_admin') || hasRole(req, 'super_admin')) return row;
+  const { cost_price: _omit, ...safe } = row;
+  return safe as T;
+}
 
 const router = Router();
 const TABLE = 'products';
