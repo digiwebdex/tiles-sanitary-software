@@ -410,9 +410,38 @@ const DealerManagement = () => {
                           })()}
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
+                          <div className="flex flex-wrap gap-1">
                             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDetailDealer(d)} title="View Details">
                               <Eye className="h-3 w-3" />
+                            </Button>
+                            {(d.status ?? "active") !== "pending" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-blue-500 text-blue-600 hover:bg-blue-500/10"
+                                onClick={() => openErp(d)}
+                                title="Open this dealer's ERP as Super Admin (read-only by default)"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEdit(d)} title="Edit">
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-violet-500 text-violet-600 hover:bg-violet-500/10"
+                              onClick={() => {
+                                if (window.confirm(`Reset password for "${d.name}"?\n\nA new temporary password will be emailed and SMS-sent to the dealer admin. All current sessions will be signed out.`)) {
+                                  resetPasswordMutation.mutate(d);
+                                }
+                              }}
+                              disabled={resetPasswordMutation.isPending}
+                              title="Reset dealer admin password"
+                            >
+                              <KeyRound className="h-3 w-3" />
+                            </Button>
                             </Button>
                             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEdit(d)} title="Edit">
                               <Pencil className="h-3 w-3" />
