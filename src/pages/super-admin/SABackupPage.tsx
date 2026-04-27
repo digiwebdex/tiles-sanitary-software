@@ -316,6 +316,7 @@ const SABackupPage = () => {
         <TabsList>
           <TabsTrigger value="backups">Backup History</TabsTrigger>
           <TabsTrigger value="restores">Restore History</TabsTrigger>
+          {isVps && <TabsTrigger value="drive">Google Drive Restore</TabsTrigger>}
           <TabsTrigger value="guide">Setup Guide</TabsTrigger>
         </TabsList>
 
