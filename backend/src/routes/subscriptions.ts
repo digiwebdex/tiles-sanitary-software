@@ -189,4 +189,148 @@ router.patch('/:id', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/subscriptions/payments — record a subscription payment.
+ * Mirrors the legacy `recordSubscriptionPayment` Supabase service.
+ *  - Blocks duplicate "paid" entries for the same subscription.
+ *  - Computes yearly-discount eligibility (first yearly per dealer).
+ *  - On full payment: extends end_date by extend_months, sets status=active,
+ *    re-activates dealer + admin user, updates billing cycle.
+ */
+const recordPaymentSchema = z.object({
+  subscription_id: z.string().uuid(),
+  dealer_id: z.string().uuid(),
+  amount: z.coerce.number().nonnegative(),
+  payment_date: z.string(), // YYYY-MM-DD
+  payment_method: z.enum(['cash', 'bank', 'mobile_banking']),
+  payment_status: z.enum(['paid', 'partial', 'pending']),
+  note: z.string().max(500).optional().nullable(),
+  extend_months: z.coerce.number().int().min(0).max(36).default(1),
+  billing_cycle: z.enum(['monthly', 'yearly']).default('monthly'),
+});
+
+function addMonthsIso(baseIso: string, months: number): string {
+  const d = new Date(baseIso + 'T00:00:00');
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+router.post('/payments', async (req: Request, res: Response) => {
+  try {
+    const body = recordPaymentSchema.parse(req.body || {});
+    const collectedBy = (req as any).user?.id || null;
+
+    // 1. Duplicate check for full payments.
+    if (body.payment_status === 'paid') {
+      const existing = await db('subscription_payments')
+        .where({ subscription_id: body.subscription_id, payment_status: 'paid' })
+        .first();
+      if (existing) {
+        res.status(409).json({
+          error:
+            "A full payment has already been recorded for this subscription period. Use 'Edit' to extend the end date or create a new subscription instead.",
+        });
+        return;
+      }
+    }
+
+    // 2. Yearly discount eligibility.
+    let yearlyDiscountApplied = false;
+    if (body.billing_cycle === 'yearly' && body.payment_status === 'paid') {
+      const prev = await db('subscriptions')
+        .where({ dealer_id: body.dealer_id, yearly_discount_applied: true })
+        .first();
+      yearlyDiscountApplied = !prev;
+    }
+
+    let paymentRow: any = null;
+    let updatedSub: any = null;
+
+    await db.transaction(async (trx) => {
+      // 3. Insert payment.
+      const [pay] = await trx('subscription_payments')
+        .insert({
+          subscription_id: body.subscription_id,
+          dealer_id: body.dealer_id,
+          amount: body.amount,
+          payment_date: body.payment_date,
+          payment_method: body.payment_method,
+          payment_status: body.payment_status,
+          collected_by: collectedBy,
+          note: body.note || null,
+        })
+        .returning('*');
+      paymentRow = pay;
+
+      // 4. Full payment → extend subscription + activate dealer/user.
+      if (body.payment_status === 'paid') {
+        const sub = await trx('subscriptions')
+          .where({ id: body.subscription_id })
+          .first();
+        if (!sub) throw new Error('Subscription not found');
+
+        const baseIso = toDateOnly(sub.end_date) || toDateOnly(sub.start_date) || new Date().toISOString().slice(0, 10);
+        const newEnd = addMonthsIso(baseIso, body.extend_months);
+
+        const [row] = await trx('subscriptions')
+          .where({ id: body.subscription_id })
+          .update({
+            end_date: newEnd,
+            status: 'active',
+            billing_cycle: body.billing_cycle,
+            yearly_discount_applied: yearlyDiscountApplied,
+          })
+          .returning('*');
+        updatedSub = row;
+
+        await trx('dealers')
+          .where({ id: body.dealer_id })
+          .update({ status: 'active', updated_at: new Date() });
+        const adminProfile = await trx('profiles')
+          .where({ dealer_id: body.dealer_id })
+          .first();
+        if (adminProfile) {
+          await trx('users')
+            .where({ id: adminProfile.id })
+            .update({ status: 'active', updated_at: new Date() });
+        }
+      }
+    });
+
+    res.status(201).json({
+      payment: paymentRow,
+      subscription: updatedSub,
+      yearly_discount_applied: yearlyDiscountApplied,
+    });
+  } catch (err: any) {
+    if (err?.issues) {
+      res.status(400).json({ error: err.issues[0]?.message || 'Invalid payment data' });
+      return;
+    }
+    console.error('[subscriptions:payments] failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to record payment' });
+  }
+});
+
+/**
+ * GET /api/subscriptions/yearly-discount-eligibility?dealer_id=...
+ * Returns true when the dealer has never had yearly_discount_applied.
+ */
+router.get('/yearly-discount-eligibility', async (req: Request, res: Response) => {
+  try {
+    const dealerId = String(req.query.dealer_id || '');
+    if (!dealerId) {
+      res.status(400).json({ error: 'dealer_id is required' });
+      return;
+    }
+    const prev = await db('subscriptions')
+      .where({ dealer_id: dealerId, yearly_discount_applied: true })
+      .first();
+    res.json({ eligible: !prev });
+  } catch (err: any) {
+    console.error('[subscriptions:yearly-discount] failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to check eligibility' });
+  }
+});
+
 export default router;
