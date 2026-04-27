@@ -18,6 +18,9 @@ import subscriptionsRoutes from './routes/subscriptions';
 import plansRoutes from './routes/plans';
 import backupsRoutes from './routes/backups';
 import googleDriveRoutes from './routes/googleDrive';
+import auditLogsRoutes from './routes/auditLogs';
+import subscriptionStatusRoutes from './routes/subscriptionStatus';
+import notificationsRoutes from './routes/notifications';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -91,6 +94,9 @@ app.use('/api/subscriptions', subscriptionsRoutes);
 app.use('/api/plans', plansRoutes);
 app.use('/api/backups', backupsRoutes);
 app.use('/api/google-drive', googleDriveRoutes);
+app.use('/api/audit-logs', auditLogsRoutes);
+app.use('/api/subscription', subscriptionStatusRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // ── 404 handler ──
 app.use((_req, res) => {

@@ -3177,6 +3177,48 @@ export type Database = {
           },
         ]
       }
+      sms_message_logs: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          id: string
+          idempotency_key: string
+          message: string
+          provider_response: string | null
+          sent_at: string | null
+          source_id: string | null
+          source_type: string | null
+          status: string
+          to_phone: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          id?: string
+          idempotency_key: string
+          message: string
+          provider_response?: string | null
+          sent_at?: string | null
+          source_id?: string | null
+          source_type?: string | null
+          status?: string
+          to_phone: string
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          idempotency_key?: string
+          message?: string
+          provider_response?: string | null
+          sent_at?: string | null
+          source_id?: string | null
+          source_type?: string | null
+          status?: string
+          to_phone?: string
+        }
+        Relationships: []
+      }
       stock: {
         Row: {
           average_cost_per_unit: number
@@ -3685,6 +3727,7 @@ export type Database = {
           error_message: string | null
           failed_at: string | null
           id: string
+          idempotency_key: string | null
           message_text: string
           message_type: Database["public"]["Enums"]["whatsapp_message_type"]
           payload_snapshot: Json
@@ -3705,6 +3748,7 @@ export type Database = {
           error_message?: string | null
           failed_at?: string | null
           id?: string
+          idempotency_key?: string | null
           message_text: string
           message_type: Database["public"]["Enums"]["whatsapp_message_type"]
           payload_snapshot?: Json
@@ -3725,6 +3769,7 @@ export type Database = {
           error_message?: string | null
           failed_at?: string | null
           id?: string
+          idempotency_key?: string | null
           message_text?: string
           message_type?: Database["public"]["Enums"]["whatsapp_message_type"]
           payload_snapshot?: Json
