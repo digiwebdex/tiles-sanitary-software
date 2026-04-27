@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +14,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
   Database, HardDrive, CheckCircle, XCircle, Clock, Download, RotateCcw, Search,
-  Shield, AlertTriangle, FileArchive, RefreshCw, Activity,
+  Shield, AlertTriangle, FileArchive, RefreshCw, Activity, Play, Cloud,
 } from "lucide-react";
 import { format } from "date-fns";
+
+const isVps = env.AUTH_BACKEND === "vps";
+
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 const formatBytes = (bytes: number) => {
   if (!bytes || bytes === 0) return "0 B";
@@ -41,10 +52,19 @@ const SABackupPage = () => {
   const [restoreDialog, setRestoreDialog] = useState<any>(null);
   const [confirmText, setConfirmText] = useState("");
   const [restoreLogsDialog, setRestoreLogsDialog] = useState<any>(null);
+  const [driveType, setDriveType] = useState<string>("postgresql");
+  const [driveRestoreDialog, setDriveRestoreDialog] = useState<any>(null);
+  const [driveDbName, setDriveDbName] = useState("");
+  const [driveConfirmText, setDriveConfirmText] = useState("");
+  const [manualType, setManualType] = useState<string>("all");
 
   const { data: backups, isLoading: backupsLoading, refetch: refetchBackups } = useQuery({
     queryKey: ["sa-backups"],
     queryFn: async () => {
+      if (isVps) {
+        const r = await vpsJson<{ backups: any[] }>("/api/backups");
+        return r.backups || [];
+      }
       const { data, error } = await supabase.from("backup_logs").select("*").order("created_at", { ascending: false }).limit(200);
       if (error) throw error;
       return data || [];
@@ -54,10 +74,63 @@ const SABackupPage = () => {
   const { data: restores, isLoading: restoresLoading, refetch: refetchRestores } = useQuery({
     queryKey: ["sa-restores"],
     queryFn: async () => {
+      if (isVps) {
+        const r = await vpsJson<{ restores: any[] }>("/api/backups/restores");
+        return r.restores || [];
+      }
       const { data, error } = await supabase.from("restore_logs").select("*").order("created_at", { ascending: false }).limit(100);
       if (error) throw error;
       return data || [];
     },
+  });
+
+  // Google Drive backup files (VPS only)
+  const { data: driveFiles, isLoading: driveLoading, refetch: refetchDrive } = useQuery({
+    queryKey: ["sa-drive-files", driveType],
+    queryFn: async () => {
+      if (!isVps) return [];
+      const r = await vpsJson<{ files: any[] }>(
+        `/api/backups/drive?type=${encodeURIComponent(driveType)}`,
+      );
+      return r.files || [];
+    },
+    enabled: isVps,
+  });
+
+  // Manual backup trigger
+  const runBackupMutation = useMutation({
+    mutationFn: async (type: string) => {
+      if (!isVps) throw new Error("Manual backup is only available on the VPS backend.");
+      return vpsJson<{ ok: boolean; message: string }>("/api/backups/run", {
+        method: "POST",
+        body: JSON.stringify({ type }),
+      });
+    },
+    onSuccess: (r) => {
+      toast.success(r.message || "Backup started");
+      setTimeout(() => refetchBackups(), 5000);
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  // Drive restore
+  const driveRestoreMutation = useMutation({
+    mutationFn: async (vars: {
+      type: string; database_name: string; remote_path: string; app_name?: string; confirm: string;
+    }) => {
+      return vpsJson<{ ok: boolean; restore_id: string; message: string }>(
+        "/api/backups/restore",
+        { method: "POST", body: JSON.stringify(vars) },
+      );
+    },
+    onSuccess: (r) => {
+      toast.success(r.message);
+      setDriveRestoreDialog(null);
+      setDriveDbName("");
+      setDriveConfirmText("");
+      refetchRestores();
+    },
+    onError: (err: any) => toast.error(err.message),
   });
 
   const stats = {
@@ -88,6 +161,22 @@ const SABackupPage = () => {
       return;
     }
 
+    // VPS path: actually execute restore via backend
+    if (isVps) {
+      const remotePath =
+        restoreDialog.remote_path ||
+        `${restoreDialog.backup_type}/${restoreDialog.app_name}/${restoreDialog.file_name}`;
+      driveRestoreMutation.mutate({
+        type: restoreDialog.backup_type,
+        database_name: restoreDialog.database_name,
+        remote_path: remotePath,
+        app_name: restoreDialog.app_name,
+        confirm: restoreDialog.database_name,
+      });
+      setRestoreDialog(null);
+      return;
+    }
+
     try {
       const { error } = await supabase.from("restore_logs").insert({
         backup_log_id: restoreDialog.id,
@@ -100,7 +189,7 @@ const SABackupPage = () => {
         logs: `Restore requested for ${restoreDialog.file_name} at ${new Date().toISOString()}.\n\nTo execute on VPS, run:\n  bash /opt/tileserp-backup/restore.sh ${restoreDialog.backup_type} ${restoreDialog.database_name} ${restoreDialog.backup_type}/${restoreDialog.app_name}/<date>/${restoreDialog.file_name}`,
       });
       if (error) throw error;
-      
+
       toast.success("Restore request logged. Execute the restore command on VPS.");
       setRestoreDialog(null);
       refetchRestores();
@@ -139,9 +228,32 @@ const SABackupPage = () => {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Database backup management and restore operations</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { refetchBackups(); refetchRestores(); }}>
-          <RefreshCw className="h-4 w-4 mr-2" /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {isVps && (
+            <>
+              <Select value={manualType} onValueChange={setManualType}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Databases</SelectItem>
+                  <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                  <SelectItem value="mysql">MySQL</SelectItem>
+                  <SelectItem value="mongodb">MongoDB</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={() => runBackupMutation.mutate(manualType)}
+                disabled={runBackupMutation.isPending}
+              >
+                <Play className="h-4 w-4 mr-2" />
+                {runBackupMutation.isPending ? "Starting…" : "Run Backup Now"}
+              </Button>
+            </>
+          )}
+          <Button variant="outline" size="sm" onClick={() => { refetchBackups(); refetchRestores(); refetchDrive(); }}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -204,6 +316,7 @@ const SABackupPage = () => {
         <TabsList>
           <TabsTrigger value="backups">Backup History</TabsTrigger>
           <TabsTrigger value="restores">Restore History</TabsTrigger>
+          {isVps && <TabsTrigger value="drive">Google Drive Restore</TabsTrigger>}
           <TabsTrigger value="guide">Setup Guide</TabsTrigger>
         </TabsList>
 
@@ -358,6 +471,88 @@ const SABackupPage = () => {
         </TabsContent>
 
         {/* ── Setup Guide ── */}
+        {/* ── Google Drive Restore ── */}
+        {isVps && (
+          <TabsContent value="drive" className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Cloud className="h-5 w-5 text-primary" /> Google Drive Backups
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Browse backup files stored on Google Drive (via rclone) and restore directly.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={driveType} onValueChange={setDriveType}>
+                    <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                      <SelectItem value="mysql">MySQL</SelectItem>
+                      <SelectItem value="mongodb">MongoDB</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={() => refetchDrive()}>
+                    <RefreshCw className="h-4 w-4 mr-2" /> Reload
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {driveLoading ? (
+                  <div className="p-8 text-center text-muted-foreground">Loading Google Drive…</div>
+                ) : (driveFiles || []).length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Cloud className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">No backup files found on Google Drive</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ensure rclone is configured (remote: gdrive:tileserp-backups)
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="text-left p-3 font-medium">Modified</th>
+                          <th className="text-left p-3 font-medium">Path</th>
+                          <th className="text-left p-3 font-medium">Size</th>
+                          <th className="text-left p-3 font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(driveFiles || []).map((f: any) => (
+                          <tr key={f.path} className="border-b hover:bg-muted/30">
+                            <td className="p-3 text-xs whitespace-nowrap">
+                              {f.modified_at ? format(new Date(f.modified_at), "MMM dd, yyyy HH:mm") : "-"}
+                            </td>
+                            <td className="p-3 text-xs font-mono max-w-[420px] truncate" title={f.path}>{f.path}</td>
+                            <td className="p-3 text-xs">{formatBytes(f.size || 0)}</td>
+                            <td className="p-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1 text-xs"
+                                onClick={() => {
+                                  setDriveRestoreDialog({ ...f, type: driveType });
+                                  setDriveDbName("");
+                                  setDriveConfirmText("");
+                                }}
+                              >
+                                <RotateCcw className="h-3 w-3" /> Restore
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
         <TabsContent value="guide" className="space-y-4">
           <Card>
             <CardHeader>
@@ -478,6 +673,81 @@ rclone ls gdrive:TilesERP-Backups/`}</pre>
             <Button variant="destructive" onClick={handleRestoreConfirm} disabled={confirmText !== "RESTORE"}>
               <RotateCcw className="h-4 w-4 mr-2" />
               Log Restore Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Drive Restore Dialog ── */}
+      <Dialog open={!!driveRestoreDialog} onOpenChange={() => setDriveRestoreDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Restore from Google Drive
+            </DialogTitle>
+            <DialogDescription>
+              This will overwrite the target database. A safety backup will be created automatically by the restore script.
+            </DialogDescription>
+          </DialogHeader>
+
+          {driveRestoreDialog && (
+            <div className="space-y-4">
+              <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3 space-y-2 text-xs">
+                <div><span className="text-muted-foreground">Type:</span> <span className="font-medium">{driveRestoreDialog.type?.toUpperCase()}</span></div>
+                <div><span className="text-muted-foreground">File:</span> <span className="font-mono">{driveRestoreDialog.path}</span></div>
+                <div><span className="text-muted-foreground">Size:</span> <span className="font-medium">{formatBytes(driveRestoreDialog.size || 0)}</span></div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">Target database name:</p>
+                <Input
+                  value={driveDbName}
+                  onChange={(e) => setDriveDbName(e.target.value)}
+                  placeholder="e.g. tilessaas"
+                  className="font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium text-destructive">
+                  Type the database name again to confirm:
+                </p>
+                <Input
+                  value={driveConfirmText}
+                  onChange={(e) => setDriveConfirmText(e.target.value)}
+                  placeholder="Re-type database name"
+                  className="font-mono"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDriveRestoreDialog(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!driveDbName || driveConfirmText !== driveDbName) {
+                  toast.error("Database name and confirmation must match");
+                  return;
+                }
+                driveRestoreMutation.mutate({
+                  type: driveRestoreDialog.type,
+                  database_name: driveDbName,
+                  remote_path: driveRestoreDialog.path,
+                  app_name: driveRestoreDialog.path.split("/")[1] || "unknown",
+                  confirm: driveConfirmText,
+                });
+              }}
+              disabled={
+                driveRestoreMutation.isPending ||
+                !driveDbName ||
+                driveConfirmText !== driveDbName
+              }
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              {driveRestoreMutation.isPending ? "Starting…" : "Start Restore"}
             </Button>
           </DialogFooter>
         </DialogContent>
