@@ -228,9 +228,32 @@ const SABackupPage = () => {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Database backup management and restore operations</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { refetchBackups(); refetchRestores(); }}>
-          <RefreshCw className="h-4 w-4 mr-2" /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {isVps && (
+            <>
+              <Select value={manualType} onValueChange={setManualType}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Databases</SelectItem>
+                  <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                  <SelectItem value="mysql">MySQL</SelectItem>
+                  <SelectItem value="mongodb">MongoDB</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={() => runBackupMutation.mutate(manualType)}
+                disabled={runBackupMutation.isPending}
+              >
+                <Play className="h-4 w-4 mr-2" />
+                {runBackupMutation.isPending ? "Starting…" : "Run Backup Now"}
+              </Button>
+            </>
+          )}
+          <Button variant="outline" size="sm" onClick={() => { refetchBackups(); refetchRestores(); refetchDrive(); }}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
