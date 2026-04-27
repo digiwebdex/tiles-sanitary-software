@@ -52,10 +52,19 @@ const SABackupPage = () => {
   const [restoreDialog, setRestoreDialog] = useState<any>(null);
   const [confirmText, setConfirmText] = useState("");
   const [restoreLogsDialog, setRestoreLogsDialog] = useState<any>(null);
+  const [driveType, setDriveType] = useState<string>("postgresql");
+  const [driveRestoreDialog, setDriveRestoreDialog] = useState<any>(null);
+  const [driveDbName, setDriveDbName] = useState("");
+  const [driveConfirmText, setDriveConfirmText] = useState("");
+  const [manualType, setManualType] = useState<string>("all");
 
   const { data: backups, isLoading: backupsLoading, refetch: refetchBackups } = useQuery({
     queryKey: ["sa-backups"],
     queryFn: async () => {
+      if (isVps) {
+        const r = await vpsJson<{ backups: any[] }>("/api/backups");
+        return r.backups || [];
+      }
       const { data, error } = await supabase.from("backup_logs").select("*").order("created_at", { ascending: false }).limit(200);
       if (error) throw error;
       return data || [];
