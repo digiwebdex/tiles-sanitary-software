@@ -29,6 +29,14 @@ const allowedOrigins = env.CORS_ORIGIN.split(',')
   .map(origin => origin.trim())
   .filter(Boolean);
 
+// P0 hardening: hardcode the allowed headers + methods. Never reflect
+// `Access-Control-Request-Headers` from the browser — that would let
+// arbitrary attacker-chosen headers be advertised as allowed and is the
+// vector flagged in the audit (CORS header reflection).
+const ALLOWED_METHODS = 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS';
+const ALLOWED_HEADERS = 'Content-Type, Authorization, X-Requested-With, X-Restore-Token';
+const EXPOSED_HEADERS = 'Content-Disposition';
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
@@ -38,8 +46,10 @@ app.use((req, res, next) => {
     res.setHeader('Vary', 'Origin');
   }
 
-  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || 'content-type, authorization');
+  res.setHeader('Access-Control-Allow-Methods', ALLOWED_METHODS);
+  res.setHeader('Access-Control-Allow-Headers', ALLOWED_HEADERS);
+  res.setHeader('Access-Control-Expose-Headers', EXPOSED_HEADERS);
+  res.setHeader('Access-Control-Max-Age', '600');
 
   if (req.method === 'OPTIONS') {
     res.sendStatus(204);
