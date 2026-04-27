@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { db } from '../db/connection';
 import { env } from '../config/env';
+import { dispatchSignupNotifications } from './notificationService';
 
 const SALT_ROUNDS = 12;
 
@@ -191,8 +192,12 @@ export const authService = {
     }
 
     if (user.status !== 'active') {
-      const err: any = new Error('Account is suspended');
-      err.code = 'SUSPENDED';
+      const err: any = new Error(
+        user.status === 'pending'
+          ? 'Account is awaiting Super Admin approval'
+          : 'Account is suspended'
+      );
+      err.code = user.status === 'pending' ? 'PENDING_APPROVAL' : 'SUSPENDED';
       throw err;
     }
 
