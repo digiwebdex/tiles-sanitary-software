@@ -23,7 +23,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink } from "lucide-react";
+import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink, KeyRound } from "lucide-react";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { env } from "@/lib/env";
 import { saImpersonation } from "@/lib/saImpersonation";
@@ -97,6 +97,25 @@ const VpsDealerManagement = () => {
     },
     onError: (e: Error) => {
       toast({ variant: "destructive", title: "Action failed", description: e.message });
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ dealer, mode }: { dealer: VpsDealer; mode: "temp" | "link" }) => {
+      await vpsJson(`/api/dealers/${dealer.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ mode }),
+      });
+      return dealer;
+    },
+    onSuccess: (dealer) => {
+      toast({
+        title: "Password reset sent",
+        description: `New credentials emailed to ${dealer.admin_email} and SMS sent to ${dealer.phone || "their phone"}.`,
+      });
+    },
+    onError: (e: Error) => {
+      toast({ variant: "destructive", title: "Reset failed", description: e.message });
     },
   });
 
