@@ -289,6 +289,19 @@ const VpsDealerManagement = () => {
                         <KeyRound className="h-4 w-4 mr-1" /> Reset Password
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setDeleteTarget(d);
+                        setDeleteConfirmText("");
+                      }}
+                      disabled={deleteMutation.isPending}
+                      title="Permanently delete dealer and all data"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" /> Delete
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
