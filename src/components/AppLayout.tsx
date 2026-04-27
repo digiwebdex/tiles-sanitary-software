@@ -151,6 +151,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           })}
         </nav>
 
+        <SAImpersonationBanner />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>
