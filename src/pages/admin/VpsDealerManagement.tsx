@@ -23,16 +23,29 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink, KeyRound } from "lucide-react";
+import { CheckCircle2, XCircle, Ban, RefreshCw, Loader2, ExternalLink, KeyRound, Pencil } from "lucide-react";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { env } from "@/lib/env";
 import { saImpersonation } from "@/lib/saImpersonation";
+import EditDealerDialog from "./EditDealerDialog";
 
 interface VpsDealer {
   id: string;
   name: string;
   phone: string | null;
   address: string | null;
+  email: string | null;
+  owner_name: string | null;
+  business_type: string | null;
+  city: string | null;
+  district: string | null;
+  country: string | null;
+  postal_code: string | null;
+  tax_id: string | null;
+  trade_license_no: string | null;
+  website: string | null;
+  logo_url: string | null;
+  notes: string | null;
   status: string;
   created_at: string;
   admin_email: string | null;
@@ -63,6 +76,7 @@ const VpsDealerManagement = () => {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState<{ action: string; dealer: VpsDealer } | null>(null);
+  const [editing, setEditing] = useState<VpsDealer | null>(null);
 
   const openErp = (d: VpsDealer) => {
     saImpersonation.start(d.id, d.name, false);
@@ -178,6 +192,14 @@ const VpsDealerManagement = () => {
                     <Badge variant={statusVariant[d.status] || "outline"}>{d.status}</Badge>
                   </TableCell>
                   <TableCell className="text-right space-x-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditing(d)}
+                      title="Edit dealer information"
+                    >
+                      <Pencil className="h-4 w-4 mr-1" /> Edit
+                    </Button>
                     {d.status === "pending" && (
                       <>
                         <Button
@@ -293,6 +315,8 @@ const VpsDealerManagement = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <EditDealerDialog dealer={editing} onClose={() => setEditing(null)} />
     </Card>
   );
 };

@@ -27,8 +27,21 @@ interface DealerRow {
   name: string;
   phone: string | null;
   address: string | null;
+  email: string | null;
+  owner_name: string | null;
+  business_type: string | null;
+  city: string | null;
+  district: string | null;
+  country: string | null;
+  postal_code: string | null;
+  tax_id: string | null;
+  trade_license_no: string | null;
+  website: string | null;
+  logo_url: string | null;
+  notes: string | null;
   status: string;
   created_at: string;
+  updated_at: string | null;
   admin_email: string | null;
   admin_name: string | null;
   admin_user_id: string | null;
@@ -58,8 +71,21 @@ router.get('/', async (_req: Request, res: Response) => {
         'd.name',
         'd.phone',
         'd.address',
+        'd.email',
+        'd.owner_name',
+        'd.business_type',
+        'd.city',
+        'd.district',
+        'd.country',
+        'd.postal_code',
+        'd.tax_id',
+        'd.trade_license_no',
+        'd.website',
+        'd.logo_url',
+        'd.notes',
         'd.status',
         'd.created_at',
+        'd.updated_at',
         'u.email as admin_email',
         'u.name as admin_name',
         'u.id as admin_user_id',
@@ -420,6 +446,132 @@ router.post('/:id/reactivate', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[dealers:reactivate] failed:', err);
     res.status(500).json({ error: err.message || 'Reactivate failed' });
+  }
+});
+
+/**
+ * PATCH /api/dealers/:id — update dealer business profile fields. Also lets
+ * the Super Admin rename / re-email / change phone for the linked dealer_admin
+ * user (those go on `users` + `profiles`, not on `dealers`).
+ *
+ * All fields are optional; only provided keys are updated. Strings are
+ * trimmed; empty strings clear the field (set to NULL) so the UI can erase
+ * a value by submitting "".
+ */
+const updateDealerSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  phone: z.string().trim().max(40).optional().or(z.literal('')),
+  email: z.string().trim().email().max(200).optional().or(z.literal('')),
+  owner_name: z.string().trim().max(200).optional().or(z.literal('')),
+  business_type: z.string().trim().max(100).optional().or(z.literal('')),
+  address: z.string().trim().max(500).optional().or(z.literal('')),
+  city: z.string().trim().max(100).optional().or(z.literal('')),
+  district: z.string().trim().max(100).optional().or(z.literal('')),
+  country: z.string().trim().max(100).optional().or(z.literal('')),
+  postal_code: z.string().trim().max(20).optional().or(z.literal('')),
+  tax_id: z.string().trim().max(50).optional().or(z.literal('')),
+  trade_license_no: z.string().trim().max(50).optional().or(z.literal('')),
+  website: z.string().trim().max(200).optional().or(z.literal('')),
+  logo_url: z.string().trim().max(500).optional().or(z.literal('')),
+  notes: z.string().trim().max(2000).optional().or(z.literal('')),
+  // Admin user fields (live on users + profiles, not on dealers)
+  admin_name: z.string().trim().min(1).max(200).optional(),
+  admin_email: z.string().trim().email().max(200).optional(),
+});
+
+router.patch('/:id', async (req: Request, res: Response) => {
+  try {
+    const dealerId = req.params.id;
+    const body = updateDealerSchema.parse(req.body || {});
+
+    const dealer = await db('dealers').where({ id: dealerId }).first();
+    if (!dealer) {
+      res.status(404).json({ error: 'Dealer not found' });
+      return;
+    }
+
+    // Build dealer-table update payload. Empty strings -> null, undefined -> skip.
+    const dealerKeys = [
+      'name', 'phone', 'email', 'owner_name', 'business_type', 'address',
+      'city', 'district', 'country', 'postal_code', 'tax_id',
+      'trade_license_no', 'website', 'logo_url', 'notes',
+    ] as const;
+
+    const dealerUpdate: Record<string, any> = {};
+    for (const k of dealerKeys) {
+      const v = (body as any)[k];
+      if (v === undefined) continue;
+      dealerUpdate[k] = v === '' ? null : v;
+    }
+
+    if (Object.keys(dealerUpdate).length > 0) {
+      dealerUpdate.updated_at = new Date();
+    }
+
+    let adminUpdated = false;
+    if (body.admin_name || body.admin_email) {
+      const admin = await db('profiles as p')
+        .leftJoin('user_roles as ur', 'ur.user_id', 'p.id')
+        .where('p.dealer_id', dealerId)
+        .where('ur.role', 'dealer_admin')
+        .select('p.id')
+        .first();
+
+      if (!admin?.id) {
+        res.status(400).json({ error: 'No dealer_admin user found for this dealer' });
+        return;
+      }
+
+      if (body.admin_email) {
+        const lower = body.admin_email.toLowerCase().trim();
+        const clash = await db('users')
+          .whereRaw('LOWER(email) = ?', [lower])
+          .whereNot({ id: admin.id })
+          .first();
+        if (clash) {
+          res.status(409).json({ error: 'That email is already used by another user' });
+          return;
+        }
+      }
+
+      await db.transaction(async (trx) => {
+        if (Object.keys(dealerUpdate).length > 0) {
+          await trx('dealers').where({ id: dealerId }).update(dealerUpdate);
+        }
+        const userPatch: Record<string, any> = { updated_at: new Date() };
+        const profilePatch: Record<string, any> = {};
+        if (body.admin_name) {
+          userPatch.name = body.admin_name;
+          profilePatch.name = body.admin_name;
+        }
+        if (body.admin_email) {
+          userPatch.email = body.admin_email.toLowerCase().trim();
+          profilePatch.email = body.admin_email.toLowerCase().trim();
+        }
+        await trx('users').where({ id: admin.id }).update(userPatch);
+        if (Object.keys(profilePatch).length > 0) {
+          await trx('profiles').where({ id: admin.id }).update(profilePatch);
+        }
+      });
+      adminUpdated = true;
+    } else if (Object.keys(dealerUpdate).length > 0) {
+      await db('dealers').where({ id: dealerId }).update(dealerUpdate);
+    }
+
+    if (Object.keys(dealerUpdate).length === 0 && !adminUpdated) {
+      res.status(400).json({ error: 'No changes provided' });
+      return;
+    }
+
+    const updated = await db('dealers').where({ id: dealerId }).first();
+    res.json({ success: true, dealer: updated });
+  } catch (err: any) {
+    if (err?.issues) {
+      res.status(400).json({ error: err.issues[0]?.message || 'Invalid input' });
+      return;
+    }
+    console.error('[dealers:update] failed:', err);
+    res.status(500).json({ error: err.message || 'Update failed' });
   }
 });
 
