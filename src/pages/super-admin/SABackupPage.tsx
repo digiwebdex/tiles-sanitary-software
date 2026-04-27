@@ -140,6 +140,71 @@ const SABackupPage = () => {
     onError: (err: any) => toast.error(err.message),
   });
 
+  // Local restore (vps_local / uploaded)
+  const localRestoreMutation = useMutation({
+    mutationFn: async (vars: {
+      backup_id: string; database_name: string; type?: string; confirm: string; notes?: string;
+    }) => {
+      return vpsJson<{ ok: boolean; restore_id: string; message: string }>(
+        "/api/backups/restore-local",
+        { method: "POST", body: JSON.stringify(vars) },
+      );
+    },
+    onSuccess: (r) => {
+      toast.success(r.message);
+      setRestoreDialog(null);
+      setConfirmText("");
+      refetchRestores();
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  // Upload
+  const handleUpload = async () => {
+    if (!uploadFile) { toast.error("Choose a backup file first."); return; }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      if (uploadDbName) fd.append("database_name", uploadDbName);
+      if (uploadNotes) fd.append("notes", uploadNotes);
+      const res = await vpsAuthedFetch("/api/backups/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Upload failed (${res.status})`);
+      toast.success(body.message || "Upload complete");
+      setUploadDialog(false);
+      setUploadFile(null);
+      setUploadDbName("");
+      setUploadNotes("");
+      refetchBackups();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = async (b: any) => {
+    try {
+      const res = await vpsAuthedFetch(`/api/backups/download/${b.id}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = b.file_name || "backup";
+      document.body.appendChild(a); a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) { toast.error(err.message); }
+  };
+
   const stats = {
     total: backups?.length || 0,
     successful: backups?.filter((b) => b.status === "uploaded").length || 0,
