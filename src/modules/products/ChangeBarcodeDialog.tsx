@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { productService } from "@/services/productService";
 
 interface Props {
   open: boolean;
@@ -25,22 +25,10 @@ const ChangeBarcodeDialog = ({ open, onOpenChange, product, dealerId }: Props) =
       if (!barcode.trim()) throw new Error("Barcode is required");
       if (!product) throw new Error("No product selected");
 
-      // Check uniqueness within dealer
-      const { data: existing } = await supabase
-        .from("products")
-        .select("id")
-        .eq("dealer_id", dealerId)
-        .eq("barcode", barcode.trim())
-        .neq("id", product.id)
-        .limit(1);
+      const isUnique = await productService.isBarcodeUnique(barcode, dealerId, product.id);
+      if (!isUnique) throw new Error("This barcode already exists for another product");
 
-      if (existing && existing.length > 0) throw new Error("This barcode already exists for another product");
-
-      const { error } = await supabase
-        .from("products")
-        .update({ barcode: barcode.trim() })
-        .eq("id", product.id);
-      if (error) throw new Error(error.message);
+      await productService.update(product.id, { barcode: barcode.trim() });
     },
     onSuccess: () => {
       toast.success("Barcode updated");
