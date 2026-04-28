@@ -378,6 +378,67 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
             <Card>
               <CardHeader className="pb-4">
                 <CardTitle className="text-sm font-semibold uppercase text-muted-foreground">
+                  Product Image
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-start gap-4">
+                  <div className="h-24 w-24 shrink-0 rounded-md border border-dashed border-border bg-muted/30 flex items-center justify-center overflow-hidden">
+                    {imageUrl ? (
+                      <img
+                        src={resolveImageUrl(imageUrl) ?? ""}
+                        alt="Product"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <ImagePlus className="h-8 w-8 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="inline-flex">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleImageChange}
+                        disabled={uploadingImage}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingImage}
+                        asChild
+                      >
+                        <span>
+                          <Upload className="mr-2 h-4 w-4" />
+                          {uploadingImage ? "Uploading…" : imageUrl ? "Replace Image" : "Upload Image"}
+                        </span>
+                      </Button>
+                    </label>
+                    {imageUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => form.setValue("image_url", "", { shouldDirty: true })}
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Remove
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      JPG, PNG, WEBP or GIF. Max 5 MB.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-semibold uppercase text-muted-foreground">
                   Pricing
                 </CardTitle>
               </CardHeader>
