@@ -23,6 +23,7 @@ const CreateProductPage = ({ dealerId }: CreateProductPageProps) => {
         category: values.category,
         dealer_id: dealerId,
         unit_type: values.unit_type,
+        cost_price: values.cost_price ?? 0,
         default_sale_rate: values.default_sale_rate,
         reorder_level: values.reorder_level,
         active: values.active,

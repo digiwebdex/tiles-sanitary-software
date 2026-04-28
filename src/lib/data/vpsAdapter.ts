@@ -46,7 +46,21 @@ async function parseOrThrow(res: Response, action: string): Promise<any> {
     );
   }
   if (!res.ok) {
-    throw new VpsAdapterError(body?.error || `VPS ${action} failed`, res.status, body);
+    // Surface Zod field issues so the user/dev sees which field is invalid
+    let detail = "";
+    const fieldErrors = body?.issues?.fieldErrors;
+    if (fieldErrors && typeof fieldErrors === "object") {
+      const parts: string[] = [];
+      for (const [k, v] of Object.entries(fieldErrors)) {
+        if (Array.isArray(v) && v.length) parts.push(`${k}: ${v.join(", ")}`);
+      }
+      if (parts.length) detail = ` — ${parts.join("; ")}`;
+    }
+    throw new VpsAdapterError(
+      (body?.error || `VPS ${action} failed`) + detail,
+      res.status,
+      body,
+    );
   }
   return body;
 }
