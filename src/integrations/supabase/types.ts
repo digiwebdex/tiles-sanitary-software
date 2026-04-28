@@ -3871,6 +3871,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      assign_dealer_admin_role: {
+        Args: { _user_id: string }
+        Returns: undefined
+      }
       cancel_approval_request: {
         Args: { _cancel_reason?: string; _request_id: string }
         Returns: string

@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     // ── 4. Assign dealer_admin role ──
     const { error: roleErr } = await serviceClient
       .from("user_roles")
-      .insert({ user_id: userId, role: "dealer_admin" });
+      .upsert({ user_id: userId, role: "dealer_admin" }, { onConflict: "user_id,role" });
 
     if (roleErr) {
       console.error("Role insert error:", roleErr);

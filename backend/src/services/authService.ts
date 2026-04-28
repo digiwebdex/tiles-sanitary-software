@@ -423,26 +423,34 @@ export const authService = {
     dealerId?: string;
     role: 'dealer_admin' | 'salesman' | 'super_admin';
   }) {
+    if ((data.role === 'dealer_admin' || data.role === 'salesman') && !data.dealerId) {
+      throw new Error(`${data.role} users must be linked to a dealer`);
+    }
+
     const hash = await this.hashPassword(data.password);
 
-    const [user] = await db('users')
-      .insert({
-        email: data.email.toLowerCase().trim(),
-        password_hash: hash,
+    const user = await db.transaction(async (trx) => {
+      const [createdUser] = await trx('users')
+        .insert({
+          email: data.email.toLowerCase().trim(),
+          password_hash: hash,
+          name: data.name.trim(),
+        })
+        .returning('*');
+
+      await trx('profiles').insert({
+        id: createdUser.id,
         name: data.name.trim(),
-      })
-      .returning('*');
+        email: data.email.toLowerCase().trim(),
+        dealer_id: data.dealerId ?? null,
+      });
 
-    await db('profiles').insert({
-      id: user.id,
-      name: data.name.trim(),
-      email: data.email.toLowerCase().trim(),
-      dealer_id: data.dealerId ?? null,
-    });
+      await trx('user_roles')
+        .insert({ user_id: createdUser.id, role: data.role })
+        .onConflict(['user_id', 'role'])
+        .ignore();
 
-    await db('user_roles').insert({
-      user_id: user.id,
-      role: data.role,
+      return createdUser;
     });
 
     return user;
@@ -502,8 +510,11 @@ export const authService = {
         dealer_id: dId,
       });
 
-      // 4. Role
-      await trx('user_roles').insert({ user_id: user.id, role: 'dealer_admin' });
+      // 4. Dealer owner role. This must succeed before signup is considered provisioned.
+      await trx('user_roles')
+        .insert({ user_id: user.id, role: 'dealer_admin' })
+        .onConflict(['user_id', 'role'])
+        .ignore();
 
       // 5. Invoice sequence (so first sale doesn't race the upsert)
       await trx('invoice_sequences').insert({
