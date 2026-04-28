@@ -95,9 +95,29 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
       material: "",
       weight: "",
       warranty: "",
+      image_url: "",
       ...defaultValues,
     },
   });
+
+  const imageUrl = form.watch("image_url");
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const result = await uploadProductImage(file);
+      form.setValue("image_url", result.url, { shouldDirty: true });
+      toast.success("Image uploaded");
+    } catch (err: any) {
+      toast.error(err?.message || "Image upload failed");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const category = form.watch("category");
   const unitType = form.watch("unit_type");
