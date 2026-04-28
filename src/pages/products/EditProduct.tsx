@@ -96,6 +96,7 @@ const EditProductPage = () => {
           material: (product as any).material ?? "",
           weight: (product as any).weight ?? "",
           warranty: (product as any).warranty ?? "",
+          image_url: (product as any).image_url ?? "",
         }}
         onSubmit={async (v) => { await mutation.mutateAsync(v); }}
         isLoading={mutation.isPending}
