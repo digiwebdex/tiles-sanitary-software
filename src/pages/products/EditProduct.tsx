@@ -36,7 +36,8 @@ const EditProductPage = () => {
         material: (values as any).material || null,
         weight: (values as any).weight || null,
         warranty: (values as any).warranty || null,
-      };
+        image_url: (values as any).image_url || null,
+      } as any;
       await productService.update(id!, updatePayload);
 
       // Detect price change
@@ -95,6 +96,7 @@ const EditProductPage = () => {
           material: (product as any).material ?? "",
           weight: (product as any).weight ?? "",
           warranty: (product as any).warranty ?? "",
+          image_url: (product as any).image_url ?? "",
         }}
         onSubmit={async (v) => { await mutation.mutateAsync(v); }}
         isLoading={mutation.isPending}

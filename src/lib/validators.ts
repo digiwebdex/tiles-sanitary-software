@@ -32,6 +32,7 @@ export const createProductServiceSchema = z.object({
   weight: optionalSafeText(50),
   warranty: optionalSafeText(100),
   active: z.boolean().default(true),
+  image_url: z.string().trim().max(500).nullable().optional(),
 });
 
 export const updateProductServiceSchema = createProductServiceSchema.partial().omit({ dealer_id: true });

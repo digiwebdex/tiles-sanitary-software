@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { productSchema, type ProductFormValues } from "@/modules/products/productSchema";
@@ -25,9 +25,11 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Shuffle } from "lucide-react";
+import { Shuffle, Upload, X, ImagePlus } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { productService } from "@/services/productService";
+import { uploadProductImage, resolveImageUrl } from "@/lib/uploads";
+import { toast } from "sonner";
 
 interface ProductFormProps {
   defaultValues?: Partial<ProductFormValues>;
@@ -93,9 +95,30 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
       material: "",
       weight: "",
       warranty: "",
+      image_url: "",
       ...defaultValues,
     },
   });
+
+  const imageUrl = form.watch("image_url");
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const result = await uploadProductImage(file);
+      form.setValue("image_url", result.url, { shouldDirty: true });
+      toast.success("Image uploaded");
+    } catch (err: any) {
+      toast.error(err?.message || "Image upload failed");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const category = form.watch("category");
   const unitType = form.watch("unit_type");
@@ -353,6 +376,63 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
 
           {/* Right Column — Pricing & Settings */}
           <div className="space-y-6">
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-semibold uppercase text-muted-foreground">
+                  Product Image
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-start gap-4">
+                  <div className="h-24 w-24 shrink-0 rounded-md border border-dashed border-border bg-muted/30 flex items-center justify-center overflow-hidden">
+                    {imageUrl ? (
+                      <img
+                        src={resolveImageUrl(imageUrl) ?? ""}
+                        alt="Product"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <ImagePlus className="h-8 w-8 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={handleImageChange}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingImage}
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      {uploadingImage ? "Uploading…" : imageUrl ? "Replace Image" : "Upload Image"}
+                    </Button>
+                    {imageUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => form.setValue("image_url", "", { shouldDirty: true })}
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Remove
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      JPG, PNG, WEBP or GIF. Max 5 MB.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader className="pb-4">
                 <CardTitle className="text-sm font-semibold uppercase text-muted-foreground">

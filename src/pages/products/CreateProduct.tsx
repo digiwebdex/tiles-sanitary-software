@@ -34,7 +34,8 @@ const CreateProductPage = ({ dealerId }: CreateProductPageProps) => {
         material: (values as any).material || null,
         weight: (values as any).weight || null,
         warranty: (values as any).warranty || null,
-      });
+        ...((values as any).image_url ? { image_url: (values as any).image_url } : {}),
+      } as any);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
