@@ -75,6 +75,7 @@ const WRITABLE = new Set([
   'default_sale_rate',
   'reorder_level',
   'active',
+  'image_url',
 ]);
 
 const productWriteSchema = z.object({
