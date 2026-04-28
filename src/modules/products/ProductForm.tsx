@@ -102,6 +102,7 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
 
   const imageUrl = form.watch("image_url");
   const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
