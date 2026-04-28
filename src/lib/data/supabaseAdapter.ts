@@ -49,6 +49,19 @@ export function createSupabaseAdapter<T = unknown>(
         }
       }
 
+      // Per-resource free-text search (mirrors legacy OR-ilike semantics).
+      const trimmed = query.search?.trim();
+      if (trimmed) {
+        const escaped = trimmed.replace(/[%_]/g, (m) => `\\${m}`);
+        if (resource === "PRODUCTS") {
+          q = q.or(
+            `sku.ilike.%${escaped}%,name.ilike.%${escaped}%,barcode.ilike.%${escaped}%`,
+          );
+        } else if (resource === "CUSTOMERS" || resource === "SUPPLIERS") {
+          q = q.or(`name.ilike.%${escaped}%,phone.ilike.%${escaped}%`);
+        }
+      }
+
       if (query.orderBy) {
         q = q.order(query.orderBy.column, {
           ascending: query.orderBy.direction === "asc",
