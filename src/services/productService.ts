@@ -71,18 +71,11 @@ export const productService = {
     return { data: result.rows, total: result.total };
   },
 
-  async getById(id: string) {
-    const dealerId = await resolveCurrentDealerId();
+  async getById(id: string, dealerIdOverride?: string) {
+    const dealerId = dealerIdOverride || (await resolveCurrentDealerId());
 
     if (!dealerId) {
-      // super_admin contexts without an impersonation target — legacy direct read.
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .eq("id", id)
-        .single();
-      if (error) throw new Error(error.message);
-      return data as Product;
+      throw new Error("Cannot load product: no dealer context found.");
     }
 
     const row = await productsAdapter.getById(id, dealerId);
@@ -125,6 +118,37 @@ export const productService = {
     const { dealer_id: _omit, ...rest } = product as Record<string, unknown>;
 
     return productsAdapter.update(id, rest as Partial<Product>, dealerId) as Promise<Product>;
+  },
+
+  async remove(id: string, dealerId?: string) {
+    const resolvedDealerId = dealerId ?? (await resolveCurrentDealerId());
+    if (!resolvedDealerId) {
+      throw new Error("Cannot delete product: no dealer context found.");
+    }
+
+    await productsAdapter.remove(id, resolvedDealerId);
+  },
+
+  async isSkuUnique(sku: string, dealerId: string, productId?: string) {
+    const result = await productsAdapter.list({
+      dealerId,
+      page: 0,
+      pageSize: 1,
+      filters: { sku: sku.trim() },
+    });
+    const existing = result.rows[0];
+    return !existing || existing.id === productId;
+  },
+
+  async isBarcodeUnique(barcode: string, dealerId: string, productId?: string) {
+    const result = await productsAdapter.list({
+      dealerId,
+      page: 0,
+      pageSize: 1,
+      filters: { barcode: barcode.trim() },
+    });
+    const existing = result.rows[0];
+    return !existing || existing.id === productId;
   },
 
   async toggleActive(id: string, active: boolean) {

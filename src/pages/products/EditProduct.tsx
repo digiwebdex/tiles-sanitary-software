@@ -21,7 +21,7 @@ const EditProductPage = () => {
 
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", id],
-    queryFn: () => productService.getById(id!),
+    queryFn: () => productService.getById(id!, profile?.dealer_id ?? undefined),
     enabled: !!id,
   });
 

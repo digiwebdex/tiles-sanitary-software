@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Shuffle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { productService } from "@/services/productService";
 
 interface ProductFormProps {
   defaultValues?: Partial<ProductFormValues>;
@@ -71,14 +72,7 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
   /** Check SKU uniqueness per dealer */
   const checkSkuUnique = async (sku: string): Promise<boolean> => {
     if (!dealerId || !sku.trim()) return true;
-    let query = supabase
-      .from("products")
-      .select("id", { count: "exact", head: true })
-      .eq("dealer_id", dealerId)
-      .eq("sku", sku.trim());
-    if (productId) query = query.neq("id", productId);
-    const { count } = await query;
-    return (count ?? 0) === 0;
+    return productService.isSkuUnique(sku, dealerId, productId);
   };
 
   const form = useForm<ProductFormValues>({

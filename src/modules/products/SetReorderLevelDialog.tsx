@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { productService } from "@/services/productService";
 
 interface Props {
   open: boolean;
@@ -25,11 +25,7 @@ const SetReorderLevelDialog = ({ open, onOpenChange, product }: Props) => {
       if (isNaN(val) || val < 0) throw new Error("Level must be >= 0");
       if (!product) throw new Error("No product selected");
 
-      const { error } = await supabase
-        .from("products")
-        .update({ reorder_level: val })
-        .eq("id", product.id);
-      if (error) throw new Error(error.message);
+      await productService.update(product.id, { reorder_level: val });
     },
     onSuccess: () => {
       toast.success("Reorder level updated");

@@ -70,7 +70,14 @@ function parseDataBackend(raw: string): DataBackend {
 
 const DATA_BACKENDS: Record<DataResource, DataBackend> = DATA_RESOURCES.reduce(
   (acc, key) => {
-    acc[key] = parseDataBackend(optionalEnv(`VITE_DATA_${key}`, "supabase"));
+    const raw = optionalEnv(`VITE_DATA_${key}`, "");
+    // Production safety: app.sanitileserp.com must never fall back to the
+    // legacy products PostgREST path if the production build env is stale.
+    if (key === "PRODUCTS" && !raw && isSanitilesHost) {
+      acc[key] = "vps";
+      return acc;
+    }
+    acc[key] = parseDataBackend(raw || "supabase");
     return acc;
   },
   {} as Record<DataResource, DataBackend>,

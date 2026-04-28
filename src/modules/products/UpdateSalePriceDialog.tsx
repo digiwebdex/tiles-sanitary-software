@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/services/auditService";
 import { formatCurrency } from "@/lib/utils";
+import { productService } from "@/services/productService";
 
 interface Props {
   open: boolean;
@@ -31,11 +31,7 @@ const UpdateSalePriceDialog = ({ open, onOpenChange, product, dealerId }: Props)
       if (!reason.trim()) throw new Error("Reason is required for price changes");
       if (!product) throw new Error("No product selected");
 
-      const { error } = await supabase
-        .from("products")
-        .update({ default_sale_rate: price })
-        .eq("id", product.id);
-      if (error) throw new Error(error.message);
+      await productService.update(product.id, { default_sale_rate: price });
 
       await logAudit({
         dealer_id: dealerId,

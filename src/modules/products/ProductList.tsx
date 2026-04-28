@@ -166,8 +166,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("products").delete().eq("id", id);
-      if (error) throw new Error(error.message);
+      await productService.remove(id, dealerId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
