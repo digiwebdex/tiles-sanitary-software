@@ -25,9 +25,11 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Shuffle } from "lucide-react";
+import { Shuffle, Upload, X, ImagePlus } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { productService } from "@/services/productService";
+import { uploadProductImage, resolveImageUrl } from "@/lib/uploads";
+import { toast } from "sonner";
 
 interface ProductFormProps {
   defaultValues?: Partial<ProductFormValues>;
