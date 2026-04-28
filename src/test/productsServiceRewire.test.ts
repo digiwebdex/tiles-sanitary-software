@@ -111,24 +111,24 @@ describe("Phase 3D — productService routes reads through dataClient", () => {
     expect(supabaseFromMock).not.toHaveBeenCalled();
   });
 
-  it("search list → bypasses adapter, uses legacy Supabase OR-ilike(sku|name|barcode)", async () => {
-    supabaseRangeMock.mockResolvedValueOnce({
-      data: [{ id: "p2", name: "Beta", sku: "B-001" }],
-      error: null,
-      count: 1,
+  it("search list → routes through adapter with `search` param (cutover behavior)", async () => {
+    adapterListMock.mockResolvedValueOnce({
+      rows: [{ id: "p2", name: "Beta", sku: "B-001" }],
+      total: 1,
     });
 
     const result = await productService.list("dealer-1", "bet", 2);
 
-    expect(adapterListMock).not.toHaveBeenCalled();
-    expect(supabaseFromMock).toHaveBeenCalledWith("products");
-    expect(supabaseEqMock).toHaveBeenCalledWith("dealer_id", "dealer-1");
-    expect(supabaseOrMock).toHaveBeenCalledWith(
-      "sku.ilike.%bet%,name.ilike.%bet%,barcode.ilike.%bet%",
-    );
-    expect(supabaseOrderMock).toHaveBeenCalledWith("created_at", { ascending: false });
-    // page 2 → from=25, to=49
-    expect(supabaseRangeMock).toHaveBeenCalledWith(25, 49);
+    expect(adapterListMock).toHaveBeenCalledTimes(1);
+    expect(adapterListMock).toHaveBeenCalledWith({
+      dealerId: "dealer-1",
+      page: 1, // 1-indexed UI page 2 → 0-indexed adapter page 1
+      pageSize: 25,
+      search: "bet",
+      orderBy: { column: "created_at", direction: "desc" },
+    });
+    // Direct Supabase path no longer used for search after VPS cutover.
+    expect(supabaseFromMock).not.toHaveBeenCalled();
     expect(result).toEqual({
       data: [{ id: "p2", name: "Beta", sku: "B-001" }],
       total: 1,
