@@ -17,6 +17,7 @@ export const productSchema = z
     material: z.string().trim().max(50).optional().or(z.literal("")),
     weight: z.string().trim().max(30).optional().or(z.literal("")),
     warranty: z.string().trim().max(50).optional().or(z.literal("")),
+    image_url: z.string().trim().max(500).optional().nullable().or(z.literal("")),
   })
   .superRefine((data, ctx) => {
     if (data.unit_type === "box_sft" && (!data.per_box_sft || data.per_box_sft <= 0)) {
