@@ -21,6 +21,8 @@ import googleDriveRoutes from './routes/googleDrive';
 import auditLogsRoutes from './routes/auditLogs';
 import subscriptionStatusRoutes from './routes/subscriptionStatus';
 import notificationsRoutes from './routes/notifications';
+import uploadsRoutes from './routes/uploads';
+import path from 'path';
 
 const app = express();
 app.set('trust proxy', 1);
