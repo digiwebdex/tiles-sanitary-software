@@ -38,6 +38,10 @@ export async function up(knex: Knex): Promise<void> {
   `);
 
   await knex.raw(`
+    REVOKE ALL ON FUNCTION assign_dealer_admin_role(uuid) FROM PUBLIC;
+  `);
+
+  await knex.raw(`
     INSERT INTO user_roles (user_id, role)
     SELECT p.id, 'dealer_admin'::app_role
     FROM profiles p
