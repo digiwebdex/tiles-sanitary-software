@@ -36,7 +36,8 @@ const EditProductPage = () => {
         material: (values as any).material || null,
         weight: (values as any).weight || null,
         warranty: (values as any).warranty || null,
-      };
+        image_url: (values as any).image_url || null,
+      } as any;
       await productService.update(id!, updatePayload);
 
       // Detect price change
