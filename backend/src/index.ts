@@ -99,6 +99,16 @@ app.use('/api/google-drive', googleDriveRoutes);
 app.use('/api/audit-logs', auditLogsRoutes);
 app.use('/api/subscription', subscriptionStatusRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/uploads', uploadsRoutes);
+
+// Static file serving for uploaded product images, etc.
+app.use(
+  '/uploads',
+  express.static(path.resolve(process.cwd(), 'uploads'), {
+    maxAge: '7d',
+    fallthrough: true,
+  }),
+);
 
 // ── 404 handler ──
 app.use((_req, res) => {
