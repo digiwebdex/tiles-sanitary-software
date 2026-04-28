@@ -55,6 +55,7 @@ const FILTERABLE = new Set([
   'brand',
   'unit_type',
   'sku',
+  'barcode',
 ]);
 
 const WRITABLE = new Set([
