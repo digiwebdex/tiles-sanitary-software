@@ -396,27 +396,23 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
                     )}
                   </div>
                   <div className="flex-1 space-y-2">
-                    <label className="inline-flex">
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        className="hidden"
-                        onChange={handleImageChange}
-                        disabled={uploadingImage}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={uploadingImage}
-                        asChild
-                      >
-                        <span>
-                          <Upload className="mr-2 h-4 w-4" />
-                          {uploadingImage ? "Uploading…" : imageUrl ? "Replace Image" : "Upload Image"}
-                        </span>
-                      </Button>
-                    </label>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={handleImageChange}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingImage}
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      {uploadingImage ? "Uploading…" : imageUrl ? "Replace Image" : "Upload Image"}
+                    </Button>
                     {imageUrl && (
                       <Button
                         type="button"
