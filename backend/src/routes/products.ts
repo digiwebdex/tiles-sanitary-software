@@ -95,6 +95,7 @@ const productWriteSchema = z.object({
   default_sale_rate: z.number().finite().min(0).optional(),
   reorder_level: z.number().finite().min(0).optional(),
   active: z.boolean().optional(),
+  image_url: z.string().trim().max(500).nullable().optional(),
 });
 
 function resolveDealerScope(req: Request, res: Response): string | null {
