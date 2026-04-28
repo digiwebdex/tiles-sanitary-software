@@ -127,6 +127,37 @@ export const productService = {
     return productsAdapter.update(id, rest as Partial<Product>, dealerId) as Promise<Product>;
   },
 
+  async remove(id: string, dealerId?: string) {
+    const resolvedDealerId = dealerId ?? (await resolveCurrentDealerId());
+    if (!resolvedDealerId) {
+      throw new Error("Cannot delete product: no dealer context found.");
+    }
+
+    await productsAdapter.remove(id, resolvedDealerId);
+  },
+
+  async isSkuUnique(sku: string, dealerId: string, productId?: string) {
+    const result = await productsAdapter.list({
+      dealerId,
+      page: 0,
+      pageSize: 1,
+      filters: { sku: sku.trim() },
+    });
+    const existing = result.rows[0];
+    return !existing || existing.id === productId;
+  },
+
+  async isBarcodeUnique(barcode: string, dealerId: string, productId?: string) {
+    const result = await productsAdapter.list({
+      dealerId,
+      page: 0,
+      pageSize: 1,
+      filters: { barcode: barcode.trim() },
+    });
+    const existing = result.rows[0];
+    return !existing || existing.id === productId;
+  },
+
   async toggleActive(id: string, active: boolean) {
     return this.update(id, { active });
   },
