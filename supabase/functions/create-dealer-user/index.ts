@@ -125,15 +125,25 @@ Deno.serve(async (req) => {
 
     if (profileError) {
       console.error("Profile update error:", profileError);
+      await serviceClient.auth.admin.deleteUser(userId);
+      return new Response(JSON.stringify({ error: "Failed to provision user profile" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Assign role
     const { error: roleError } = await serviceClient
       .from("user_roles")
-      .insert({ user_id: userId, role });
+      .upsert({ user_id: userId, role }, { onConflict: "user_id,role" });
 
     if (roleError) {
       console.error("Role insert error:", roleError);
+      await serviceClient.auth.admin.deleteUser(userId);
+      return new Response(JSON.stringify({ error: "Failed to assign account role" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(
