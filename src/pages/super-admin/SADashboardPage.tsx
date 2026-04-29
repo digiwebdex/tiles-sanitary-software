@@ -54,18 +54,27 @@ const SADashboardPage = () => {
   const { data, isLoading } = useQuery({
     queryKey: ["sa-dashboard-full"],
     queryFn: async () => {
-      const [dealersRes, subsRes, paymentsRes] = await Promise.all([
-        supabase.from("dealers").select("id, status"),
-        supabase.from("subscriptions").select("id, status, start_date, end_date, plan_id, dealer_id, subscription_plans!subscriptions_plan_id_fkey(monthly_price, yearly_price)"),
-        supabase.from("subscription_payments").select("id, amount, payment_date, payment_status"),
-      ]);
+      let dealers: any[] = [];
+      let subs: any[] = [];
+      let payments: any[] = [];
 
-      if (dealersRes.error) throw new Error(dealersRes.error.message);
-      if (subsRes.error) throw new Error(subsRes.error.message);
-
-      const dealers = dealersRes.data ?? [];
-      const subs = subsRes.data ?? [];
-      const payments = paymentsRes.data ?? [];
+      if (env.AUTH_BACKEND === "vps") {
+        const body = await vpsJson<{ dealers: any[]; subscriptions: any[]; payments: any[] }>("/api/subscriptions/dashboard");
+        dealers = body.dealers ?? [];
+        subs = body.subscriptions ?? [];
+        payments = body.payments ?? [];
+      } else {
+        const [dealersRes, subsRes, paymentsRes] = await Promise.all([
+          supabase.from("dealers").select("id, status"),
+          supabase.from("subscriptions").select("id, status, start_date, end_date, plan_id, dealer_id, subscription_plans!subscriptions_plan_id_fkey(monthly_price, yearly_price)"),
+          supabase.from("subscription_payments").select("id, amount, payment_date, payment_status"),
+        ]);
+        if (dealersRes.error) throw new Error(dealersRes.error.message);
+        if (subsRes.error) throw new Error(subsRes.error.message);
+        dealers = dealersRes.data ?? [];
+        subs = dealersRes.data ? (subsRes.data ?? []) : [];
+        payments = paymentsRes.data ?? [];
+      }
 
       const totalDealers = dealers.length;
       const activeSubs = subs.filter((s: any) => s.status === "active").length;
@@ -76,14 +85,18 @@ const SADashboardPage = () => {
       const now = new Date();
       const graceDealers = subs.filter((s: any) => {
         if (s.status !== "expired" || !s.end_date) return false;
-        const daysSince = differenceInDays(now, parseISO(s.end_date));
+        const end = parseLocalDate(s.end_date);
+        if (!end) return false;
+        const daysSince = differenceInDays(now, end);
         return daysSince >= 0 && daysSince <= GRACE_DAYS;
       }).length;
 
       // Expiring soon: active subs with end_date within 7 days
       const expiringSoon = subs.filter((s: any) => {
         if (s.status !== "active" || !s.end_date) return false;
-        const daysLeft = differenceInDays(parseISO(s.end_date), now);
+        const end = parseLocalDate(s.end_date);
+        if (!end) return false;
+        const daysLeft = differenceInDays(end, now);
         return daysLeft >= 0 && daysLeft <= 7;
       }).length;
 
