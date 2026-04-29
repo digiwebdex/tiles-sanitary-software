@@ -584,8 +584,8 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                   );
                 })}
                 {/* Summary Footer */}
-                {products.length > 0 && (() => {
-                  const totals = products.reduce(
+                {filteredProducts.length > 0 && (() => {
+                  const totals = filteredProducts.reduce(
                     (acc, p) => {
                       const si = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0, reservedBox: 0, reservedPiece: 0 };
                       acc.box += si.box;
