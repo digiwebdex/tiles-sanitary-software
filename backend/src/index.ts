@@ -147,15 +147,20 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 async function start() {
   console.log(`[TilesERP] Starting in ${env.NODE_ENV} mode...`);
 
+  const server = app.listen(env.PORT, '127.0.0.1', () => {
+    console.log(`[API] Server running on 127.0.0.1:${env.PORT}`);
+  });
+
   const dbOk = await checkDbConnection();
   if (!dbOk) {
-    console.error('[DB] Cannot connect to database. Exiting.');
-    process.exit(1);
+    console.error('[DB] Cannot connect to database. API stays online for health diagnostics.');
+    return;
   }
   console.log('[DB] Connected successfully');
 
-  app.listen(env.PORT, () => {
-    console.log(`[API] Server running on port ${env.PORT}`);
+  server.on('error', (err) => {
+    console.error('[API] Server error:', err);
+    process.exit(1);
   });
 }
 
