@@ -77,6 +77,15 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: { error: 'Too many login attempts. Try again in 15 minutes.' },
+  skip: (req) => {
+    const path = req.originalUrl.split('?')[0];
+    return [
+      '/api/auth/me',
+      '/api/auth/refresh',
+      '/api/auth/logout',
+      '/api/auth/lock-status',
+    ].includes(path);
+  },
 });
 
 // ── Body parsers ──
