@@ -30,9 +30,18 @@ app.set('trust proxy', 1);
 // ── Security ──
 app.use(helmet());
 
-const allowedOrigins = env.CORS_ORIGIN.split(',')
-  .map(origin => origin.trim())
-  .filter(Boolean);
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'https://sanitileserp.com',
+  'https://www.sanitileserp.com',
+  'https://app.sanitileserp.com',
+  'https://portal.sanitileserp.com',
+];
+
+const allowedOrigins = Array.from(new Set([
+  ...DEFAULT_ALLOWED_ORIGINS,
+  ...env.CORS_ORIGIN.split(',').map(origin => origin.trim()).filter(Boolean),
+]));
 
 // P0 hardening: hardcode the allowed headers + methods. Never reflect
 // `Access-Control-Request-Headers` from the browser — that would let
