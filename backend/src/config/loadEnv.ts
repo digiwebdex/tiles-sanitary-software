@@ -8,13 +8,21 @@ const buildDatabaseUrl = (password: string) => {
 };
 
 export function loadBackendEnv() {
-  const envPaths = Array.from(new Set([
+  const rootEnvPaths = Array.from(new Set([
     path.resolve(process.cwd(), '../.env'),
     path.resolve(__dirname, '../../../.env'),
+  ]));
+  const localEnvPaths = Array.from(new Set([
     path.resolve(process.cwd(), '.env'),
     path.resolve(__dirname, '../../.env'),
   ]));
 
+  const rootEnv = rootEnvPaths
+    .find((envPath) => fs.existsSync(envPath));
+  const parsedRootEnv = rootEnv ? parseDotenv(fs.readFileSync(rootEnv)) : {};
+  const isProduction = process.env.NODE_ENV === 'production' || parsedRootEnv.NODE_ENV === 'production';
+
+  const envPaths = isProduction ? rootEnvPaths : [...rootEnvPaths, ...localEnvPaths];
   const existingEnvs = envPaths
     .filter((envPath) => fs.existsSync(envPath))
     .map((envPath) => ({
@@ -26,7 +34,8 @@ export function loadBackendEnv() {
     loadDotenv({ path: envFile.path, override: index === 0 });
   }
 
-  const databaseEnv = existingEnvs.find(({ parsed }) => parsed.DATABASE_URL || parsed.DB_PASSWORD)?.parsed;
+  const databaseEnv = (isProduction ? [{ parsed: parsedRootEnv }] : existingEnvs)
+    .find(({ parsed }) => parsed.DATABASE_URL || parsed.DB_PASSWORD)?.parsed;
   if (databaseEnv?.DATABASE_URL) {
     process.env.DATABASE_URL = databaseEnv.DATABASE_URL;
   } else if (databaseEnv?.DB_PASSWORD) {
