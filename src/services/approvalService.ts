@@ -1,5 +1,25 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/services/auditService";
+import { env } from "@/config/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsJson(path: string, init?: RequestInit) {
+  const res = await vpsAuthedFetch(path, init);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    let msg = `Request failed (${res.status})`;
+    try {
+      const j = JSON.parse(txt);
+      msg = typeof j.error === "string" ? j.error : JSON.stringify(j.error ?? j);
+    } catch {
+      if (txt) msg = txt;
+    }
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : await res.json();
+}
 
 // ── Types ──────────────────────────────────────────────────────────────
 export type ApprovalType =
