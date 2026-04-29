@@ -91,7 +91,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     queryFn: async () => {
       const { data } = await supabase
         .from("products")
-        .select("id, default_cost, reorder_level, unit_type")
+        .select("id, cost_price, reorder_level, unit_type")
         .eq("dealer_id", dealerId);
       return data ?? [];
     },
