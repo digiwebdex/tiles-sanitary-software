@@ -8,6 +8,20 @@ import { rateLimits } from "@/lib/rateLimit";
 import { notificationService } from "@/services/notificationService";
 import { batchService, type FIFOAllocationResult } from "@/services/batchService";
 import { consumeReservation } from "@/services/reservationService";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
 
 export interface SaleItemInput {
   product_id: string;
@@ -190,6 +204,17 @@ export const salesService = {
     search?: string,
     opts: { projectId?: string | null; siteId?: string | null } = {},
   ) {
+    if (USE_VPS) {
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      if (opts.projectId) params.set("projectId", opts.projectId);
+      if (opts.siteId) params.set("siteId", opts.siteId);
+      const body = await vpsRequest<{ data: any[]; total: number }>(
+        `/api/sales?${params.toString()}`,
+      );
+      return { data: body.data ?? [], total: body.total ?? 0 };
+    }
+
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
@@ -213,6 +238,9 @@ export const salesService = {
   },
 
   async getById(id: string) {
+    if (USE_VPS) {
+      return await vpsRequest<any>(`/api/sales/${id}`);
+    }
     const { data, error } = await supabase
       .from("sales")
       .select("*, customers(name, type, phone, address), sale_items(*, products(name, sku, unit_type, per_box_sft))")
