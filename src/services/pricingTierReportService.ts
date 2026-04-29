@@ -64,6 +64,7 @@ export interface ManualOverrideRow {
 
 export const pricingTierReportService = {
   async tierList(dealerId: string): Promise<TierListRow[]> {
+    if (USE_VPS) return vpsGet<TierListRow[]>(`/api/reports/pricing-tier/tiers?dealerId=${encodeURIComponent(dealerId)}`);
     const [tiersRes, itemsRes, custRes] = await Promise.all([
       supabase.from("price_tiers").select("id, name, status, is_default").eq("dealer_id", dealerId).order("name"),
       supabase.from("price_tier_items").select("tier_id").eq("dealer_id", dealerId),
@@ -92,6 +93,7 @@ export const pricingTierReportService = {
   },
 
   async customersByTier(dealerId: string): Promise<CustomerTierRow[]> {
+    if (USE_VPS) return vpsGet<CustomerTierRow[]>(`/api/reports/pricing-tier/customers?dealerId=${encodeURIComponent(dealerId)}`);
     const { data: customers, error } = await supabase
       .from("customers")
       .select("id, name, type, price_tier_id, price_tiers(name)")
