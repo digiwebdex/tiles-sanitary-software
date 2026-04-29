@@ -408,6 +408,28 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         </div>
       </div>
 
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Total Products</div>
+          <div className="mt-1 text-2xl font-bold text-foreground">{summary.totalProducts}</div>
+        </div>
+        {permissions.canViewCostPrice && (
+          <div className="rounded-lg border bg-card p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Total Stock Value</div>
+            <div className="mt-1 text-2xl font-bold text-primary">{formatCurrency(summary.stockValue)}</div>
+          </div>
+        )}
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Low Stock</div>
+          <div className="mt-1 text-2xl font-bold text-amber-500">{summary.lowStock}</div>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Out of Stock</div>
+          <div className="mt-1 text-2xl font-bold text-destructive">{summary.outOfStock}</div>
+        </div>
+      </div>
+
       {/* Smart Filter Bar */}
       <div className="rounded-lg border bg-card p-3 space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
