@@ -296,6 +296,23 @@ export async function createApprovalRequest(params: {
 }): Promise<ApprovalRequest> {
   const actionHash = await generateActionHash(params.approvalType, params.context);
 
+  if (USE_VPS) {
+    const json = await vpsJson(`/api/approvals?dealerId=${encodeURIComponent(params.dealerId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        approval_type: params.approvalType,
+        source_type: params.sourceType,
+        source_id: params.sourceId ?? null,
+        reason: params.reason ?? null,
+        context: params.context,
+        action_hash: actionHash,
+        expiry_hours: params.expiryHours,
+      }),
+    });
+    return json.request as ApprovalRequest;
+  }
+
   // Auto-approve for admins if setting enabled
   const shouldAutoApprove = params.isAdmin && (params.autoApproveForAdmins ?? true);
   const status = shouldAutoApprove ? "auto_approved" : "pending";
@@ -353,6 +370,14 @@ export async function decideApprovalRequest(
   decision: "approved" | "rejected",
   decisionNote?: string
 ): Promise<void> {
+  if (USE_VPS) {
+    await vpsJson(`/api/approvals/${encodeURIComponent(requestId)}/decide`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, decision_note: decisionNote ?? null }),
+    });
+    return;
+  }
   const { error } = await supabase.rpc("decide_approval_request", {
     _request_id: requestId,
     _decision: decision,
@@ -370,6 +395,14 @@ export async function consumeApprovalRequest(
   actionHash: string,
   sourceId?: string
 ): Promise<void> {
+  if (USE_VPS) {
+    await vpsJson(`/api/approvals/${encodeURIComponent(requestId)}/consume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action_hash: actionHash, source_id: sourceId ?? null }),
+    });
+    return;
+  }
   const { error } = await supabase.rpc("consume_approval_request", {
     _request_id: requestId,
     _action_hash: actionHash,
@@ -388,6 +421,21 @@ export async function findValidApproval(
   context: ApprovalContextData
 ): Promise<ApprovalRequest | null> {
   const actionHash = await generateActionHash(approvalType, context);
+
+  if (USE_VPS) {
+    const json = await vpsJson(
+      `/api/approvals?dealerId=${encodeURIComponent(dealerId)}&type=${encodeURIComponent(approvalType)}`,
+    );
+    const rows = (json.rows ?? []) as ApprovalRequest[];
+    const match = rows.find(
+      (r) =>
+        r.action_hash === actionHash &&
+        ["approved", "auto_approved"].includes(r.status) &&
+        !r.consumed_at &&
+        (!r.expires_at || new Date(r.expires_at) >= new Date()),
+    );
+    return match ?? null;
+  }
 
   const { data, error } = await supabase
     .from("approval_requests")
