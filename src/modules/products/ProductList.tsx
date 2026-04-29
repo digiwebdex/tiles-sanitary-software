@@ -85,6 +85,18 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     enabled: !!dealerId,
   });
 
+  const { data: summaryData } = useQuery({
+    queryKey: ["products-summary", dealerId],
+    enabled: !!dealerId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("products")
+        .select("id, cost_price, reorder_level, unit_type")
+        .eq("dealer_id", dealerId);
+      return data ?? [];
+    },
+  });
+
   const { data: stockData } = useQuery({
     queryKey: ["products-stock-map", dealerId],
     queryFn: async () => {
@@ -161,6 +173,26 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const products = data?.data ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  // Dealer-wide summary metrics (across ALL products, not just current page)
+  const summary = useMemo(() => {
+    const all = summaryData ?? [];
+    let totalProducts = all.length;
+    let lowStock = 0;
+    let outOfStock = 0;
+    let stockValue = 0;
+    for (const p of all) {
+      const si = stockData?.get(p.id);
+      const qty = si?.total ?? 0;
+      const reorder = Number(p.reorder_level) || 0;
+      const cost = Number(p.cost_price) || 0;
+      stockValue += qty * cost;
+      if (qty <= 0) outOfStock += 1;
+      else if (qty <= reorder) lowStock += 1;
+    }
+    return { totalProducts, lowStock, outOfStock, stockValue };
+  }, [summaryData, stockData]);
+
 
   // Build available brand options from current page products
   const brandOptions = useMemo(() => {
@@ -373,6 +405,28 @@ const ProductList = ({ dealerId }: ProductListProps) => {
           <Button onClick={() => navigate("/products/new")}>
             <Plus className="mr-2 h-4 w-4" /> Add Product
           </Button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Total Products</div>
+          <div className="mt-1 text-2xl font-bold text-foreground">{summary.totalProducts}</div>
+        </div>
+        {permissions.canViewCostPrice && (
+          <div className="rounded-lg border bg-card p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Total Stock Value</div>
+            <div className="mt-1 text-2xl font-bold text-primary">{formatCurrency(summary.stockValue)}</div>
+          </div>
+        )}
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Low Stock</div>
+          <div className="mt-1 text-2xl font-bold text-amber-500">{summary.lowStock}</div>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Out of Stock</div>
+          <div className="mt-1 text-2xl font-bold text-destructive">{summary.outOfStock}</div>
         </div>
       </div>
 
