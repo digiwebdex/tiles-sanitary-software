@@ -1,23 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { config } from 'dotenv';
 import { z } from 'zod';
+import { loadBackendEnv } from './loadEnv';
 
-// Load environment from both possible PM2 working directories, but prefer the
-// project-root .env over backend/.env. Some VPS installs have an old backend/.env
-// with stale DB credentials; root .env is the production source of truth.
-const envPaths = Array.from(new Set([
-  path.resolve(process.cwd(), '../.env'),
-  path.resolve(__dirname, '../../../.env'),
-  path.resolve(process.cwd(), '.env'),
-  path.resolve(__dirname, '../../.env'),
-]));
-
-for (const envPath of envPaths) {
-  if (fs.existsSync(envPath)) {
-    config({ path: envPath, override: false });
-  }
-}
+loadBackendEnv();
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
