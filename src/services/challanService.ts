@@ -171,6 +171,14 @@ export const challanService = {
   async markDelivered(challanId: string, dealerId: string) {
     await assertDealerId(dealerId);
 
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/${challanId}/deliver`, {
+        method: "POST",
+        body: JSON.stringify({ dealer_id: dealerId }),
+      });
+      return;
+    }
+
     const { data: challan, error } = await supabase
       .from("challans")
       .select("*, sales(id, sale_status)")
@@ -211,6 +219,14 @@ export const challanService = {
    */
   async convertToInvoice(saleId: string, dealerId: string) {
     await assertDealerId(dealerId);
+
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/convert-invoice/${saleId}`, {
+        method: "POST",
+        body: JSON.stringify({ dealer_id: dealerId }),
+      });
+      return;
+    }
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
@@ -289,6 +305,14 @@ export const challanService = {
     items?: { id: string; product_id: string; quantity: number; sale_rate: number }[];
   }) {
     await assertDealerId(dealerId);
+
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/${challanId}`, {
+        method: "PUT",
+        body: JSON.stringify({ dealer_id: dealerId, ...updates }),
+      });
+      return;
+    }
 
     const { data: challan, error: fetchErr } = await supabase
       .from("challans")
@@ -415,6 +439,14 @@ export const challanService = {
   async cancelChallan(challanId: string, dealerId: string) {
     await assertDealerId(dealerId);
 
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/${challanId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ dealer_id: dealerId }),
+      });
+      return;
+    }
+
     const { data: challan, error } = await supabase
       .from("challans")
       .select("*, sales(id, sale_items(product_id, quantity, products(unit_type)))")
@@ -467,6 +499,14 @@ export const challanService = {
    */
   async updateDeliveryStatus(challanId: string, dealerId: string, newStatus: string) {
     await assertDealerId(dealerId);
+
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/${challanId}/delivery-status`, {
+        method: "PATCH",
+        body: JSON.stringify({ dealer_id: dealerId, delivery_status: newStatus }),
+      });
+      return;
+    }
 
     const { data: challan, error } = await supabase
       .from("challans")
