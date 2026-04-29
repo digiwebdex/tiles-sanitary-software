@@ -84,6 +84,74 @@ router.get('/lookups', async (_req: Request, res: Response) => {
   }
 });
 
+router.get('/dashboard', async (_req: Request, res: Response) => {
+  try {
+    const [dealers, subscriptions, payments] = await Promise.all([
+      db('dealers').select('id', 'status'),
+      db('subscriptions as s')
+        .leftJoin('plans as p', 'p.id', 's.plan_id')
+        .select(
+          's.id', 's.dealer_id', 's.status', 's.start_date', 's.end_date', 's.billing_cycle', 's.created_at',
+          'p.price_monthly', 'p.price_yearly', 'p.name as plan_name',
+        ),
+      db('subscription_payments').select('id', 'subscription_id', 'dealer_id', 'amount', 'payment_date', 'payment_status'),
+    ]);
+
+    res.json({
+      dealers: dealers.map((d: any) => ({ ...d })),
+      subscriptions: subscriptions.map((s: any) => ({
+        ...s,
+        start_date: toDateOnly(s.start_date),
+        end_date: toDateOnly(s.end_date),
+      })),
+      payments: payments.map((p: any) => ({
+        ...p,
+        payment_date: toDateOnly(p.payment_date),
+        amount: Number(p.amount || 0),
+      })),
+    });
+  } catch (err: any) {
+    console.error('[subscriptions:dashboard] failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to load dashboard metrics' });
+  }
+});
+
+router.get('/payments', async (req: Request, res: Response) => {
+  try {
+    const dealerId = String(req.query.dealer_id || '').trim();
+    const rows = await db('subscription_payments as sp')
+      .leftJoin('dealers as d', 'd.id', 'sp.dealer_id')
+      .leftJoin('subscriptions as s', 's.id', 'sp.subscription_id')
+      .leftJoin('plans as p', 'p.id', 's.plan_id')
+      .leftJoin('users as u', 'u.id', 'sp.collected_by')
+      .modify((qb) => {
+        if (dealerId) qb.where('sp.dealer_id', dealerId);
+      })
+      .select(
+        'sp.id', 'sp.subscription_id', 'sp.dealer_id', 'sp.amount', 'sp.payment_method',
+        'sp.payment_status', 'sp.payment_date', 'sp.note', 'sp.collected_by', 'sp.created_at',
+        'd.name as dealer_name', 'd.email as dealer_email', 'd.phone as dealer_phone', 'd.address as dealer_address',
+        'p.name as plan_name', 's.billing_cycle', 's.start_date', 's.end_date', 'u.name as collected_by_name',
+      )
+      .orderBy('sp.payment_date', 'desc')
+      .orderBy('sp.created_at', 'desc')
+      .limit(500);
+
+    res.json({
+      payments: rows.map((r: any) => ({
+        ...r,
+        amount: Number(r.amount || 0),
+        payment_date: toDateOnly(r.payment_date),
+        start_date: toDateOnly(r.start_date),
+        end_date: toDateOnly(r.end_date),
+      })),
+    });
+  } catch (err: any) {
+    console.error('[subscriptions:payments:list] failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to load payment history' });
+  }
+});
+
 const createSchema = z.object({
   dealer_id: z.string().uuid(),
   plan_id: z.string().uuid().optional().nullable(),
