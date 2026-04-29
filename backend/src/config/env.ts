@@ -3,15 +3,14 @@ import path from 'path';
 import { config } from 'dotenv';
 import { z } from 'zod';
 
-// Load environment from both possible PM2 working directories:
-// - /var/www/tilessaas/.env when PM2 is started from the project root
-// - /var/www/tilessaas/backend/.env or ../.env when PM2 is started from backend
-// This keeps the locked VPS nginx upstream (127.0.0.1:3003) stable after deploys.
+// Load environment from both possible PM2 working directories, but prefer the
+// project-root .env over backend/.env. Some VPS installs have an old backend/.env
+// with stale DB credentials; root .env is the production source of truth.
 const envPaths = Array.from(new Set([
-  path.resolve(process.cwd(), '.env'),
   path.resolve(process.cwd(), '../.env'),
-  path.resolve(__dirname, '../../.env'),
   path.resolve(__dirname, '../../../.env'),
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../../.env'),
 ]));
 
 for (const envPath of envPaths) {
