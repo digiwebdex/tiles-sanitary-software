@@ -47,7 +47,7 @@ function statusBadge(status: PaymentRow["payment_status"]) {
 }
 
 function invoiceNo(row: PaymentRow) {
-  return `INV-${row.payment_date?.replaceAll("-", "") || "PAY"}-${row.id.slice(0, 6).toUpperCase()}`;
+  return `INV-${row.payment_date?.replace(/-/g, "") || "PAY"}-${row.id.slice(0, 6).toUpperCase()}`;
 }
 
 function escapeHtml(value: unknown) {
