@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge as UIBadge } from "@/components/ui/badge";
+import { X } from "lucide-react";
 import BulkImportDialog from "@/modules/import/BulkImportDialog";
 import { productColumns, productSampleData, importProducts } from "@/modules/import/useImportConfigs";
 import { formatCurrency } from "@/lib/utils";
@@ -51,6 +54,11 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [unitFilter, setUnitFilter] = useState<string>("all");
+  const [stockFilter, setStockFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("name-asc");
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [barcodeSingle, setBarcodeSingle] = useState<{ id: string; sku: string; name: string; default_sale_rate: number } | null>(null);
   const [detailProduct, setDetailProduct] = useState<typeof products[0] | null>(null);
@@ -154,6 +162,67 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  // Build available brand options from current page products
+  const brandOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) if (p.brand) set.add(p.brand);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) if (p.category) set.add(p.category);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
+  // Apply client-side filters and sort to current page results
+  const filteredProducts = useMemo(() => {
+    let list = products.filter((p) => {
+      if (categoryFilter !== "all" && p.category !== categoryFilter) return false;
+      if (brandFilter !== "all" && (p.brand || "") !== brandFilter) return false;
+      if (unitFilter !== "all" && p.unit_type !== unitFilter) return false;
+      if (stockFilter !== "all") {
+        const si = stockData?.get(p.id);
+        const qty = si?.total ?? 0;
+        const reorder = p.reorder_level ?? 0;
+        if (stockFilter === "in" && qty <= 0) return false;
+        if (stockFilter === "out" && qty > 0) return false;
+        if (stockFilter === "low" && !(qty > 0 && qty <= reorder)) return false;
+        if (stockFilter === "negative" && qty >= 0) return false;
+      }
+      return true;
+    });
+
+    const sorters: Record<string, (a: typeof products[0], b: typeof products[0]) => number> = {
+      "name-asc": (a, b) => a.name.localeCompare(b.name),
+      "name-desc": (a, b) => b.name.localeCompare(a.name),
+      "price-asc": (a, b) => (a.default_sale_rate || 0) - (b.default_sale_rate || 0),
+      "price-desc": (a, b) => (b.default_sale_rate || 0) - (a.default_sale_rate || 0),
+      "qty-asc": (a, b) => (stockData?.get(a.id)?.total ?? 0) - (stockData?.get(b.id)?.total ?? 0),
+      "qty-desc": (a, b) => (stockData?.get(b.id)?.total ?? 0) - (stockData?.get(a.id)?.total ?? 0),
+      "sku-asc": (a, b) => (a.sku || "").localeCompare(b.sku || ""),
+    };
+    list = [...list].sort(sorters[sortBy] ?? sorters["name-asc"]);
+    return list;
+  }, [products, categoryFilter, brandFilter, unitFilter, stockFilter, sortBy, stockData]);
+
+  const activeFilterCount =
+    (categoryFilter !== "all" ? 1 : 0) +
+    (brandFilter !== "all" ? 1 : 0) +
+    (unitFilter !== "all" ? 1 : 0) +
+    (stockFilter !== "all" ? 1 : 0) +
+    (search.trim() ? 1 : 0);
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setCategoryFilter("all");
+    setBrandFilter("all");
+    setUnitFilter("all");
+    setStockFilter("all");
+    setSortBy("name-asc");
+    setPage(1);
+  };
+
   const toggleMutation = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       productService.toggleActive(id, active),
@@ -185,10 +254,10 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   };
 
   const toggleAll = () => {
-    if (selected.size === products.length) {
+    if (selected.size === filteredProducts.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(products.map((p) => p.id)));
+      setSelected(new Set(filteredProducts.map((p) => p.id)));
     }
   };
 
@@ -307,14 +376,94 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search by SKU, name, or barcode…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="pl-9"
-        />
+      {/* Smart Filter Bar */}
+      <div className="rounded-lg border bg-card p-3 space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by SKU, name, or barcode…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="pl-9"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Category" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categoryOptions.map((c) => (
+                  <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={brandFilter} onValueChange={setBrandFilter}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Brand" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Brands</SelectItem>
+                {brandOptions.map((b) => (
+                  <SelectItem key={b} value={b}>{b}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={unitFilter} onValueChange={setUnitFilter}>
+              <SelectTrigger className="w-[140px]"><SelectValue placeholder="Unit Type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Units</SelectItem>
+                <SelectItem value="box_sft">Box / Sft</SelectItem>
+                <SelectItem value="piece">Piece</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={stockFilter} onValueChange={setStockFilter}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Stock" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stock</SelectItem>
+                <SelectItem value="in">In Stock</SelectItem>
+                <SelectItem value="low">Low Stock</SelectItem>
+                <SelectItem value="out">Out of Stock</SelectItem>
+                <SelectItem value="negative">Negative</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Sort by" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name-asc">Name (A → Z)</SelectItem>
+                <SelectItem value="name-desc">Name (Z → A)</SelectItem>
+                <SelectItem value="sku-asc">SKU (A → Z)</SelectItem>
+                <SelectItem value="price-asc">Price (Low → High)</SelectItem>
+                <SelectItem value="price-desc">Price (High → Low)</SelectItem>
+                <SelectItem value="qty-desc">Qty (High → Low)</SelectItem>
+                <SelectItem value="qty-asc">Qty (Low → High)</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {activeFilterCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearAllFilters} className="gap-1">
+                <X className="h-4 w-4" /> Clear
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {activeFilterCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Active:</span>
+            {search.trim() && <UIBadge variant="secondary">Search: {search}</UIBadge>}
+            {categoryFilter !== "all" && <UIBadge variant="secondary" className="capitalize">Category: {categoryFilter}</UIBadge>}
+            {brandFilter !== "all" && <UIBadge variant="secondary">Brand: {brandFilter}</UIBadge>}
+            {unitFilter !== "all" && <UIBadge variant="secondary">Unit: {unitFilter === "box_sft" ? "Box/Sft" : "Piece"}</UIBadge>}
+            {stockFilter !== "all" && <UIBadge variant="secondary" className="capitalize">Stock: {stockFilter}</UIBadge>}
+            <span className="ml-auto text-muted-foreground">
+              Showing {filteredProducts.length} of {products.length} on this page
+            </span>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -334,7 +483,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      checked={products.length > 0 && selected.size === products.length}
+                      checked={filteredProducts.length > 0 && selected.size === filteredProducts.length}
                       onCheckedChange={toggleAll}
                     />
                   </TableHead>
@@ -351,7 +500,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products.map((p) => {
+                {filteredProducts.map((p) => {
                   const stockInfo = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0, reservedBox: 0, reservedPiece: 0 };
                   const qty = stockInfo.total;
                   const costPerUnit = Math.max(0, costData?.get(p.id) ?? 0);
@@ -434,9 +583,16 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                     </TableRow>
                   );
                 })}
+                {filteredProducts.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={permissions.canViewCostPrice ? 11 : 9} className="text-center py-8 text-muted-foreground">
+                      No products match the current filters.
+                    </TableCell>
+                  </TableRow>
+                )}
                 {/* Summary Footer */}
-                {products.length > 0 && (() => {
-                  const totals = products.reduce(
+                {filteredProducts.length > 0 && (() => {
+                  const totals = filteredProducts.reduce(
                     (acc, p) => {
                       const si = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0, reservedBox: 0, reservedPiece: 0 };
                       acc.box += si.box;
