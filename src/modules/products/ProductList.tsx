@@ -162,6 +162,67 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  // Build available brand options from current page products
+  const brandOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) if (p.brand) set.add(p.brand);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) if (p.category) set.add(p.category);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
+  // Apply client-side filters and sort to current page results
+  const filteredProducts = useMemo(() => {
+    let list = products.filter((p) => {
+      if (categoryFilter !== "all" && p.category !== categoryFilter) return false;
+      if (brandFilter !== "all" && (p.brand || "") !== brandFilter) return false;
+      if (unitFilter !== "all" && p.unit_type !== unitFilter) return false;
+      if (stockFilter !== "all") {
+        const si = stockData?.get(p.id);
+        const qty = si?.total ?? 0;
+        const reorder = p.reorder_level ?? 0;
+        if (stockFilter === "in" && qty <= 0) return false;
+        if (stockFilter === "out" && qty > 0) return false;
+        if (stockFilter === "low" && !(qty > 0 && qty <= reorder)) return false;
+        if (stockFilter === "negative" && qty >= 0) return false;
+      }
+      return true;
+    });
+
+    const sorters: Record<string, (a: typeof products[0], b: typeof products[0]) => number> = {
+      "name-asc": (a, b) => a.name.localeCompare(b.name),
+      "name-desc": (a, b) => b.name.localeCompare(a.name),
+      "price-asc": (a, b) => (a.default_sale_rate || 0) - (b.default_sale_rate || 0),
+      "price-desc": (a, b) => (b.default_sale_rate || 0) - (a.default_sale_rate || 0),
+      "qty-asc": (a, b) => (stockData?.get(a.id)?.total ?? 0) - (stockData?.get(b.id)?.total ?? 0),
+      "qty-desc": (a, b) => (stockData?.get(b.id)?.total ?? 0) - (stockData?.get(a.id)?.total ?? 0),
+      "sku-asc": (a, b) => (a.sku || "").localeCompare(b.sku || ""),
+    };
+    list = [...list].sort(sorters[sortBy] ?? sorters["name-asc"]);
+    return list;
+  }, [products, categoryFilter, brandFilter, unitFilter, stockFilter, sortBy, stockData]);
+
+  const activeFilterCount =
+    (categoryFilter !== "all" ? 1 : 0) +
+    (brandFilter !== "all" ? 1 : 0) +
+    (unitFilter !== "all" ? 1 : 0) +
+    (stockFilter !== "all" ? 1 : 0) +
+    (search.trim() ? 1 : 0);
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setCategoryFilter("all");
+    setBrandFilter("all");
+    setUnitFilter("all");
+    setStockFilter("all");
+    setSortBy("name-asc");
+    setPage(1);
+  };
+
   const toggleMutation = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       productService.toggleActive(id, active),
