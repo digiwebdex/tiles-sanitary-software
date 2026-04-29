@@ -38,6 +38,7 @@ const navItems = [
   { path: "/whatsapp-logs", label: "WhatsApp Log", icon: MessageCircle },
   { path: "/admin/portal-users", label: "Portal Users", icon: UserCog, dealerAdminOnly: true },
   { path: "/admin/portal-requests", label: "Portal Requests", icon: Inbox, dealerAdminOnly: true },
+  { path: "/user-guide", label: "User Guide", icon: HelpCircle, readonlyAllowed: true },
   { path: "/settings", label: "Settings", icon: Settings, readonlyAllowed: false },
 ];
 
