@@ -24,9 +24,11 @@ const LoginPage = () => {
   const { toast } = useToast();
 
   // Supabase path: AuthContext drives redirect when Supabase session arrives.
-  // VPS path: AuthContext stays empty; we navigate manually after signIn.
-  if (!authBridge.isVps && !authLoading && user) {
-    return <Navigate to="/dashboard" replace />;
+  // VPS path: AuthContext is also hydrated from the stored VPS user, so send
+  // users to the correct area instead of leaving them on /login.
+  if (!authLoading && user) {
+    const vpsUser = authBridge.getCurrentVpsUser();
+    return <Navigate to={vpsUser?.roles.includes("super_admin") ? "/super-admin" : "/dashboard"} replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -99,7 +101,7 @@ const LoginPage = () => {
           console.warn("[Login] pending-status check failed:", checkErr);
         }
 
-        // VPS path: AuthContext is notified via localStorage event; route by role immediately.
+        // VPS path: route by role immediately after tokens are saved.
         if (authBridge.isVps) {
           const vpsUser = authBridge.getCurrentVpsUser();
           navigate(vpsUser?.roles.includes("super_admin") ? "/super-admin" : "/dashboard", { replace: true });
