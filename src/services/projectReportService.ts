@@ -342,7 +342,7 @@ export const projectReportService = {
 
   /** Site detail summary (counts + outstanding) — used by SiteHistoryDialog. */
   async siteSummary(dealerId: string, siteId: string) {
-    if (USE_VPS) return vpsGet(`/api/reports/projects/site-summary?dealerId=${encodeURIComponent(dealerId)}&siteId=${encodeURIComponent(siteId)}`);
+    if (USE_VPS) return vpsGet<any>(`/api/reports/projects/site-summary?dealerId=${encodeURIComponent(dealerId)}&siteId=${encodeURIComponent(siteId)}`);
     const [salesRes, quotesRes, challanRes, delivRes, siteRes] = await Promise.all([
       sb.from("sales").select("id, total_amount, paid_amount, due_amount").eq("dealer_id", dealerId).eq("site_id", siteId),
       sb.from("quotations").select("id, status, total_amount").eq("dealer_id", dealerId).eq("site_id", siteId),
@@ -377,7 +377,7 @@ export const projectReportService = {
 
   /** Site delivery history (single site) — sales + challans + deliveries + quotations. */
   async siteHistory(dealerId: string, siteId: string) {
-    if (USE_VPS) return vpsGet(`/api/reports/projects/site-history?dealerId=${encodeURIComponent(dealerId)}&siteId=${encodeURIComponent(siteId)}`);
+    if (USE_VPS) return vpsGet<any>(`/api/reports/projects/site-history?dealerId=${encodeURIComponent(dealerId)}&siteId=${encodeURIComponent(siteId)}`);
     const [salesRes, challanRes, delivRes, quotesRes] = await Promise.all([
       sb.from("sales")
         .select("id, invoice_number, sale_date, total_amount, paid_amount, due_amount, sale_status")
