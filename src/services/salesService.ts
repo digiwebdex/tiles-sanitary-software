@@ -683,6 +683,30 @@ export const salesService = {
     rateLimits.api("sale_update");
     await assertDealerId(input.dealer_id);
 
+    // Phase 3M: VPS handles full atomic update (restore + recompute + reapply)
+    if (USE_VPS) {
+      return await vpsRequest<{ id: string }>(`/api/sales/${saleId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          customer_name: input.customer_name,
+          sale_date: input.sale_date,
+          sale_type: input.sale_type ?? "direct_invoice",
+          discount: input.discount,
+          discount_reference: input.discount_reference || null,
+          client_reference: input.client_reference || null,
+          fitter_reference: input.fitter_reference || null,
+          paid_amount: input.paid_amount,
+          payment_mode: input.payment_mode || null,
+          notes: input.notes || null,
+          project_id: input.project_id ?? null,
+          site_id: input.site_id ?? null,
+          items: input.items,
+        }),
+      });
+    }
+
     // 1. Fetch existing sale + items for reversal
     const { data: oldSale, error: fetchErr } = await supabase
       .from("sales")
@@ -913,6 +937,14 @@ export const salesService = {
    */
   async cancelSale(saleId: string, dealerId: string) {
     await assertDealerId(dealerId);
+
+    // Phase 3M: VPS handles atomic cancellation (guards + reverse + delete)
+    if (USE_VPS) {
+      await vpsRequest<void>(`/api/sales/${saleId}?dealerId=${encodeURIComponent(dealerId)}`, {
+        method: "DELETE",
+      });
+      return;
+    }
 
     // 1. Fetch full sale with items and related records
     const { data: sale, error: fetchErr } = await supabase
