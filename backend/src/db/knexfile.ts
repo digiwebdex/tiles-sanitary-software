@@ -1,10 +1,18 @@
+import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import type { Knex } from 'knex';
 
-// Knex CLI changes CWD to this folder, so .env in backend/ is not auto-loaded.
-// Load it explicitly from the backend project root (../../.env relative to this file).
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Prefer project-root .env over backend/.env so PM2/Knex never pick up stale
+// local DB credentials after a VPS deploy.
+for (const envPath of Array.from(new Set([
+  path.resolve(process.cwd(), '../.env'),
+  path.resolve(__dirname, '../../../.env'),
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../../.env'),
+]))) {
+  if (fs.existsSync(envPath)) dotenv.config({ path: envPath, override: false });
+}
 
 // Detect runtime: when running compiled JS from /app/dist, __filename ends with .js
 // In that case we must point knex at the compiled .js migration files, not the .ts sources.
