@@ -88,6 +88,22 @@ export const challanService = {
     rateLimits.api("challan_create");
     await assertDealerId(input.dealer_id);
 
+    if (USE_VPS) {
+      return await vpsRequest<any>(`/api/challans`, {
+        method: "POST",
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          sale_id: input.sale_id,
+          challan_date: input.challan_date,
+          driver_name: input.driver_name ?? null,
+          transport_name: input.transport_name ?? null,
+          vehicle_no: input.vehicle_no ?? null,
+          notes: input.notes ?? null,
+          show_price: input.show_price ?? false,
+        }),
+      });
+    }
+
     // Verify sale exists and is in challan_mode + draft status
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
