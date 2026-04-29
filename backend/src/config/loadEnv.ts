@@ -15,17 +15,21 @@ export function loadBackendEnv() {
     path.resolve(__dirname, '../../.env'),
   ]));
 
-  const existingEnvPaths = envPaths.filter((envPath) => fs.existsSync(envPath));
-  const primaryEnvPath = existingEnvPaths[0];
-  const primaryEnv = primaryEnvPath ? parseDotenv(fs.readFileSync(primaryEnvPath)) : {};
+  const existingEnvs = envPaths
+    .filter((envPath) => fs.existsSync(envPath))
+    .map((envPath) => ({
+      path: envPath,
+      parsed: parseDotenv(fs.readFileSync(envPath)),
+    }));
 
-  for (const [index, envPath] of existingEnvPaths.entries()) {
-    loadDotenv({ path: envPath, override: index === 0 });
+  for (const [index, envFile] of existingEnvs.entries()) {
+    loadDotenv({ path: envFile.path, override: index === 0 });
   }
 
-  if (primaryEnv.DATABASE_URL) {
-    process.env.DATABASE_URL = primaryEnv.DATABASE_URL;
-  } else if (primaryEnv.DB_PASSWORD) {
-    process.env.DATABASE_URL = buildDatabaseUrl(primaryEnv.DB_PASSWORD);
+  const databaseEnv = existingEnvs.find(({ parsed }) => parsed.DATABASE_URL || parsed.DB_PASSWORD)?.parsed;
+  if (databaseEnv?.DATABASE_URL) {
+    process.env.DATABASE_URL = databaseEnv.DATABASE_URL;
+  } else if (databaseEnv?.DB_PASSWORD) {
+    process.env.DATABASE_URL = buildDatabaseUrl(databaseEnv.DB_PASSWORD);
   }
 }
