@@ -174,6 +174,26 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  // Dealer-wide summary metrics (across ALL products, not just current page)
+  const summary = useMemo(() => {
+    const all = summaryData ?? [];
+    let totalProducts = all.length;
+    let lowStock = 0;
+    let outOfStock = 0;
+    let stockValue = 0;
+    for (const p of all) {
+      const si = stockData?.get(p.id);
+      const qty = si?.total ?? 0;
+      const reorder = Number(p.reorder_level) || 0;
+      const cost = Number(p.default_cost) || 0;
+      stockValue += qty * cost;
+      if (qty <= 0) outOfStock += 1;
+      else if (qty <= reorder) lowStock += 1;
+    }
+    return { totalProducts, lowStock, outOfStock, stockValue };
+  }, [summaryData, stockData]);
+
+
   // Build available brand options from current page products
   const brandOptions = useMemo(() => {
     const set = new Set<string>();
