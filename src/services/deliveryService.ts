@@ -212,6 +212,14 @@ export const deliveryService = {
   async updateStatus(id: string, status: string, dealerId: string) {
     await assertDealerId(dealerId);
 
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/deliveries/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, dealer_id: dealerId }),
+      });
+      return;
+    }
+
     const { error } = await supabase
       .from("deliveries")
       .update({ status } as any)
