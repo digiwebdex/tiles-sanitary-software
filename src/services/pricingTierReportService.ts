@@ -266,6 +266,9 @@ export const pricingTierReportService = {
     overrideImpact30d: number;
     customersWithoutTier: number;
   }> {
+    if (USE_VPS) {
+      return vpsGet(`/api/reports/pricing-tier/dashboard?dealerId=${encodeURIComponent(dealerId)}`);
+    }
     const today = new Date();
     const d7 = new Date(today.getTime() - 7 * 86400000).toISOString().split("T")[0];
     const d30 = new Date(today.getTime() - 30 * 86400000).toISOString().split("T")[0];
