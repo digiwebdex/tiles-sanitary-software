@@ -267,7 +267,7 @@ export const pricingTierReportService = {
     customersWithoutTier: number;
   }> {
     if (USE_VPS) {
-      return vpsGet(`/api/reports/pricing-tier/dashboard?dealerId=${encodeURIComponent(dealerId)}`);
+      return vpsGet<any>(`/api/reports/pricing-tier/dashboard?dealerId=${encodeURIComponent(dealerId)}`);
     }
     const today = new Date();
     const d7 = new Date(today.getTime() - 7 * 86400000).toISOString().split("T")[0];
