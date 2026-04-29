@@ -1,78 +1,121 @@
+# Full Supabase → VPS Postgres Migration Plan
 
-## সমস্যা ব্যাখ্যা (কেন ড্যাশবোর্ড খালি)
+**Goal:** সম্পূর্ণ application Supabase থেকে self-hosted VPS Postgres + Express backend-এ migrate।
+**Strategy:** Module-by-module incremental cutover (Phase 1/2 অলরেডি done — Auth + Dashboard + Products)।
+**Old Supabase:** কয়েক মাস read-only fallback হিসেবে রাখা হবে।
 
-আপনার ড্যাশবোর্ডে সব কিছু `0` / খালি দেখাচ্ছে কারণ:
+---
 
-- ড্যাশবোর্ড ও বেশ কিছু সার্ভিস (productService, stockService, salesService, dashboardService) এখনো **পুরাতন Supabase ডাটাবেস** থেকে ডাটা পড়ছে।
-- কিন্তু আপনার login এখন **VPS backend (api.sanitileserp.com → port 3003 → Postgres 5440)** থেকে কাজ করছে।
-- ফলে: লগইন হচ্ছে VPS থেকে, কিন্তু ড্যাশবোর্ড পড়ছে Supabase থেকে → যেখানে আপনার নতুন ডিলারের কোনো ডাটা নেই → তাই সব `0`।
+## Phase 3 — Module Cutover (এই plan-এর focus)
 
-এটাই আপনার দেখা Products পেজ "0 stock", "৳0.00 stock value" এর মূল কারণ। প্রোডাক্ট লিস্ট দেখা যাচ্ছে কারণ সেগুলো হয়ত আগে Supabase-এ যোগ হয়েছিল, কিন্তু নতুন stock/sales VPS-এ যাচ্ছে।
+প্রতিটা module-এর জন্য 4 ধাপ:
+1. Backend route তৈরি (`backend/src/routes/<module>.ts`) + Zod validation + dealer scoping
+2. Backend deploy + smoke test (`curl /api/<module>`)
+3. Frontend service rewire — সব Supabase call → `vpsAuthedFetch` / `dataClient`
+4. VPS `.env`-এ `VITE_DATA_<MODULE>=vps` flag, frontend rebuild
 
-## ড্যাশবোর্ড কোন ডাটার সাথে লিংক
+### Module priority order (dependency-aware)
 
-`src/services/dashboardService.ts` এই টেবিলগুলো থেকে গণনা করে:
-- `sales` + `sale_items` → Today/Monthly Sales, Profit, SFT Sold, Top Customers
-- `payments` → Collection
-- `purchases` → Monthly Purchase, Supplier Payable
-- `products` + `product_batches` → Total Stock Value, Low Stock, Dead Stock
-- `customers` → Customer Due, Overdue, Credit Exceeded
+| # | Module | Backend route | Frontend service | Status |
+|---|--------|--------------|------------------|--------|
+| 1 | Customers | ✅ আছে | ⚠ partial (writes Supabase) | **এই session** |
+| 2 | Suppliers | ✅ আছে | ⚠ partial | **এই session** |
+| 3 | Customer Ledger | ❌ | ❌ | next |
+| 4 | Supplier Ledger | ❌ | ❌ | next |
+| 5 | Stock | ✅ আছে | ⚠ verify | next |
+| 6 | Batches | ✅ আছে | ⚠ verify | next |
+| 7 | Sales + Sale Items | ❌ | ❌ | week 2 |
+| 8 | Sale Invoice numbering RPC | ❌ (port `generate_next_invoice_no`) | — | week 2 |
+| 9 | Allocate/Restore sale batches RPCs | ❌ (port `allocate_sale_batches`, `restore_sale_batches`) | — | week 2 |
+| 10 | Backorder allocation engine | ❌ | ❌ | week 2 |
+| 11 | Stock Reservations RPCs | ❌ (4 PL/pgSQL functions) | ❌ | week 3 |
+| 12 | Purchases + Purchase Items | ❌ | ❌ | week 3 |
+| 13 | Purchase Returns | ❌ | ❌ | week 3 |
+| 14 | Sales Returns | ❌ | ❌ | week 3 |
+| 15 | Deliveries + Challans + Challan numbering RPC | ❌ | ❌ | week 4 |
+| 16 | `execute_delivery_batches` RPC port | ❌ | — | week 4 |
+| 17 | Quotations + Quotation Items + revision RPC | ❌ | ❌ | week 4 |
+| 18 | Approvals (decide/consume/cancel/expire RPCs) | ❌ | ❌ | week 5 |
+| 19 | Payments | ❌ | ❌ | week 5 |
+| 20 | Reports — sales, inventory, projects, suppliers | ❌ | ❌ | week 5 |
+| 21 | Campaign gifts | ❌ | ❌ | week 6 |
+| 22 | Projects + Sites | ❌ | ❌ | week 6 |
+| 23 | Pricing Tiers | ❌ | ❌ | week 6 |
+| 24 | Demand Planning + Display Stock + Supplier Performance/Notes | ❌ | ❌ | week 6 |
+| 25 | Audit Logs view (already write-side via VPS-friendly trigger) | partial | ❌ | week 7 |
+| 26 | Subscription payment tracking (Super Admin) | ⚠ partial | ⚠ | week 7 |
+| 27 | Portal (customer-facing) — separate auth + 5 portal RPCs | ❌ | ❌ | week 7 |
+| 28 | WhatsApp logs/settings + send | ❌ | ❌ | week 8 |
+| 29 | CMS (`website_content`) | ❌ public read endpoint | ❌ | week 8 |
 
-**স্টক কীভাবে যোগ হয় (সঠিক প্রবাহ):**
-1. **Products** → "Add Product" দিয়ে SKU তৈরি (এখন quantity = 0)
-2. **Suppliers** → সাপ্লায়ার যোগ করুন
-3. **Purchases** → "New Purchase" দিয়ে সাপ্লায়ার থেকে কেনা entry দিন → এতে `product_batches` তৈরি হয়ে stock বাড়ে এবং landed cost সেট হয়
-4. বিকল্প: Products পেজে প্রোডাক্ট-এর "Actions → Stock Adjust" দিয়ে opening stock দিতে পারেন
+### Edge functions → Express endpoints
 
-কিন্তু এই পুরো prosess আপনার VPS DB-তে লেখা হলেও ড্যাশবোর্ড Supabase পড়ছে → তাই কিছুই দেখা যাবে না যতক্ষণ না সার্ভিসগুলো VPS-এ rewire করা হয়।
+| Edge function | New Express endpoint | Notes |
+|---|---|---|
+| `self-signup` | `POST /api/auth/signup` | dealer + admin user + role + trial sub atomically |
+| `create-dealer-user` | `POST /api/super/dealers/users` | super_admin only |
+| `delete-dealer` | `DELETE /api/super/dealers/:id` | cascades |
+| `reset-dealer-password` | `POST /api/super/dealers/:id/reset-password` | |
+| `invite-portal-user` | `POST /api/portal-users/invite` | |
+| `seed-demo-dealer` | `POST /api/super/seed-demo` | |
+| `submit-contact` | `POST /api/contact` | landing-page form |
+| `send-notification` | already on VPS via `notificationService.ts` | verify |
+| `daily-summary` | already on VPS — keep cron via pg_cron OR node-cron | |
+| `check-subscription-status` | merge into existing `/api/subscription-status` | |
+| `backup-manager` | rclone via shell script + `/api/backups/*` | already mostly VPS |
+| `ai-chat` | `POST /api/ai-chat` (proxy to Lovable AI Gateway) | |
+| `test-smtp` | `POST /api/super/test-smtp` | |
 
-## সমাধান প্ল্যান
+### Storage migration
+- Supabase Storage buckets → VPS local disk under `/var/www/tilessaas/uploads/`
+- Already exists: `backend/src/routes/uploads.ts`
+- Remaining: migrate existing files (one-time `rclone` from Supabase Storage to VPS)
 
-আপনি phase 1 VPS auth migration শেষ করেছেন। এখন **Phase 2: data path** কে VPS-এ আনতে হবে। এটাই permanent fix — নাহলে প্রতিটা ডিলারের একই খালি ড্যাশবোর্ড সমস্যা থাকবে।
+### Realtime
+- Currently used for: messages-style streams (memory mentions)
+- Replacement: Server-Sent Events or skip (most ERP screens don't need it)
 
-### Step 1 — VPS backend-এ missing endpoints যোগ করুন
-`backend/src/routes/` এ নতুন route ফাইল:
-- `dashboard.ts` — `GET /api/dashboard` → dashboardService.ts-এর সব aggregation queries (sales, payments, purchases, stock value, low stock, charts) Knex দিয়ে server-side গণনা করবে। dealer_id middleware থেকে আসবে।
-- `sales.ts`, `payments.ts`, `purchases.ts` — basic CRUD (list/create) যাতে পুরো invoice/payment flow VPS-এ চলে।
-- `stockAdjust.ts` — opening stock / manual adjustment এর জন্য।
+---
 
-প্রতিটা route অবশ্যই `tenant.ts` middleware ব্যবহার করবে (dealer_id scoping)।
+## Data migration (one-time)
 
-### Step 2 — Frontend services rewire (Supabase → VPS)
-`src/lib/data/vpsAdapter.ts` এ নতুন methods যোগ করে এই ফাইলগুলো VPS adapter-এ পাঠাব:
-- `src/services/dashboardService.ts` → একটি single `GET /api/dashboard` কল
-- `src/services/productService.ts` (5 supabase ref)
-- `src/services/stockService.ts` (13 ref)
-- `src/services/salesService.ts` (44 ref)
-- `src/services/purchaseService.ts`, `paymentService.ts` (একই ভাবে)
+When Phase 3 complete:
+1. `pg_dump` from Supabase (data only, public schema): `pg_dump -h db.<ref>.supabase.co -U postgres --data-only --schema=public -Fc -f supabase.dump`
+2. Pre-checks on VPS: drop FK constraints temporarily, truncate target tables in topological order
+3. `pg_restore --data-only --disable-triggers -d tileserp supabase.dump`
+4. Re-enable triggers, validate row counts per table per dealer_id
+5. Sequence resets: `SELECT setval('<seq>', max(id)) FROM <table>`
+6. Auth user mapping: Supabase `auth.users` rows → VPS `users` table (bcrypt rehash impossible → password reset email to all dealers OR import as locked accounts)
 
-`AUTH_USE_VPS` flag চালু থাকলে VPS adapter ব্যবহার হবে, নাহলে fallback Supabase — যাতে gradual rollout সম্ভব।
+---
 
-### Step 3 — Data migration script
-`scripts/migrate-supabase-to-vps.ts` — পুরাতন Supabase-এর existing dealer ডাটা (products, customers, sales, payments, batches) export করে VPS Postgres-এ import করবে। এক-বার চলবে প্রতি ডিলারের জন্য।
+## Cleanup phase (months later, after observation period)
 
-### Step 4 — Verify on VPS
-- PM2 restart, nginx unchanged
-- Test: একজন dealer-এ লগইন করে Purchase দিন → Products → quantity বাড়ছে কিনা → Dashboard → Total Stock Value আসছে কিনা
-- লগ চেক: `pm2 logs tilessaas-backend`
+- Remove `src/integrations/supabase/client.ts` imports module by module
+- Delete `supabase/functions/*` once all replaced
+- Drop `supabaseAdapter.ts` and `shadowAdapter.ts`
+- Remove `VITE_SUPABASE_*` env vars
+- Pause Supabase project (don't delete yet — keep as cold archive)
 
-### Step 5 — Memory + RUNBOOK update
-- `mem://migration/vps-phase-2.md` লিখব: কোন services migrated, কোন endpoints যোগ হয়েছে।
-- `deploy/RUNBOOK.md` এ "Adding stock" section লিখব ডিলারদের জন্য (Bengali guide)।
+---
 
-## আপনি এখনই যা করতে পারেন (workaround, প্ল্যান approve করার আগে)
+## Risk register
 
-আপনি যদি দ্রুত পুরাতন Supabase ড্যাশবোর্ডে ডাটা দেখতে চান:
-1. লগআউট করে আগের Supabase-based account-এ login করুন (যদি থাকে), অথবা
-2. Purchases পেজে গিয়ে "New Purchase" দিয়ে stock entry করুন — এটা Supabase-এ সেভ হবে এবং ড্যাশবোর্ডে দেখাবে।
+| Risk | Mitigation |
+|---|---|
+| Live dealers lose data mid-migration | Module flags allow rollback per-module via env unset |
+| RLS-equivalent missing on VPS | Every route enforces `dealer_id = req.dealerId` in `where` clauses + role middleware |
+| Atomic operations (sale + ledger + stock) lose transactional guarantee | All multi-table writes use `db.transaction(async trx => ...)` |
+| 50+ PL/pgSQL functions to port | Group by feature, port to TypeScript service layer with `db.transaction` |
+| Auth migration breaks logins | Phase 1 already done — VPS auth proven on app.sanitileserp.com |
+| Backups lost during cutover | Daily rclone to Google Drive already running on VPS |
 
-কিন্তু এটা স্থায়ী সমাধান না। আপনার "many dealers, business will fall down" concern-এর জন্য Step 1-5 implement করতেই হবে।
+---
 
-## আনুমানিক স্কোপ
+## Current session (Customers + Suppliers writes)
 
-- ৬টা নতুন backend route ফাইল (~৪০০ লাইন)
-- ৫টা frontend service rewire (~৩০০ লাইন বদল)
-- ১টা migration script
-- ১টা memory + RUNBOOK update
-
-Approve করলে আমি build mode-এ implement শুরু করব।
+1. ✅ Backend routes verified (`POST/PATCH/DELETE /api/customers` + `/api/suppliers` exist)
+2. Rewire `customerService.ts` create/update/toggleStatus to use `vpsAuthedFetch`
+3. Rewire `supplierService.ts` create/update/toggleStatus to use `vpsAuthedFetch`
+4. Add `getDueBalance` VPS-aware fallback (or keep Supabase short-term — lacks ledger endpoint)
+5. After deploy: VPS `.env` add `VITE_DATA_CUSTOMERS=vps` and `VITE_DATA_SUPPLIERS=vps`, rebuild
