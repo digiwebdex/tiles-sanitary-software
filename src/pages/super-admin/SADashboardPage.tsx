@@ -211,12 +211,12 @@ const SADashboardPage = () => {
         <StatCard title="Active Subscriptions" value={data?.activeSubs ?? 0} icon={CalendarPlus} />
         <StatCard
           title="Monthly Revenue (MRR)"
-          value={formatCurrency(data?.monthlyRevenue ?? 0)}
+          value={formatCurrency(Number(data?.monthlyRevenue ?? 0))}
           icon={Banknote}
         />
         <StatCard
           title="This Month Collected"
-          value={formatCurrency(data?.thisMonthCollected ?? 0)}
+          value={formatCurrency(Number(data?.thisMonthCollected ?? 0))}
           icon={Wallet}
           description="Payments received this month"
         />
@@ -226,7 +226,7 @@ const SADashboardPage = () => {
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Outstanding Revenue"
-          value={formatCurrency(data?.totalOutstanding ?? 0)}
+          value={formatCurrency(Number(data?.totalOutstanding ?? 0))}
           icon={TrendingUp}
           description="Pending + partial payments"
         />
