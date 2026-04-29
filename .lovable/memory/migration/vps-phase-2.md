@@ -1,38 +1,45 @@
 ---
-name: VPS Migration Phase 2
-description: Phase 2 only — shared dataClient with supabase/vps/shadow adapters, per-resource env flags. No service migration yet; defaults preserve Supabase behavior.
+name: VPS Migration Phase 2 — Dashboard data path
+description: Phase 2 starts moving read aggregations from Supabase to VPS. First endpoint live: GET /api/dashboard
 type: feature
 ---
-# Phase 2 — Shared dataClient + Adapters
 
-## Status
-Foundation only. Default flags = "supabase", so production behavior is unchanged. No service or page consumes the dataClient yet — Phase 3 will migrate one resource at a time.
+Phase 1 = auth on VPS. Phase 2 = data on VPS, one resource at a time.
 
-## Files
-- `src/lib/env.ts` — adds `DataBackend` type and `DATA_BACKENDS` map
-- `src/lib/data/types.ts` — `ResourceAdapter`, `ListQuery`, `ListResult`
-- `src/lib/data/supabaseAdapter.ts` — default passthrough
-- `src/lib/data/vpsAdapter.ts` — calls `/api/<resource>` via `vpsAuthedFetch`; throws clear `ROUTE_NOT_IMPLEMENTED` until Phase 3 backend lands
-- `src/lib/data/shadowAdapter.ts` — supabase primary + parallel vps read for diff logging (read-only, never throws on shadow failure)
-- `src/lib/data/dataClient.ts` — `dataClient<T>("CUSTOMERS")` factory with cache
-- `src/test/dataClient.test.ts` — verifies flag routing (default / vps / shadow)
+## What is live
 
-## Resources covered
-CUSTOMERS, SUPPLIERS, PRODUCTS, SALES, QUOTATIONS, DELIVERIES, PURCHASES
+- Backend route `backend/src/routes/dashboard.ts` mounted at `/api/dashboard`.
+  - Auth: `authenticate` + `tenantGuard`. Salesman allowed (frontend hides KPIs).
+  - Returns full `DashboardData` shape (today/monthly sales, profit, collection,
+    monthly purchase, customer due, supplier payable, total stock value,
+    low-stock items, monthly chart, category sales, top customers,
+    product performance).
+  - `cashInHand`, `creditExceededCount`, `deadStockCount` left at 0 until
+    Phase 2.1 (cash_ledger + credit_limits + 90-day no-sale aggregations).
+- Frontend `src/services/dashboardService.ts`:
+  - When `env.AUTH_BACKEND === "vps"` (true on `*.sanitileserp.com`),
+    calls `vpsAuthedFetch("/api/dashboard?dealerId=...")` and merges with
+    `SAFE_DEFAULTS`. **No Supabase fallback** — fallback would re-introduce
+    the empty-dashboard bug for live dealers.
+  - Supabase code path remains for dev/legacy hosts only.
 
-## Env flags (per resource, all default to supabase)
-- `VITE_DATA_CUSTOMERS=supabase|vps|shadow`
-- `VITE_DATA_SUPPLIERS=...`
-- `VITE_DATA_PRODUCTS=...`
-- `VITE_DATA_SALES=...`
-- `VITE_DATA_QUOTATIONS=...`
-- `VITE_DATA_DELIVERIES=...`
-- `VITE_DATA_PURCHASES=...`
+## Why this matters
 
-## Rollback
-Unset all `VITE_DATA_*` env vars and rebuild → every adapter falls back to supabase passthrough. No DB / no destructive changes.
+After Phase 1 went live, login worked but dashboard was empty because
+products/sales/payments services still queried Supabase. Live dealers saw
+all-zero KPIs. Phase 2 fixes the dashboard read first because that's the
+loudest visible bug.
 
-## Shadow mode safety
-- Writes ALWAYS go to primary (supabase). Shadow never writes.
-- Reads return primary immediately; vps read is fire-and-forget.
-- Mismatches and vps failures log via `createLogger("data:shadow")` only — never affect UI.
+## Next (Phase 2.1)
+
+Still on Supabase, must move next:
+- `productService.ts`, `stockService.ts`, `salesService.ts`,
+  `purchaseService.ts`, `paymentService.ts`
+- New backend routes: `sales.ts`, `payments.ts`, `purchases.ts`,
+  `stockAdjust.ts`, `cashLedger.ts`
+- One-time data migration script Supabase → VPS Postgres for existing dealers.
+
+## Deploy
+
+See `deploy/RUNBOOK.md` §10. Standard cycle:
+`git pull && bun install && bun run build && pm2 restart tilessaas-backend --update-env`.
