@@ -500,7 +500,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products.map((p) => {
+                {filteredProducts.map((p) => {
                   const stockInfo = stockData?.get(p.id) ?? { total: 0, box: 0, sft: 0, piece: 0, reservedBox: 0, reservedPiece: 0 };
                   const qty = stockInfo.total;
                   const costPerUnit = Math.max(0, costData?.get(p.id) ?? 0);
