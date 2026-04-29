@@ -7,6 +7,14 @@ const buildDatabaseUrl = (password: string) => {
   return `postgres://tileserp:${encodedPassword}@127.0.0.1:5440/tileserp`;
 };
 
+const isUsableSecret = (value?: string) => Boolean(
+  value &&
+  value.trim() &&
+  !value.includes('GENERATE_') &&
+  !value.includes('CHANGE_ME') &&
+  value !== 'changeme_strong_password'
+);
+
 export function loadBackendEnv() {
   const rootEnvPaths = Array.from(new Set([
     path.resolve(process.cwd(), '../.env'),
@@ -34,11 +42,13 @@ export function loadBackendEnv() {
     loadDotenv({ path: envFile.path, override: index === 0 });
   }
 
-  const databaseEnv = (isProduction ? [{ parsed: parsedRootEnv }] : existingEnvs)
-    .find(({ parsed }) => parsed.DATABASE_URL || parsed.DB_PASSWORD)?.parsed;
-  if (databaseEnv?.DATABASE_URL) {
-    process.env.DATABASE_URL = databaseEnv.DATABASE_URL;
-  } else if (databaseEnv?.DB_PASSWORD) {
-    process.env.DATABASE_URL = buildDatabaseUrl(databaseEnv.DB_PASSWORD);
+  const databaseSources = isProduction ? [{ parsed: parsedRootEnv }, ...existingEnvs] : existingEnvs;
+  const passwordEnv = databaseSources.find(({ parsed }) => isUsableSecret(parsed.DB_PASSWORD))?.parsed;
+  const urlEnv = databaseSources.find(({ parsed }) => isUsableSecret(parsed.DATABASE_URL))?.parsed;
+
+  if (passwordEnv?.DB_PASSWORD) {
+    process.env.DATABASE_URL = buildDatabaseUrl(passwordEnv.DB_PASSWORD);
+  } else if (urlEnv?.DATABASE_URL) {
+    process.env.DATABASE_URL = urlEnv.DATABASE_URL;
   }
 }
