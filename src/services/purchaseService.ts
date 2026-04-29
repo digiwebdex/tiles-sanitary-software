@@ -7,6 +7,20 @@ import { assertDealerId } from "@/lib/tenancy";
 import { rateLimits } from "@/lib/rateLimit";
 import { backorderAllocationService } from "@/services/backorderAllocationService";
 import { batchService } from "@/services/batchService";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
 
 export interface PurchaseItemInput {
   product_id: string;
@@ -53,6 +67,15 @@ function calcTotalSft(quantity: number, unitType: string, perBoxSft: number | nu
 
 export const purchaseService = {
   async list(dealerId: string, page = 1, search?: string) {
+    if (USE_VPS) {
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const body = await vpsRequest<{ data: any[]; total: number }>(
+        `/api/purchases?${params.toString()}`,
+      );
+      return { data: body.data ?? [], total: body.total ?? 0 };
+    }
+
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
@@ -73,6 +96,9 @@ export const purchaseService = {
   },
 
   async getById(id: string) {
+    if (USE_VPS) {
+      return await vpsRequest<any>(`/api/purchases/${id}`);
+    }
     const { data, error } = await supabase
       .from("purchases")
       .select("*, suppliers(name), purchase_items(*, products(name, sku, unit_type, per_box_sft))")
