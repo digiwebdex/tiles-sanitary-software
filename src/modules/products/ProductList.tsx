@@ -85,6 +85,18 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     enabled: !!dealerId,
   });
 
+  const { data: summaryData } = useQuery({
+    queryKey: ["products-summary", dealerId],
+    enabled: !!dealerId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("products")
+        .select("id, default_cost, reorder_level, unit_type")
+        .eq("dealer_id", dealerId);
+      return data ?? [];
+    },
+  });
+
   const { data: stockData } = useQuery({
     queryKey: ["products-stock-map", dealerId],
     queryFn: async () => {
