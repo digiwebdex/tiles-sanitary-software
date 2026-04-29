@@ -77,6 +77,24 @@ export const deliveryService = {
   async create(input: CreateDeliveryInput) {
     await assertDealerId(input.dealer_id);
 
+    // ── VPS path: single atomic call ──
+    if (USE_VPS) {
+      return await vpsRequest<any>(`/api/deliveries`, {
+        method: "POST",
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          challan_id: input.challan_id || null,
+          sale_id: input.sale_id || null,
+          delivery_date: input.delivery_date,
+          receiver_name: input.receiver_name ?? null,
+          receiver_phone: input.receiver_phone ?? null,
+          delivery_address: input.delivery_address ?? null,
+          notes: input.notes ?? null,
+          items: input.items ?? [],
+        }),
+      });
+    }
+
     // ----- Server-side over-delivery guard -----
     // Reject any line that would deliver more than ordered minus already-delivered.
     // This is the defensive backstop in case the UI cap is bypassed.
