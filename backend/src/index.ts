@@ -26,6 +26,7 @@ import dashboardRoutes from './routes/dashboard';
 import ledgerRoutes from './routes/ledger';
 import collectionsRoutes from './routes/collections';
 import salesRoutes from './routes/sales';
+import purchasesRoutes from './routes/purchases';
 import path from 'path';
 
 const app = express();
@@ -126,6 +127,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ledger', ledgerRoutes);
 app.use('/api/collections', collectionsRoutes);
 app.use('/api/sales', salesRoutes);
+app.use('/api/purchases', purchasesRoutes);
 
 // Static file serving for uploaded product images, etc.
 app.use(
