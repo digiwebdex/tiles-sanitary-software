@@ -1,10 +1,10 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { customerLedgerService } from "@/services/ledgerService";
 import { cashLedgerService } from "@/services/ledgerService";
+import { collectionsService } from "@/services/collectionsService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -108,111 +108,13 @@ export default function CollectionTracker({ dealerId }: { dealerId: string }) {
   // Fetch all customers with outstanding balances + follow-up data
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ["collection-tracker", dealerId],
-    queryFn: async () => {
-      const [custRes, ledgerRes, salesRes, followupRes] = await Promise.all([
-        supabase.from("customers").select("id, name, phone, type, max_overdue_days").eq("dealer_id", dealerId).eq("status", "active").order("name"),
-        supabase.from("customer_ledger").select("customer_id, amount, type, entry_date").eq("dealer_id", dealerId),
-        supabase.from("sales").select("customer_id, invoice_number, sale_date, id, due_amount").eq("dealer_id", dealerId).order("sale_date", { ascending: false }),
-        supabase.from("customer_followups").select("customer_id, followup_date, status, created_at").eq("dealer_id", dealerId).order("created_at", { ascending: false }),
-      ]);
-      if (custRes.error) throw new Error(custRes.error.message);
-      if (ledgerRes.error) throw new Error(ledgerRes.error.message);
-      if (salesRes.error) throw new Error(salesRes.error.message);
-
-      const ledger = ledgerRes.data ?? [];
-      const sales = salesRes.data ?? [];
-      const followups = followupRes.data ?? [];
-
-      // Latest follow-up per customer
-      const followupMap = new Map<string, { date: string; status: string }>();
-      for (const f of followups) {
-        if (!followupMap.has(f.customer_id)) {
-          followupMap.set(f.customer_id, { date: f.followup_date, status: f.status });
-        }
-      }
-
-      // Invoice map
-      const invoiceMap = new Map<string, { invoice_number: string; sale_id: string; sale_date: string }[]>();
-      for (const s of sales) {
-        if (s.invoice_number) {
-          const arr = invoiceMap.get(s.customer_id) ?? [];
-          arr.push({ invoice_number: s.invoice_number, sale_id: s.id, sale_date: s.sale_date });
-          invoiceMap.set(s.customer_id, arr);
-        }
-      }
-
-      // Oldest unpaid sale per customer
-      const oldestUnpaidMap = new Map<string, string>();
-      for (const s of sales) {
-        if (Number(s.due_amount) > 0 && !oldestUnpaidMap.has(s.customer_id)) {
-          // sales are sorted desc, so we keep updating
-          oldestUnpaidMap.set(s.customer_id, s.sale_date);
-        }
-      }
-      // Actually need oldest — iterate in reverse
-      const salesAsc = [...sales].reverse();
-      const oldestMap2 = new Map<string, string>();
-      for (const s of salesAsc) {
-        if (Number(s.due_amount) > 0 && !oldestMap2.has(s.customer_id)) {
-          oldestMap2.set(s.customer_id, s.sale_date);
-        }
-      }
-
-      // Aggregate per customer
-      const map = new Map<string, { outstanding: number; total_sales: number; total_paid: number; last_payment: string | null }>();
-      for (const entry of ledger) {
-        const cur = map.get(entry.customer_id) ?? { outstanding: 0, total_sales: 0, total_paid: 0, last_payment: null };
-        const amt = Number(entry.amount);
-        if (entry.type === "sale") { cur.outstanding += amt; cur.total_sales += amt; }
-        else if (entry.type === "payment" || entry.type === "refund") { cur.outstanding -= amt; cur.total_paid += amt; if (!cur.last_payment || entry.entry_date > cur.last_payment) cur.last_payment = entry.entry_date; }
-        else if (entry.type === "adjustment") { cur.outstanding += amt; cur.total_sales += amt; }
-        map.set(entry.customer_id, cur);
-      }
-
-      const today = new Date();
-      const result: CustomerOutstanding[] = (custRes.data ?? []).map((c) => {
-        const agg = map.get(c.id) ?? { outstanding: 0, total_sales: 0, total_paid: 0, last_payment: null };
-        const oldestDate = oldestMap2.get(c.id) ?? null;
-        const daysOverdue = oldestDate ? Math.max(0, Math.floor((today.getTime() - new Date(oldestDate).getTime()) / 86400000)) : 0;
-        const fu = followupMap.get(c.id);
-        return {
-          id: c.id, name: c.name, phone: c.phone, type: c.type,
-          outstanding: Math.round(agg.outstanding * 100) / 100,
-          last_payment_date: agg.last_payment,
-          total_sales: Math.round(agg.total_sales * 100) / 100,
-          total_paid: Math.round(agg.total_paid * 100) / 100,
-          invoices: invoiceMap.get(c.id) ?? [],
-          oldestSaleDate: oldestDate,
-          daysOverdue,
-          agingBucket: getAgingBucket(daysOverdue),
-          lastFollowupDate: fu?.date ?? null,
-          lastFollowupStatus: fu?.status ?? null,
-          maxOverdueDays: Number(c.max_overdue_days ?? 0),
-        };
-      });
-
-      return result.filter((c) => c.outstanding > 0).sort((a, b) => b.outstanding - a.outstanding);
-    },
+    queryFn: () => collectionsService.listOutstanding(dealerId),
   });
 
   // Recent collections
   const { data: recentCollections = [] } = useQuery({
     queryKey: ["recent-collections", dealerId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("customer_ledger")
-        .select("id, amount, description, entry_date, created_at, customer_id, customers(name)")
-        .eq("dealer_id", dealerId)
-        .eq("type", "payment")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (error) throw new Error(error.message);
-      return (data ?? []).map((r: any) => ({
-        id: r.id, customer_name: r.customers?.name ?? "Unknown",
-        amount: Number(r.amount), description: r.description,
-        entry_date: r.entry_date, created_at: r.created_at,
-      })) as CollectionEntry[];
-    },
+    queryFn: () => collectionsService.listRecent(dealerId, 20),
   });
 
   const recordPayment = useMutation({

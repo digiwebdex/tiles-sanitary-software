@@ -24,6 +24,7 @@ import notificationsRoutes from './routes/notifications';
 import uploadsRoutes from './routes/uploads';
 import dashboardRoutes from './routes/dashboard';
 import ledgerRoutes from './routes/ledger';
+import collectionsRoutes from './routes/collections';
 import path from 'path';
 
 const app = express();
@@ -122,6 +123,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ledger', ledgerRoutes);
+app.use('/api/collections', collectionsRoutes);
 
 // Static file serving for uploaded product images, etc.
 app.use(
