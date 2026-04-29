@@ -121,7 +121,7 @@ const SADashboardPage = () => {
       }).length;
 
       // MRR
-      const monthlyRevenue = subs
+      const monthlyRevenue = latestSubs
         .filter((s: any) => s.status === "active")
         .reduce((sum: number, s: any) => sum + (Number(s.subscription_plans?.monthly_price ?? s.price_monthly) || 0), 0);
 
@@ -151,7 +151,7 @@ const SADashboardPage = () => {
         const mEnd = endOfMonth(d);
 
         let expected = 0;
-        subs.forEach((s: any) => {
+        latestSubs.forEach((s: any) => {
           const sStart = parseLocalDate(s.start_date) ?? new Date(0);
           const sEnd = parseLocalDate(s.end_date) ?? new Date("2099-12-31");
           const monthly = Number(s.subscription_plans?.monthly_price ?? s.price_monthly) || 0;
