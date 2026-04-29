@@ -153,6 +153,10 @@ export async function generateActionHash(
 
 // ── Settings ───────────────────────────────────────────────────────────
 export async function getApprovalSettings(dealerId: string): Promise<ApprovalSettings> {
+  if (USE_VPS) {
+    const json = await vpsJson(`/api/approvals/settings?dealerId=${encodeURIComponent(dealerId)}`);
+    return json.settings as ApprovalSettings;
+  }
   const { data, error } = await supabase
     .from("approval_settings")
     .select("*")
@@ -191,6 +195,15 @@ export async function getApprovalSettings(dealerId: string): Promise<ApprovalSet
 export async function saveApprovalSettings(
   settings: ApprovalSettings
 ): Promise<void> {
+  if (USE_VPS) {
+    const { dealer_id, ...body } = settings;
+    await vpsJson(`/api/approvals/settings?dealerId=${encodeURIComponent(dealer_id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return;
+  }
   const { error } = await supabase
     .from("approval_settings")
     .upsert(settings as any, { onConflict: "dealer_id" });
@@ -204,6 +217,14 @@ export async function cancelApprovalRequest(
   requestId: string,
   reason?: string
 ): Promise<void> {
+  if (USE_VPS) {
+    await vpsJson(`/api/approvals/${encodeURIComponent(requestId)}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason ?? null }),
+    });
+    return;
+  }
   const { error } = await supabase.rpc("cancel_approval_request" as any, {
     _request_id: requestId,
     _cancel_reason: reason || null,
@@ -215,6 +236,12 @@ export async function cancelApprovalRequest(
  * Sweep expired approvals for a dealer (called on view).
  */
 export async function expireStaleApprovals(dealerId: string): Promise<number> {
+  if (USE_VPS) {
+    const json = await vpsJson(`/api/approvals/expire-stale?dealerId=${encodeURIComponent(dealerId)}`, {
+      method: "POST",
+    });
+    return Number(json?.count ?? 0);
+  }
   const { data, error } = await supabase.rpc("expire_stale_approvals" as any, {
     _dealer_id: dealerId,
   });
