@@ -254,10 +254,10 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   };
 
   const toggleAll = () => {
-    if (selected.size === products.length) {
+    if (selected.size === filteredProducts.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(products.map((p) => p.id)));
+      setSelected(new Set(filteredProducts.map((p) => p.id)));
     }
   };
 
