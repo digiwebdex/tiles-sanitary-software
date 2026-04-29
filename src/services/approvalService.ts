@@ -486,6 +486,13 @@ export async function listApprovals(
   dealerId: string,
   filters?: { status?: string; type?: string }
 ): Promise<ApprovalRequest[]> {
+  if (USE_VPS) {
+    const params = new URLSearchParams({ dealerId });
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.type) params.set("type", filters.type);
+    const json = await vpsJson(`/api/approvals?${params.toString()}`);
+    return (json.rows ?? []) as ApprovalRequest[];
+  }
   let query = supabase
     .from("approval_requests")
     .select("*")
