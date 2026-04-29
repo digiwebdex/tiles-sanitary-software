@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/services/auditService";
-import { env } from "@/config/env";
+import { env } from "@/lib/env";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 const USE_VPS = env.AUTH_BACKEND === "vps";
