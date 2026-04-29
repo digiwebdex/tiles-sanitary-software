@@ -1,4 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsGet<T>(path: string): Promise<T> {
+  const res = await vpsAuthedFetch(path);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) throw new Error((body as any)?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 /**
  * Read-only aggregations for the Pricing Tier reports & dashboard widgets.
