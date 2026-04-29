@@ -1,16 +1,37 @@
 /**
- * Purchases read routes — VPS migration phase 3H (reads only).
+ * Purchases routes — Phase 3H (reads) + Phase 3K (create).
  *
- * Mirrors `purchaseService.list` and `purchaseService.getById` from the
- * React app so the PurchaseList and detail/document views can switch off
- * Supabase. Mutations (create/update/delete) remain on Supabase for now —
- * those carry FIFO batch creation, supplier ledger sync, audit logs and
- * backorder allocation, scheduled for a later phase.
+ *   GET  /api/purchases?dealerId=&page=1&search=
+ *   GET  /api/purchases/:id
+ *   POST /api/purchases                          ← Phase 3K (atomic mutation)
  *
- *   GET /api/purchases?dealerId=&page=1&search=
- *   GET /api/purchases/:id
+ * Phase 3K: `POST /api/purchases` ports `purchaseService.create()` from the
+ * React app to the VPS, wrapping ALL side-effects in a single Knex
+ * transaction so a failure rolls back partial state. Side-effects covered:
+ *
+ *   1. Look up products (unit_type, per_box_sft).
+ *   2. Compute base + landed cost per item.
+ *   3. Insert `purchases` header.
+ *   4. Insert `purchase_items` rows.
+ *   5. For each item: find-or-create `product_batches` row (null-safe match
+ *      on shade / caliber / lot_no), top-up qty, link the purchase_item to
+ *      its batch.
+ *   6. Add aggregate `stock` (creating a row if needed) + recompute
+ *      `average_cost_per_unit` (weighted by SFT for box_sft, by qty for piece).
+ *   7. Allocate newly-received stock to any pending backorder `sale_items`
+ *      for that product (FIFO by sale_items.created_at), creating
+ *      `backorder_allocations` rows and updating sale fulfillment status +
+ *      `sales.has_backorder` flag.
+ *   8. Insert `supplier_ledger` (purchase, negative) and `cash_ledger`
+ *      (purchase, negative) entries.
+ *   9. Write a single `audit_logs` row keyed to req.user.userId.
+ *
+ * Update / Delete are NOT in scope for Phase 3K — those would need to
+ * reverse all of the above (release allocations, restore batches, reverse
+ * ledger entries) and will land in a follow-up.
  */
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { tenantGuard } from '../middleware/tenant';
@@ -22,7 +43,10 @@ const PAGE_SIZE = 25;
 
 function resolveDealer(req: Request, res: Response): string | null {
   const isSuper = req.user?.roles.includes('super_admin');
-  const claimed = (req.query.dealerId as string | undefined) || undefined;
+  const claimed =
+    (req.query.dealerId as string | undefined) ||
+    (req.body?.dealer_id as string | undefined) ||
+    undefined;
   if (isSuper) {
     if (!claimed) {
       res.status(400).json({ error: 'super_admin must specify dealerId' });
@@ -40,6 +64,8 @@ function resolveDealer(req: Request, res: Response): string | null {
   }
   return req.dealerId;
 }
+
+// ─────────────────────────── READS (Phase 3H) ────────────────────────────
 
 router.get('/', async (req: Request, res: Response) => {
   const dealerId = resolveDealer(req, res);
@@ -123,6 +149,411 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[purchases.getById] error', err);
     res.status(500).json({ error: 'Failed to load purchase' });
+  }
+});
+
+// ───────────────────────── CREATE (Phase 3K) ─────────────────────────────
+
+const purchaseItemSchema = z.object({
+  product_id: z.string().uuid(),
+  quantity: z.coerce.number().positive(),
+  purchase_rate: z.coerce.number().min(0),
+  offer_price: z.coerce.number().min(0).default(0),
+  transport_cost: z.coerce.number().min(0).default(0),
+  labor_cost: z.coerce.number().min(0).default(0),
+  other_cost: z.coerce.number().min(0).default(0),
+  batch_no: z.string().trim().max(50).optional().nullable(),
+  lot_no: z.string().trim().max(50).optional().nullable(),
+  shade_code: z.string().trim().max(30).optional().nullable(),
+  caliber: z.string().trim().max(30).optional().nullable(),
+});
+
+const createPurchaseSchema = z.object({
+  dealer_id: z.string().uuid().optional(),
+  supplier_id: z.string().uuid(),
+  invoice_number: z.string().trim().max(50).optional().nullable(),
+  purchase_date: z.string().min(1),
+  notes: z.string().trim().max(2000).optional().nullable(),
+  items: z.array(purchaseItemSchema).min(1),
+});
+
+type ItemIn = z.infer<typeof purchaseItemSchema>;
+
+function calcBaseCost(item: ItemIn, unitType: string, perBoxSft: number | null): number {
+  if (unitType === 'box_sft' && perBoxSft) {
+    return item.quantity * perBoxSft * item.purchase_rate;
+  }
+  return item.quantity * item.purchase_rate;
+}
+
+function calcLanded(base: number, item: ItemIn): number {
+  return base + item.transport_cost + item.labor_cost + item.other_cost;
+}
+
+function calcTotalSft(qty: number, unitType: string, perBoxSft: number | null): number | null {
+  if (unitType === 'box_sft' && perBoxSft) return qty * perBoxSft;
+  return null;
+}
+
+function generateAutoBatchNo(): string {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let suffix = '';
+  for (let i = 0; i < 5; i++) {
+    suffix += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `AUTO-${date}-${suffix}`;
+}
+
+router.post('/', async (req: Request, res: Response) => {
+  // Salesman is insert-only on sales-side but per access constraints they
+  // do NOT manage purchases. Restrict to dealer_admin / super_admin.
+  const roles = (req.user?.roles ?? []) as string[];
+  if (!roles.includes('dealer_admin') && !roles.includes('super_admin')) {
+    res.status(403).json({ error: 'Only dealer_admin can record purchases' });
+    return;
+  }
+
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  const parsed = createPurchaseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid payload', issues: parsed.error.flatten() });
+    return;
+  }
+  const input = parsed.data;
+  const userId = req.user?.userId ?? null;
+  const ip =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    req.socket.remoteAddress ||
+    null;
+  const ua = (req.headers['user-agent'] as string) || null;
+
+  try {
+    // 1. Pre-fetch products (outside tx; read-only)
+    const productIds = Array.from(new Set(input.items.map((i) => i.product_id)));
+    const products = await db('products')
+      .whereIn('id', productIds)
+      .andWhere({ dealer_id: dealerId })
+      .select('id', 'unit_type', 'per_box_sft');
+
+    if (products.length !== productIds.length) {
+      res.status(400).json({ error: 'One or more products not found for this dealer' });
+      return;
+    }
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    // Verify supplier belongs to dealer
+    const supplier = await db('suppliers')
+      .where({ id: input.supplier_id, dealer_id: dealerId })
+      .first('id');
+    if (!supplier) {
+      res.status(400).json({ error: 'Supplier not found for this dealer' });
+      return;
+    }
+
+    // 2. Compute item totals
+    const itemsCalc = input.items.map((item) => {
+      const product = productMap.get(item.product_id)!;
+      const unitType = product.unit_type ?? 'piece';
+      const perBoxSft = product.per_box_sft ?? null;
+      const base = calcBaseCost(item, unitType, perBoxSft);
+      const landed = calcLanded(base, item);
+      const totalSft = calcTotalSft(item.quantity, unitType, perBoxSft);
+      return { src: item, product, unitType, perBoxSft, landed, totalSft };
+    });
+    const totalAmount = itemsCalc.reduce((s, x) => s + x.landed, 0);
+
+    // 3-9: Atomic transaction
+    const purchaseId = await db.transaction(async (trx) => {
+      // Insert purchase header
+      const [purchase] = await trx('purchases')
+        .insert({
+          dealer_id: dealerId,
+          supplier_id: input.supplier_id,
+          invoice_number: input.invoice_number?.trim() || null,
+          purchase_date: input.purchase_date,
+          total_amount: totalAmount,
+          notes: input.notes?.trim() || null,
+          created_by: userId,
+        })
+        .returning('id');
+      const purchaseRowId = purchase.id;
+
+      // Insert purchase_items
+      const itemRows = itemsCalc.map((x) => ({
+        purchase_id: purchaseRowId,
+        dealer_id: dealerId,
+        product_id: x.src.product_id,
+        quantity: x.src.quantity,
+        purchase_rate: x.src.purchase_rate,
+        offer_price: x.src.offer_price,
+        transport_cost: x.src.transport_cost,
+        labor_cost: x.src.labor_cost,
+        other_cost: x.src.other_cost,
+        landed_cost: x.landed,
+        total_sft: x.totalSft,
+        total: x.landed,
+      }));
+      const inserted = await trx('purchase_items').insert(itemRows).returning(['id', 'product_id']);
+      // Map by index to preserve duplicate-product ordering
+      const itemIdsByIndex: string[] = inserted.map((r: any) => r.id);
+
+      const allocationsToRun: { productId: string; qty: number; purchaseItemId: string }[] = [];
+
+      // Per-item: batch + stock + avg cost
+      for (let idx = 0; idx < itemsCalc.length; idx++) {
+        const x = itemsCalc[idx];
+        const purchaseItemId = itemIdsByIndex[idx];
+        const item = x.src;
+
+        // ── Find-or-create batch (null-safe match) ──
+        const batchNo = (item.batch_no || '').trim() || generateAutoBatchNo();
+        const shade = (item.shade_code || '').trim() || null;
+        const caliber = (item.caliber || '').trim() || null;
+        const lotNo = (item.lot_no || '').trim() || null;
+
+        const batchQ = trx('product_batches')
+          .where({
+            dealer_id: dealerId,
+            product_id: item.product_id,
+            batch_no: batchNo,
+          })
+          .forUpdate();
+        if (shade === null) batchQ.whereNull('shade_code');
+        else batchQ.andWhere('shade_code', shade);
+        if (caliber === null) batchQ.whereNull('caliber');
+        else batchQ.andWhere('caliber', caliber);
+        if (lotNo === null) batchQ.whereNull('lot_no');
+        else batchQ.andWhere('lot_no', lotNo);
+
+        const existingBatch = await batchQ.first();
+
+        let batchId: string;
+        if (existingBatch) {
+          if (x.unitType === 'box_sft') {
+            const newBox = Number(existingBatch.box_qty) + item.quantity;
+            await trx('product_batches')
+              .where({ id: existingBatch.id })
+              .update({
+                box_qty: newBox,
+                sft_qty: newBox * (x.perBoxSft ?? 0),
+                status: 'active',
+              });
+          } else {
+            await trx('product_batches')
+              .where({ id: existingBatch.id })
+              .update({
+                piece_qty: Number(existingBatch.piece_qty) + item.quantity,
+                status: 'active',
+              });
+          }
+          batchId = existingBatch.id;
+        } else {
+          const newRow: any = {
+            dealer_id: dealerId,
+            product_id: item.product_id,
+            batch_no: batchNo,
+            lot_no: lotNo,
+            shade_code: shade,
+            caliber: caliber,
+            box_qty: 0,
+            piece_qty: 0,
+            sft_qty: 0,
+            status: 'active',
+          };
+          if (x.unitType === 'box_sft') {
+            newRow.box_qty = item.quantity;
+            newRow.sft_qty = item.quantity * (x.perBoxSft ?? 0);
+          } else {
+            newRow.piece_qty = item.quantity;
+          }
+          const [created] = await trx('product_batches').insert(newRow).returning('id');
+          batchId = created.id;
+        }
+
+        // Link purchase_item → batch
+        await trx('purchase_items').where({ id: purchaseItemId }).update({ batch_id: batchId });
+
+        // ── Aggregate stock add ──
+        const stockRow = await trx('stock')
+          .where({ product_id: item.product_id, dealer_id: dealerId })
+          .forUpdate()
+          .first();
+
+        if (!stockRow) {
+          const newStock: any = {
+            dealer_id: dealerId,
+            product_id: item.product_id,
+            box_qty: 0,
+            piece_qty: 0,
+            sft_qty: 0,
+            average_cost_per_unit: 0,
+          };
+          if (x.unitType === 'box_sft') {
+            newStock.box_qty = item.quantity;
+            newStock.sft_qty = item.quantity * (x.perBoxSft ?? 0);
+          } else {
+            newStock.piece_qty = item.quantity;
+          }
+          // Initial average cost
+          if (x.unitType === 'box_sft' && x.totalSft && x.totalSft > 0) {
+            newStock.average_cost_per_unit = Math.round((x.landed / x.totalSft) * 100) / 100;
+          } else if (item.quantity > 0) {
+            newStock.average_cost_per_unit = Math.round((x.landed / item.quantity) * 100) / 100;
+          }
+          await trx('stock').insert(newStock);
+        } else {
+          // Compute new average cost (weighted with existing stock)
+          const currentQtyBase =
+            x.unitType === 'box_sft' ? Number(stockRow.sft_qty) : Number(stockRow.piece_qty);
+          const currentTotal = currentQtyBase * Number(stockRow.average_cost_per_unit);
+          const incomingQtyBase =
+            x.unitType === 'box_sft' && x.totalSft ? x.totalSft : item.quantity;
+          const incomingTotal = x.landed;
+          const newQtyBase = currentQtyBase + incomingQtyBase;
+          const newAvg = newQtyBase > 0 ? (currentTotal + incomingTotal) / newQtyBase : 0;
+
+          if (x.unitType === 'box_sft') {
+            const newBox = Number(stockRow.box_qty) + item.quantity;
+            await trx('stock')
+              .where({ id: stockRow.id })
+              .update({
+                box_qty: newBox,
+                sft_qty: newBox * (x.perBoxSft ?? 0),
+                average_cost_per_unit: Math.round(newAvg * 100) / 100,
+              });
+          } else {
+            await trx('stock')
+              .where({ id: stockRow.id })
+              .update({
+                piece_qty: Number(stockRow.piece_qty) + item.quantity,
+                average_cost_per_unit: Math.round(newAvg * 100) / 100,
+              });
+          }
+        }
+
+        allocationsToRun.push({
+          productId: item.product_id,
+          qty: item.quantity,
+          purchaseItemId,
+        });
+      }
+
+      // ── Backorder allocation (FIFO) ──
+      // After stock has been topped up, allocate to any pending sale_items
+      // for this product that still have backorder_qty > 0.
+      for (const alloc of allocationsToRun) {
+        let remaining = alloc.qty;
+        const pending = await trx('sale_items')
+          .where({ dealer_id: dealerId, product_id: alloc.productId })
+          .andWhere('backorder_qty', '>', 0)
+          .orderBy('created_at', 'asc')
+          .select('id', 'quantity', 'backorder_qty', 'allocated_qty', 'sale_id')
+          .forUpdate();
+
+        const touchedSaleIds = new Set<string>();
+        for (const si of pending) {
+          if (remaining <= 0) break;
+          const curBack = Number(si.backorder_qty);
+          const curAlloc = Number(si.allocated_qty);
+          const unallocated = curBack - curAlloc;
+          if (unallocated <= 0) continue;
+
+          const allocateNow = Math.min(unallocated, remaining);
+          const newAllocated = curAlloc + allocateNow;
+          const newBackorder = curBack - allocateNow;
+          const totalQty = Number(si.quantity);
+
+          let newStatus: string;
+          if (newBackorder <= 0) newStatus = 'in_stock';
+          else if (newAllocated <= 0) newStatus = 'pending';
+          else if (newAllocated >= newBackorder) newStatus = 'ready_for_delivery';
+          else newStatus = 'partially_allocated';
+
+          await trx('sale_items').where({ id: si.id }).update({
+            allocated_qty: newAllocated,
+            backorder_qty: newBackorder,
+            fulfillment_status: newStatus,
+          });
+
+          await trx('backorder_allocations').insert({
+            dealer_id: dealerId,
+            product_id: alloc.productId,
+            sale_item_id: si.id,
+            purchase_item_id: alloc.purchaseItemId,
+            allocated_qty: allocateNow,
+          });
+
+          remaining -= allocateNow;
+          touchedSaleIds.add(si.sale_id);
+        }
+
+        // Refresh has_backorder flag on touched sales
+        for (const saleId of touchedSaleIds) {
+          const items = await trx('sale_items')
+            .where({ sale_id: saleId })
+            .select('backorder_qty', 'fulfillment_status');
+          const hasBackorder = items.some(
+            (i: any) =>
+              Number(i.backorder_qty) > 0 ||
+              !['in_stock', 'fulfilled', 'ready_for_delivery'].includes(i.fulfillment_status),
+          );
+          await trx('sales').where({ id: saleId }).update({ has_backorder: hasBackorder });
+        }
+      }
+
+      // ── Supplier ledger (negative = we owe supplier) ──
+      await trx('supplier_ledger').insert({
+        dealer_id: dealerId,
+        supplier_id: input.supplier_id,
+        purchase_id: purchaseRowId,
+        type: 'purchase',
+        amount: -totalAmount,
+        description: `Purchase ${input.invoice_number || purchaseRowId}`,
+        entry_date: input.purchase_date,
+      });
+
+      // ── Cash ledger ──
+      await trx('cash_ledger').insert({
+        dealer_id: dealerId,
+        type: 'purchase',
+        amount: -totalAmount,
+        description: `Purchase payment: ${input.invoice_number || purchaseRowId}`,
+        reference_type: 'purchases',
+        reference_id: purchaseRowId,
+        entry_date: input.purchase_date,
+      });
+
+      // ── Audit log ──
+      await trx('audit_logs').insert({
+        dealer_id: dealerId,
+        user_id: userId,
+        action: 'purchase_create',
+        table_name: 'purchases',
+        record_id: purchaseRowId,
+        new_data: {
+          supplier_id: input.supplier_id,
+          invoice_number: input.invoice_number,
+          total_amount: totalAmount,
+          item_count: input.items.length,
+        },
+        ip_address: ip,
+        user_agent: ua,
+      });
+
+      return purchaseRowId;
+    });
+
+    // Return the created purchase header (post-tx read)
+    const created = await db('purchases').where({ id: purchaseId }).first();
+    res.status(201).json(created);
+  } catch (err: any) {
+    console.error('[purchases.create] error', err);
+    res
+      .status(500)
+      .json({ error: err?.message || 'Failed to create purchase' });
   }
 });
 

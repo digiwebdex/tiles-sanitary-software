@@ -115,6 +115,23 @@ export const purchaseService = {
     // Service-level validation
     validateInput(createPurchaseServiceSchema, input);
 
+    // ── VPS path: single atomic call ──
+    if (USE_VPS) {
+      const created = await vpsRequest<any>(`/api/purchases`, {
+        method: "POST",
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          supplier_id: input.supplier_id,
+          invoice_number: input.invoice_number || null,
+          purchase_date: input.purchase_date,
+          notes: input.notes ?? null,
+          items: input.items,
+        }),
+      });
+      return created;
+    }
+
+    // ── Legacy Supabase path (unchanged) ──
     const productIds = input.items.map((i) => i.product_id);
     const { data: products, error: pErr } = await supabase
       .from("products")
