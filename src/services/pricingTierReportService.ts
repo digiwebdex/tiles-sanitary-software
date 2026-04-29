@@ -1,4 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsGet<T>(path: string): Promise<T> {
+  const res = await vpsAuthedFetch(path);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) throw new Error((body as any)?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 /**
  * Read-only aggregations for the Pricing Tier reports & dashboard widgets.
@@ -53,6 +64,7 @@ export interface ManualOverrideRow {
 
 export const pricingTierReportService = {
   async tierList(dealerId: string): Promise<TierListRow[]> {
+    if (USE_VPS) return vpsGet<TierListRow[]>(`/api/reports/pricing-tier/tiers?dealerId=${encodeURIComponent(dealerId)}`);
     const [tiersRes, itemsRes, custRes] = await Promise.all([
       supabase.from("price_tiers").select("id, name, status, is_default").eq("dealer_id", dealerId).order("name"),
       supabase.from("price_tier_items").select("tier_id").eq("dealer_id", dealerId),
@@ -81,6 +93,7 @@ export const pricingTierReportService = {
   },
 
   async customersByTier(dealerId: string): Promise<CustomerTierRow[]> {
+    if (USE_VPS) return vpsGet<CustomerTierRow[]>(`/api/reports/pricing-tier/customers?dealerId=${encodeURIComponent(dealerId)}`);
     const { data: customers, error } = await supabase
       .from("customers")
       .select("id, name, type, price_tier_id, price_tiers(name)")
@@ -118,6 +131,12 @@ export const pricingTierReportService = {
   },
 
   async salesByTier(dealerId: string, fromDate?: string, toDate?: string): Promise<SalesByTierRow[]> {
+    if (USE_VPS) {
+      const params = new URLSearchParams({ dealerId });
+      if (fromDate) params.set("from", fromDate);
+      if (toDate) params.set("to", toDate);
+      return vpsGet<SalesByTierRow[]>(`/api/reports/pricing-tier/sales?${params}`);
+    }
     let q = supabase
       .from("sale_items")
       .select("tier_id, total, sale_id, price_tiers(name), sales!inner(sale_date)")
@@ -148,6 +167,12 @@ export const pricingTierReportService = {
   },
 
   async quotedValueByTier(dealerId: string, fromDate?: string, toDate?: string): Promise<QuotedValueByTierRow[]> {
+    if (USE_VPS) {
+      const params = new URLSearchParams({ dealerId });
+      if (fromDate) params.set("from", fromDate);
+      if (toDate) params.set("to", toDate);
+      return vpsGet<QuotedValueByTierRow[]>(`/api/reports/pricing-tier/quoted?${params}`);
+    }
     let q = supabase
       .from("quotation_items")
       .select("tier_id, line_total, quotation_id, price_tiers(name), quotations!inner(quote_date, status, converted_sale_id)")
@@ -184,6 +209,12 @@ export const pricingTierReportService = {
     fromDate?: string,
     toDate?: string,
   ): Promise<ManualOverrideRow[]> {
+    if (USE_VPS) {
+      const params = new URLSearchParams({ dealerId });
+      if (fromDate) params.set("from", fromDate);
+      if (toDate) params.set("to", toDate);
+      return vpsGet<ManualOverrideRow[]>(`/api/reports/pricing-tier/manual-overrides?${params}`);
+    }
     let q = supabase
       .from("sale_items")
       .select(
@@ -235,6 +266,9 @@ export const pricingTierReportService = {
     overrideImpact30d: number;
     customersWithoutTier: number;
   }> {
+    if (USE_VPS) {
+      return vpsGet<any>(`/api/reports/pricing-tier/dashboard?dealerId=${encodeURIComponent(dealerId)}`);
+    }
     const today = new Date();
     const d7 = new Date(today.getTime() - 7 * 86400000).toISOString().split("T")[0];
     const d30 = new Date(today.getTime() - 30 * 86400000).toISOString().split("T")[0];
