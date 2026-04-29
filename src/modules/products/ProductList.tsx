@@ -376,14 +376,94 @@ const ProductList = ({ dealerId }: ProductListProps) => {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search by SKU, name, or barcode…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="pl-9"
-        />
+      {/* Smart Filter Bar */}
+      <div className="rounded-lg border bg-card p-3 space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by SKU, name, or barcode…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="pl-9"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Category" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categoryOptions.map((c) => (
+                  <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={brandFilter} onValueChange={setBrandFilter}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Brand" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Brands</SelectItem>
+                {brandOptions.map((b) => (
+                  <SelectItem key={b} value={b}>{b}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={unitFilter} onValueChange={setUnitFilter}>
+              <SelectTrigger className="w-[140px]"><SelectValue placeholder="Unit Type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Units</SelectItem>
+                <SelectItem value="box_sft">Box / Sft</SelectItem>
+                <SelectItem value="piece">Piece</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={stockFilter} onValueChange={setStockFilter}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Stock" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stock</SelectItem>
+                <SelectItem value="in">In Stock</SelectItem>
+                <SelectItem value="low">Low Stock</SelectItem>
+                <SelectItem value="out">Out of Stock</SelectItem>
+                <SelectItem value="negative">Negative</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Sort by" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name-asc">Name (A → Z)</SelectItem>
+                <SelectItem value="name-desc">Name (Z → A)</SelectItem>
+                <SelectItem value="sku-asc">SKU (A → Z)</SelectItem>
+                <SelectItem value="price-asc">Price (Low → High)</SelectItem>
+                <SelectItem value="price-desc">Price (High → Low)</SelectItem>
+                <SelectItem value="qty-desc">Qty (High → Low)</SelectItem>
+                <SelectItem value="qty-asc">Qty (Low → High)</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {activeFilterCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearAllFilters} className="gap-1">
+                <X className="h-4 w-4" /> Clear
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {activeFilterCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Active:</span>
+            {search.trim() && <UIBadge variant="secondary">Search: {search}</UIBadge>}
+            {categoryFilter !== "all" && <UIBadge variant="secondary" className="capitalize">Category: {categoryFilter}</UIBadge>}
+            {brandFilter !== "all" && <UIBadge variant="secondary">Brand: {brandFilter}</UIBadge>}
+            {unitFilter !== "all" && <UIBadge variant="secondary">Unit: {unitFilter === "box_sft" ? "Box/Sft" : "Piece"}</UIBadge>}
+            {stockFilter !== "all" && <UIBadge variant="secondary" className="capitalize">Stock: {stockFilter}</UIBadge>}
+            <span className="ml-auto text-muted-foreground">
+              Showing {filteredProducts.length} of {products.length} on this page
+            </span>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
