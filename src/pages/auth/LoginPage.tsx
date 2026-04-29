@@ -104,7 +104,8 @@ const LoginPage = () => {
         // VPS path: route by role immediately after tokens are saved.
         if (authBridge.isVps) {
           const vpsUser = authBridge.getCurrentVpsUser();
-          navigate(vpsUser?.roles.includes("super_admin") ? "/super-admin" : "/dashboard", { replace: true });
+          const target = vpsUser?.roles.includes("super_admin") ? "/super-admin" : "/dashboard";
+          window.setTimeout(() => navigate(target, { replace: true }), 0);
         }
         // Supabase path: onAuthStateChange will trigger AuthContext + redirect.
       }
