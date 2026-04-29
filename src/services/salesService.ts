@@ -254,6 +254,88 @@ export const salesService = {
     rateLimits.api("sale_create");
     await assertDealerId(input.dealer_id);
 
+    // Phase 3L: When VPS backend is enabled, delegate atomic sale creation
+    // (header + items + FIFO batch alloc + ledger + audit + challan stub) to
+    // the VPS. Notifications still fire client-side from the response payload
+    // so SMS/email templates stay on a single code path.
+    if (USE_VPS) {
+      const sale = await vpsRequest<any>(`/api/sales`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          customer_name: input.customer_name,
+          sale_date: input.sale_date,
+          sale_type: input.sale_type ?? "direct_invoice",
+          discount: input.discount,
+          discount_reference: input.discount_reference || null,
+          client_reference: input.client_reference || null,
+          fitter_reference: input.fitter_reference || null,
+          paid_amount: input.paid_amount,
+          payment_mode: input.payment_mode || null,
+          notes: input.notes || null,
+          allow_backorder: input.allow_backorder,
+          mixed_batch_acknowledged: input.mixed_batch_acknowledged,
+          reservation_selections: input.reservation_selections,
+          project_id: input.project_id ?? null,
+          site_id: input.site_id ?? null,
+          items: input.items,
+        }),
+      });
+
+      // Fire-and-forget notification (mirrors Supabase path)
+      void (async () => {
+        try {
+          const { data: customer } = await supabase
+            .from("customers")
+            .select("name, phone")
+            .eq("id", sale.customer_id)
+            .single();
+
+          const productIds = input.items.map((i) => i.product_id);
+          const { data: products } = await supabase
+            .from("products")
+            .select("id, name, unit_type")
+            .in("id", productIds);
+          const prodMap = new Map((products ?? []).map((p) => [p.id, p]));
+
+          const itemDetails = input.items.map((item) => {
+            const prod = prodMap.get(item.product_id);
+            return {
+              name: prod?.name ?? "Product",
+              quantity: item.quantity,
+              unit: prod?.unit_type === "box_sft" ? "box" : "pc",
+              rate: item.sale_rate,
+              total: item.quantity * item.sale_rate,
+            };
+          });
+
+          const { data: dealer } = await supabase
+            .from("dealers")
+            .select("name")
+            .eq("id", input.dealer_id)
+            .single();
+
+          notificationService.notifySaleCreated(input.dealer_id, {
+            invoice_number: sale.invoice_number,
+            customer_name: customer?.name ?? "Customer",
+            customer_phone: customer?.phone ?? null,
+            total_amount: Number(sale.total_amount),
+            paid_amount: Number(sale.paid_amount),
+            due_amount: Number(sale.due_amount),
+            sale_date: sale.sale_date,
+            sale_id: sale.id,
+            items: itemDetails,
+            dealer_name: dealer?.name ?? "",
+          });
+        } catch {
+          // Swallow
+        }
+      })();
+
+      return sale;
+    }
+
     // Find or create customer by name
     const customerName = input.customer_name.trim();
     let customerId: string;
