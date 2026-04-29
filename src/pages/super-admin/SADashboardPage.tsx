@@ -6,15 +6,24 @@ import {
   Store, CalendarPlus, AlertTriangle, TrendingUp,
   Clock, Ban, Wallet, Banknote,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, parseLocalDate } from "@/lib/utils";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
-import { differenceInDays, parseISO, startOfMonth, endOfMonth, format } from "date-fns";
+import { differenceInDays, startOfMonth, endOfMonth, format } from "date-fns";
 
 const PIE_COLORS = ["hsl(222.2, 47.4%, 11.2%)", "hsl(0, 84.2%, 60.2%)", "hsl(210, 40%, 70%)", "hsl(48, 96%, 53%)"];
 const GRACE_DAYS = 3;
+
+async function vpsJson<T>(path: string): Promise<T> {
+  const res = await vpsAuthedFetch(path);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+  return body as T;
+}
 
 const StatCard = ({
   title, value, icon: Icon, description, badge,
