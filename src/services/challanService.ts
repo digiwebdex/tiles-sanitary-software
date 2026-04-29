@@ -5,6 +5,20 @@ import { customerLedgerService, cashLedgerService } from "@/services/ledgerServi
 import { logAudit } from "@/services/auditService";
 import { assertDealerId } from "@/lib/tenancy";
 import { rateLimits } from "@/lib/rateLimit";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
 
 export interface CreateChallanInput {
   dealer_id: string;
