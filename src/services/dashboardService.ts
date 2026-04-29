@@ -1,4 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export interface DashboardData {
   // Today
@@ -64,9 +66,32 @@ const SAFE_DEFAULTS: DashboardData = {
   productPerformance: [],
 };
 
+async function getDataFromVps(dealerId: string): Promise<DashboardData> {
+  const res = await vpsAuthedFetch(`/api/dashboard?dealerId=${encodeURIComponent(dealerId)}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error || `Dashboard request failed (${res.status})`);
+  }
+  const body = (await res.json()) as Partial<DashboardData>;
+  // Merge with defaults so any field the backend doesn't return yet stays safe.
+  return { ...SAFE_DEFAULTS, ...body };
+}
+
 export const dashboardService = {
   async getData(dealerId: string): Promise<DashboardData> {
     if (!dealerId) return SAFE_DEFAULTS;
+
+    // Phase 2: when auth is on VPS, the dashboard MUST be served by VPS too —
+    // otherwise users see an empty Supabase dashboard. No silent fallback to
+    // Supabase here, because that's the bug we're fixing for live dealers.
+    if (env.AUTH_BACKEND === "vps") {
+      try {
+        return await getDataFromVps(dealerId);
+      } catch (err) {
+        console.error("[dashboardService] VPS load failed:", err);
+        return SAFE_DEFAULTS;
+      }
+    }
 
     try {
       const now = new Date();
