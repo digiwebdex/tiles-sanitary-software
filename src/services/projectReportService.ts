@@ -122,6 +122,7 @@ function daysBetween(fromDate: string, toDate: string): number {
 export const projectReportService = {
   /** Sales by Project — invoice count + revenue + outstanding per project. */
   async salesByProject(dealerId: string): Promise<SalesByProjectRow[]> {
+    if (USE_VPS) return vpsGet<SalesByProjectRow[]>(`/api/reports/projects/sales?dealerId=${encodeURIComponent(dealerId)}`);
     const projects = await loadProjectsMeta(dealerId);
     const { data, error } = await sb
       .from("sales")
@@ -158,6 +159,7 @@ export const projectReportService = {
 
   /** Outstanding by Project — billed / paid / due / overdue per project. */
   async outstandingByProject(dealerId: string): Promise<OutstandingByProjectRow[]> {
+    if (USE_VPS) return vpsGet<OutstandingByProjectRow[]>(`/api/reports/projects/outstanding?dealerId=${encodeURIComponent(dealerId)}`);
     const projects = await loadProjectsMeta(dealerId);
     const { data, error } = await sb
       .from("sales")
@@ -204,6 +206,7 @@ export const projectReportService = {
 
   /** Delivery History by Site — challan/delivery counts + latest delivery + pending. */
   async deliveryHistoryBySite(dealerId: string): Promise<DeliveryHistoryBySiteRow[]> {
+    if (USE_VPS) return vpsGet<DeliveryHistoryBySiteRow[]>(`/api/reports/projects/delivery-history?dealerId=${encodeURIComponent(dealerId)}`);
     const { data: sites, error: sErr } = await sb
       .from("project_sites")
       .select("id, site_name, address, project_id, customer_id, projects:projects(id, project_name, project_code), customers:customers!project_sites_customer_id_fkey(name)")
@@ -250,6 +253,7 @@ export const projectReportService = {
 
   /** Project Quotation Pipeline — counts and value buckets per project. */
   async quotationPipeline(dealerId: string): Promise<ProjectQuotationPipelineRow[]> {
+    if (USE_VPS) return vpsGet<ProjectQuotationPipelineRow[]>(`/api/reports/projects/quotation-pipeline?dealerId=${encodeURIComponent(dealerId)}`);
     const projects = await loadProjectsMeta(dealerId);
     const { data, error } = await sb
       .from("quotations")
@@ -289,6 +293,7 @@ export const projectReportService = {
 
   /** Top Active Projects — combined activity (sales/challans/deliveries) + sales value. */
   async topActiveProjects(dealerId: string, limit = 10): Promise<TopActiveProjectRow[]> {
+    if (USE_VPS) return vpsGet<TopActiveProjectRow[]>(`/api/reports/projects/top-active?dealerId=${encodeURIComponent(dealerId)}&limit=${limit}`);
     const projects = await loadProjectsMeta(dealerId);
 
     const [salesRes, challanRes, delivRes] = await Promise.all([
@@ -337,6 +342,7 @@ export const projectReportService = {
 
   /** Site detail summary (counts + outstanding) — used by SiteHistoryDialog. */
   async siteSummary(dealerId: string, siteId: string) {
+    if (USE_VPS) return vpsGet(`/api/reports/projects/site-summary?dealerId=${encodeURIComponent(dealerId)}&siteId=${encodeURIComponent(siteId)}`);
     const [salesRes, quotesRes, challanRes, delivRes, siteRes] = await Promise.all([
       sb.from("sales").select("id, total_amount, paid_amount, due_amount").eq("dealer_id", dealerId).eq("site_id", siteId),
       sb.from("quotations").select("id, status, total_amount").eq("dealer_id", dealerId).eq("site_id", siteId),
@@ -371,6 +377,7 @@ export const projectReportService = {
 
   /** Site delivery history (single site) — sales + challans + deliveries + quotations. */
   async siteHistory(dealerId: string, siteId: string) {
+    if (USE_VPS) return vpsGet(`/api/reports/projects/site-history?dealerId=${encodeURIComponent(dealerId)}&siteId=${encodeURIComponent(siteId)}`);
     const [salesRes, challanRes, delivRes, quotesRes] = await Promise.all([
       sb.from("sales")
         .select("id, invoice_number, sale_date, total_amount, paid_amount, due_amount, sale_status")
@@ -419,6 +426,7 @@ export const projectReportService = {
 
   /** Owner dashboard quick stats. */
   async dashboardStats(dealerId: string): Promise<ProjectDashboardStats> {
+    if (USE_VPS) return vpsGet<ProjectDashboardStats>(`/api/reports/projects/dashboard?dealerId=${encodeURIComponent(dealerId)}`);
     const [activeRes, sitesRes, salesRes, top, recentSales, recentChallans, recentDeliveries] = await Promise.all([
       sb.from("projects").select("id", { count: "exact", head: true }).eq("dealer_id", dealerId).eq("status", "active"),
       sb.from("project_sites")
