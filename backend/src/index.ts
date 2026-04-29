@@ -37,6 +37,7 @@ import supplierPerformanceReportsRoutes from './routes/supplierPerformanceReport
 import expensesRoutes from './routes/expenses';
 import adjustmentsRoutes from './routes/adjustments';
 import reservationsRoutes from './routes/reservations';
+import approvalsRoutes from './routes/approvals';
 import path from 'path';
 
 const app = express();
@@ -148,6 +149,7 @@ app.use('/api/reports/supplier-performance', supplierPerformanceReportsRoutes);
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/adjustments', adjustmentsRoutes);
 app.use('/api/reservations', reservationsRoutes);
+app.use('/api/approvals', approvalsRoutes);
 
 // Static file serving for uploaded product images, etc.
 app.use(

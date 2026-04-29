@@ -1,5 +1,25 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/services/auditService";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsJson(path: string, init?: RequestInit) {
+  const res = await vpsAuthedFetch(path, init);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    let msg = `Request failed (${res.status})`;
+    try {
+      const j = JSON.parse(txt);
+      msg = typeof j.error === "string" ? j.error : JSON.stringify(j.error ?? j);
+    } catch {
+      if (txt) msg = txt;
+    }
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : await res.json();
+}
 
 // ── Types ──────────────────────────────────────────────────────────────
 export type ApprovalType =
@@ -133,6 +153,10 @@ export async function generateActionHash(
 
 // ── Settings ───────────────────────────────────────────────────────────
 export async function getApprovalSettings(dealerId: string): Promise<ApprovalSettings> {
+  if (USE_VPS) {
+    const json = await vpsJson(`/api/approvals/settings?dealerId=${encodeURIComponent(dealerId)}`);
+    return json.settings as ApprovalSettings;
+  }
   const { data, error } = await supabase
     .from("approval_settings")
     .select("*")
@@ -171,6 +195,15 @@ export async function getApprovalSettings(dealerId: string): Promise<ApprovalSet
 export async function saveApprovalSettings(
   settings: ApprovalSettings
 ): Promise<void> {
+  if (USE_VPS) {
+    const { dealer_id, ...body } = settings;
+    await vpsJson(`/api/approvals/settings?dealerId=${encodeURIComponent(dealer_id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return;
+  }
   const { error } = await supabase
     .from("approval_settings")
     .upsert(settings as any, { onConflict: "dealer_id" });
@@ -184,6 +217,14 @@ export async function cancelApprovalRequest(
   requestId: string,
   reason?: string
 ): Promise<void> {
+  if (USE_VPS) {
+    await vpsJson(`/api/approvals/${encodeURIComponent(requestId)}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason ?? null }),
+    });
+    return;
+  }
   const { error } = await supabase.rpc("cancel_approval_request" as any, {
     _request_id: requestId,
     _cancel_reason: reason || null,
@@ -195,6 +236,12 @@ export async function cancelApprovalRequest(
  * Sweep expired approvals for a dealer (called on view).
  */
 export async function expireStaleApprovals(dealerId: string): Promise<number> {
+  if (USE_VPS) {
+    const json = await vpsJson(`/api/approvals/expire-stale?dealerId=${encodeURIComponent(dealerId)}`, {
+      method: "POST",
+    });
+    return Number(json?.count ?? 0);
+  }
   const { data, error } = await supabase.rpc("expire_stale_approvals" as any, {
     _dealer_id: dealerId,
   });
@@ -248,6 +295,23 @@ export async function createApprovalRequest(params: {
   expiryHours?: number;
 }): Promise<ApprovalRequest> {
   const actionHash = await generateActionHash(params.approvalType, params.context);
+
+  if (USE_VPS) {
+    const json = await vpsJson(`/api/approvals?dealerId=${encodeURIComponent(params.dealerId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        approval_type: params.approvalType,
+        source_type: params.sourceType,
+        source_id: params.sourceId ?? null,
+        reason: params.reason ?? null,
+        context: params.context,
+        action_hash: actionHash,
+        expiry_hours: params.expiryHours,
+      }),
+    });
+    return json.request as ApprovalRequest;
+  }
 
   // Auto-approve for admins if setting enabled
   const shouldAutoApprove = params.isAdmin && (params.autoApproveForAdmins ?? true);
@@ -306,6 +370,14 @@ export async function decideApprovalRequest(
   decision: "approved" | "rejected",
   decisionNote?: string
 ): Promise<void> {
+  if (USE_VPS) {
+    await vpsJson(`/api/approvals/${encodeURIComponent(requestId)}/decide`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, decision_note: decisionNote ?? null }),
+    });
+    return;
+  }
   const { error } = await supabase.rpc("decide_approval_request", {
     _request_id: requestId,
     _decision: decision,
@@ -323,6 +395,14 @@ export async function consumeApprovalRequest(
   actionHash: string,
   sourceId?: string
 ): Promise<void> {
+  if (USE_VPS) {
+    await vpsJson(`/api/approvals/${encodeURIComponent(requestId)}/consume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action_hash: actionHash, source_id: sourceId ?? null }),
+    });
+    return;
+  }
   const { error } = await supabase.rpc("consume_approval_request", {
     _request_id: requestId,
     _action_hash: actionHash,
@@ -341,6 +421,21 @@ export async function findValidApproval(
   context: ApprovalContextData
 ): Promise<ApprovalRequest | null> {
   const actionHash = await generateActionHash(approvalType, context);
+
+  if (USE_VPS) {
+    const json = await vpsJson(
+      `/api/approvals?dealerId=${encodeURIComponent(dealerId)}&type=${encodeURIComponent(approvalType)}`,
+    );
+    const rows = (json.rows ?? []) as ApprovalRequest[];
+    const match = rows.find(
+      (r) =>
+        r.action_hash === actionHash &&
+        ["approved", "auto_approved"].includes(r.status) &&
+        !r.consumed_at &&
+        (!r.expires_at || new Date(r.expires_at) >= new Date()),
+    );
+    return match ?? null;
+  }
 
   const { data, error } = await supabase
     .from("approval_requests")
@@ -369,6 +464,10 @@ export async function findValidApproval(
  * List pending approvals for a dealer (for dashboard/management).
  */
 export async function listPendingApprovals(dealerId: string): Promise<ApprovalRequest[]> {
+  if (USE_VPS) {
+    const json = await vpsJson(`/api/approvals/pending?dealerId=${encodeURIComponent(dealerId)}`);
+    return (json.rows ?? []) as ApprovalRequest[];
+  }
   const { data, error } = await supabase
     .from("approval_requests")
     .select("*")
@@ -387,6 +486,13 @@ export async function listApprovals(
   dealerId: string,
   filters?: { status?: string; type?: string }
 ): Promise<ApprovalRequest[]> {
+  if (USE_VPS) {
+    const params = new URLSearchParams({ dealerId });
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.type) params.set("type", filters.type);
+    const json = await vpsJson(`/api/approvals?${params.toString()}`);
+    return (json.rows ?? []) as ApprovalRequest[];
+  }
   let query = supabase
     .from("approval_requests")
     .select("*")
