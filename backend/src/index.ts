@@ -34,6 +34,9 @@ import reportsRoutes from './routes/reports';
 import pricingTierReportsRoutes from './routes/pricingTierReports';
 import projectReportsRoutes from './routes/projectReports';
 import supplierPerformanceReportsRoutes from './routes/supplierPerformanceReports';
+import expensesRoutes from './routes/expenses';
+import adjustmentsRoutes from './routes/adjustments';
+import reservationsRoutes from './routes/reservations';
 import path from 'path';
 
 const app = express();
@@ -142,6 +145,9 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/reports/pricing-tier', pricingTierReportsRoutes);
 app.use('/api/reports/projects', projectReportsRoutes);
 app.use('/api/reports/supplier-performance', supplierPerformanceReportsRoutes);
+app.use('/api/expenses', expensesRoutes);
+app.use('/api/adjustments', adjustmentsRoutes);
+app.use('/api/reservations', reservationsRoutes);
 
 // Static file serving for uploaded product images, etc.
 app.use(
