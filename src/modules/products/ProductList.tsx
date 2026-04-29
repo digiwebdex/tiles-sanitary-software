@@ -483,7 +483,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      checked={products.length > 0 && selected.size === products.length}
+                      checked={filteredProducts.length > 0 && selected.size === filteredProducts.length}
                       onCheckedChange={toggleAll}
                     />
                   </TableHead>
