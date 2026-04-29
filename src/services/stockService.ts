@@ -354,6 +354,15 @@ export const stockService = {
   async deductBrokenStock(productId: string, quantity: number, dealerId: string, reason: string) {
     if (quantity <= 0) throw new Error("Quantity must be positive");
 
+    if (USE_VPS) {
+      return vpsAdjustment("broken", {
+        dealer_id: dealerId,
+        product_id: productId,
+        quantity,
+        reason,
+      });
+    }
+
     const product = await getProduct(productId);
     const stock = await getOrCreateStock(productId, dealerId);
     const updates = computeStockUpdate(product, stock, quantity, "deduct");
