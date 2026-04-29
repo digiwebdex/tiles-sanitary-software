@@ -11,6 +11,7 @@
  *   GET /api/sales/:id
  */
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { tenantGuard } from '../middleware/tenant';
@@ -22,7 +23,10 @@ const PAGE_SIZE = 25;
 
 function resolveDealer(req: Request, res: Response): string | null {
   const isSuper = req.user?.roles.includes('super_admin');
-  const claimed = (req.query.dealerId as string | undefined) || undefined;
+  const claimed =
+    (req.query.dealerId as string | undefined) ||
+    (req.body?.dealer_id as string | undefined) ||
+    undefined;
   if (isSuper) {
     if (!claimed) {
       res.status(400).json({ error: 'super_admin must specify dealerId' });
