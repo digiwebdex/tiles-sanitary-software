@@ -1,6 +1,20 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/services/auditService";
 import { assertDealerId } from "@/lib/tenancy";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
 
 export interface DeliveryItemInput {
   sale_item_id: string;
@@ -62,6 +76,24 @@ export const deliveryService = {
 
   async create(input: CreateDeliveryInput) {
     await assertDealerId(input.dealer_id);
+
+    // ── VPS path: single atomic call ──
+    if (USE_VPS) {
+      return await vpsRequest<any>(`/api/deliveries`, {
+        method: "POST",
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          challan_id: input.challan_id || null,
+          sale_id: input.sale_id || null,
+          delivery_date: input.delivery_date,
+          receiver_name: input.receiver_name ?? null,
+          receiver_phone: input.receiver_phone ?? null,
+          delivery_address: input.delivery_address ?? null,
+          notes: input.notes ?? null,
+          items: input.items ?? [],
+        }),
+      });
+    }
 
     // ----- Server-side over-delivery guard -----
     // Reject any line that would deliver more than ordered minus already-delivered.
@@ -197,6 +229,14 @@ export const deliveryService = {
 
   async updateStatus(id: string, status: string, dealerId: string) {
     await assertDealerId(dealerId);
+
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/deliveries/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, dealer_id: dealerId }),
+      });
+      return;
+    }
 
     const { error } = await supabase
       .from("deliveries")

@@ -5,6 +5,20 @@ import { customerLedgerService, cashLedgerService } from "@/services/ledgerServi
 import { logAudit } from "@/services/auditService";
 import { assertDealerId } from "@/lib/tenancy";
 import { rateLimits } from "@/lib/rateLimit";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
 
 export interface CreateChallanInput {
   dealer_id: string;
@@ -74,6 +88,22 @@ export const challanService = {
     rateLimits.api("challan_create");
     await assertDealerId(input.dealer_id);
 
+    if (USE_VPS) {
+      return await vpsRequest<any>(`/api/challans`, {
+        method: "POST",
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          sale_id: input.sale_id,
+          challan_date: input.challan_date,
+          driver_name: input.driver_name ?? null,
+          transport_name: input.transport_name ?? null,
+          vehicle_no: input.vehicle_no ?? null,
+          notes: input.notes ?? null,
+          show_price: input.show_price ?? false,
+        }),
+      });
+    }
+
     // Verify sale exists and is in challan_mode + draft status
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
@@ -141,6 +171,14 @@ export const challanService = {
   async markDelivered(challanId: string, dealerId: string) {
     await assertDealerId(dealerId);
 
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/${challanId}/deliver`, {
+        method: "POST",
+        body: JSON.stringify({ dealer_id: dealerId }),
+      });
+      return;
+    }
+
     const { data: challan, error } = await supabase
       .from("challans")
       .select("*, sales(id, sale_status)")
@@ -181,6 +219,14 @@ export const challanService = {
    */
   async convertToInvoice(saleId: string, dealerId: string) {
     await assertDealerId(dealerId);
+
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/convert-invoice/${saleId}`, {
+        method: "POST",
+        body: JSON.stringify({ dealer_id: dealerId }),
+      });
+      return;
+    }
 
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
@@ -259,6 +305,14 @@ export const challanService = {
     items?: { id: string; product_id: string; quantity: number; sale_rate: number }[];
   }) {
     await assertDealerId(dealerId);
+
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/${challanId}`, {
+        method: "PUT",
+        body: JSON.stringify({ dealer_id: dealerId, ...updates }),
+      });
+      return;
+    }
 
     const { data: challan, error: fetchErr } = await supabase
       .from("challans")
@@ -385,6 +439,14 @@ export const challanService = {
   async cancelChallan(challanId: string, dealerId: string) {
     await assertDealerId(dealerId);
 
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/${challanId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ dealer_id: dealerId }),
+      });
+      return;
+    }
+
     const { data: challan, error } = await supabase
       .from("challans")
       .select("*, sales(id, sale_items(product_id, quantity, products(unit_type)))")
@@ -437,6 +499,14 @@ export const challanService = {
    */
   async updateDeliveryStatus(challanId: string, dealerId: string, newStatus: string) {
     await assertDealerId(dealerId);
+
+    if (USE_VPS) {
+      await vpsRequest<{ ok: boolean }>(`/api/challans/${challanId}/delivery-status`, {
+        method: "PATCH",
+        body: JSON.stringify({ dealer_id: dealerId, delivery_status: newStatus }),
+      });
+      return;
+    }
 
     const { data: challan, error } = await supabase
       .from("challans")
