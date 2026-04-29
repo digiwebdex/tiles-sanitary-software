@@ -54,6 +54,11 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [unitFilter, setUnitFilter] = useState<string>("all");
+  const [stockFilter, setStockFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("name-asc");
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [barcodeSingle, setBarcodeSingle] = useState<{ id: string; sku: string; name: string; default_sale_rate: number } | null>(null);
   const [detailProduct, setDetailProduct] = useState<typeof products[0] | null>(null);
