@@ -3,6 +3,20 @@ import { stockService } from "@/services/stockService";
 import { supplierLedgerService, cashLedgerService } from "@/services/ledgerService";
 import { logAudit } from "@/services/auditService";
 import { assertDealerId } from "@/lib/tenancy";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
 
 export interface PurchaseReturnItemInput {
   product_id: string;
@@ -50,6 +64,12 @@ export const purchaseReturnService = {
   },
 
   async getNextReturnNo(dealerId: string): Promise<string> {
+    if (USE_VPS) {
+      const body = await vpsRequest<{ next_no: string }>(
+        `/api/returns/purchases/next-no?dealerId=${encodeURIComponent(dealerId)}`,
+      );
+      return body.next_no;
+    }
     const { count } = await supabase
       .from("purchase_returns")
       .select("id", { count: "exact", head: true })
@@ -60,6 +80,23 @@ export const purchaseReturnService = {
   async create(input: CreatePurchaseReturnInput) {
     await assertDealerId(input.dealer_id);
 
+    // ── VPS path: single atomic call ──
+    if (USE_VPS) {
+      return await vpsRequest<any>(`/api/returns/purchases`, {
+        method: "POST",
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          supplier_id: input.supplier_id,
+          purchase_id: input.purchase_id || null,
+          return_date: input.return_date,
+          return_no: input.return_no,
+          notes: input.notes ?? null,
+          items: input.items,
+        }),
+      });
+    }
+
+    // ── Legacy Supabase path ──
     const itemsWithCalc = input.items.map((item) => ({
       ...item,
       total: item.quantity * item.unit_price,

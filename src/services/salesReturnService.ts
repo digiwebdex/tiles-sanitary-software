@@ -5,6 +5,20 @@ import { logAudit } from "@/services/auditService";
 import { backorderAllocationService } from "@/services/backorderAllocationService";
 import { validateInput, createSalesReturnServiceSchema } from "@/lib/validators";
 import { assertDealerId } from "@/lib/tenancy";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
 
 export interface CreateSalesReturnInput {
   dealer_id: string;
@@ -44,6 +58,24 @@ export const salesReturnService = {
     await assertDealerId(input.dealer_id);
     // Service-level validation
     validateInput(createSalesReturnServiceSchema, input);
+
+    // ── VPS path: single atomic call ──
+    if (USE_VPS) {
+      return await vpsRequest<any>(`/api/returns/sales`, {
+        method: "POST",
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          sale_id: input.sale_id,
+          product_id: input.product_id,
+          qty: input.qty,
+          reason: input.reason ?? null,
+          is_broken: input.is_broken,
+          refund_amount: input.refund_amount,
+          refund_mode: input.refund_mode ?? null,
+          return_date: input.return_date,
+        }),
+      });
+    }
 
     // Fetch sale details including total_amount
     const { data: sale, error: saleErr } = await supabase
