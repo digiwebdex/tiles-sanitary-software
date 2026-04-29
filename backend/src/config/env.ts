@@ -1,7 +1,24 @@
+import fs from 'fs';
+import path from 'path';
 import { config } from 'dotenv';
 import { z } from 'zod';
 
-config();
+// Load environment from both possible PM2 working directories:
+// - /var/www/tilessaas/.env when PM2 is started from the project root
+// - /var/www/tilessaas/backend/.env or ../.env when PM2 is started from backend
+// This keeps the locked VPS nginx upstream (127.0.0.1:3003) stable after deploys.
+const envPaths = Array.from(new Set([
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), '../.env'),
+  path.resolve(__dirname, '../../.env'),
+  path.resolve(__dirname, '../../../.env'),
+]));
+
+for (const envPath of envPaths) {
+  if (fs.existsSync(envPath)) {
+    config({ path: envPath, override: false });
+  }
+}
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -9,7 +26,7 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
-  PORT: z.coerce.number().default(4000),
+  PORT: z.coerce.number().default(3003),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   SMTP_HOST: z.string().optional(),
