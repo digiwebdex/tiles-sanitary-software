@@ -205,6 +205,7 @@ const App = () => (
             <Route path="/whatsapp-logs" element={<ProtectedRoute><AppLayout><WhatsAppLogsPage /></AppLayout></ProtectedRoute>} />
             <Route path="/admin/portal-users" element={<ProtectedRoute><AppLayout><PortalUsersPage /></AppLayout></ProtectedRoute>} />
             <Route path="/admin/portal-requests" element={<ProtectedRoute><AppLayout><PortalRequestsAdminPage /></AppLayout></ProtectedRoute>} />
+            <Route path="/user-guide" element={<ProtectedRoute><AppLayout><UserGuidePage /></AppLayout></ProtectedRoute>} />
 
             {/* Customer / Contractor Portal (external users) */}
             <Route path="/portal/login" element={<PortalLoginPage />} />
