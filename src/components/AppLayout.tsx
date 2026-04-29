@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Receipt, RotateCcw,
   BookOpen, BarChart3, LogOut, Settings, Clock, Truck, Users, ShieldCheck, FileText,
   Undo2, MapPin, Zap, Gift, Wallet, FileSignature, Folder, HandCoins, MonitorSpeaker,
-  MessageCircle, UserCog, Inbox,
+  MessageCircle, UserCog, Inbox, HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDealerId } from "@/hooks/useDealerId";
@@ -38,6 +38,7 @@ const navItems = [
   { path: "/whatsapp-logs", label: "WhatsApp Log", icon: MessageCircle },
   { path: "/admin/portal-users", label: "Portal Users", icon: UserCog, dealerAdminOnly: true },
   { path: "/admin/portal-requests", label: "Portal Requests", icon: Inbox, dealerAdminOnly: true },
+  { path: "/user-guide", label: "User Guide", icon: HelpCircle, readonlyAllowed: true },
   { path: "/settings", label: "Settings", icon: Settings, readonlyAllowed: false },
 ];
 
