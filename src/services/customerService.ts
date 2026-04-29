@@ -171,10 +171,16 @@ export const customerService = {
 
   /**
    * Fetch customer due balance from customer_ledger.
-   * NOTE: Customer-ledger VPS endpoint is not yet built — this still uses
-   * Supabase. Will be migrated in the next phase along with payments/ledger.
+   * VPS-aware: routes through /api/ledger/customers/due-balance on production hosts.
    */
   async getDueBalance(customerId: string, dealerId: string): Promise<number> {
+    if (USE_VPS) {
+      const body = await vpsRequest<{ balance: number }>(
+        `/api/ledger/customers/due-balance/${customerId}?dealerId=${dealerId}`,
+      );
+      return Number(body.balance ?? 0);
+    }
+
     const { data, error } = await supabase
       .from("customer_ledger")
       .select("amount, type")
