@@ -1,96 +1,78 @@
 
+## সমস্যা ব্যাখ্যা (কেন ড্যাশবোর্ড খালি)
 
-## Purchase Module -- Last Cost Information Upgrade
+আপনার ড্যাশবোর্ডে সব কিছু `0` / খালি দেখাচ্ছে কারণ:
 
-### What will change
+- ড্যাশবোর্ড ও বেশ কিছু সার্ভিস (productService, stockService, salesService, dashboardService) এখনো **পুরাতন Supabase ডাটাবেস** থেকে ডাটা পড়ছে।
+- কিন্তু আপনার login এখন **VPS backend (api.sanitileserp.com → port 3003 → Postgres 5440)** থেকে কাজ করছে।
+- ফলে: লগইন হচ্ছে VPS থেকে, কিন্তু ড্যাশবোর্ড পড়ছে Supabase থেকে → যেখানে আপনার নতুন ডিলারের কোনো ডাটা নেই → তাই সব `0`।
 
-Currently the purchase form fetches only `landed_cost` per product (a single number). This plan upgrades it to show richer "last purchase" context and removes auto-fill so operators must enter the rate manually.
+এটাই আপনার দেখা Products পেজ "0 stock", "৳0.00 stock value" এর মূল কারণ। প্রোডাক্ট লিস্ট দেখা যাচ্ছে কারণ সেগুলো হয়ত আগে Supabase-এ যোগ হয়েছিল, কিন্তু নতুন stock/sales VPS-এ যাচ্ছে।
 
-### Changes (single file)
+## ড্যাশবোর্ড কোন ডাটার সাথে লিংক
 
-**File: `src/modules/purchases/PurchaseForm.tsx`**
+`src/services/dashboardService.ts` এই টেবিলগুলো থেকে গণনা করে:
+- `sales` + `sale_items` → Today/Monthly Sales, Profit, SFT Sold, Top Customers
+- `payments` → Collection
+- `purchases` → Monthly Purchase, Supplier Payable
+- `products` + `product_batches` → Total Stock Value, Low Stock, Dead Stock
+- `customers` → Customer Due, Overdue, Credit Exceeded
 
-1. **Upgrade the `lastCostMap` query** to fetch more fields per product:
-   - `purchase_rate` (last rate)
-   - `landed_cost`
-   - `purchases.purchase_date` (last purchase date)
-   - `purchases.supplier_id` (last supplier ID)
-   - Also fetch `average_cost_per_unit` from `stock` table for each product
+**স্টক কীভাবে যোগ হয় (সঠিক প্রবাহ):**
+1. **Products** → "Add Product" দিয়ে SKU তৈরি (এখন quantity = 0)
+2. **Suppliers** → সাপ্লায়ার যোগ করুন
+3. **Purchases** → "New Purchase" দিয়ে সাপ্লায়ার থেকে কেনা entry দিন → এতে `product_batches` তৈরি হয়ে stock বাড়ে এবং landed cost সেট হয়
+4. বিকল্প: Products পেজে প্রোডাক্ট-এর "Actions → Stock Adjust" দিয়ে opening stock দিতে পারেন
 
-   The map will store an object per product_id:
-   ```text
-   Map<string, {
-     purchase_rate: number,
-     landed_cost: number,
-     purchase_date: string,
-     supplier_id: string,
-     supplier_name: string
-   }>
-   ```
-   A second small query (or join with suppliers) will resolve supplier names.
+কিন্তু এই পুরো prosess আপনার VPS DB-তে লেখা হলেও ড্যাশবোর্ড Supabase পড়ছে → তাই কিছুই দেখা যাবে না যতক্ষণ না সার্ভিসগুলো VPS-এ rewire করা হয়।
 
-   Additionally, fetch a `Map<string, number>` for average cost from the `stock` table.
+## সমাধান প্ল্যান
 
-2. **Remove auto-fill of `purchase_rate`** in the `addProduct` function -- set `purchase_rate: 0` instead of `lastCost ?? 0`.
+আপনি phase 1 VPS auth migration শেষ করেছেন। এখন **Phase 2: data path** কে VPS-এ আনতে হবে। এটাই permanent fix — নাহলে প্রতিটা ডিলারের একই খালি ড্যাশবোর্ড সমস্যা থাকবে।
 
-3. **Enhance the Product column** in the items table to show:
-   - "Last Rate: [amount] (DD/MM/YYYY)" with supplier name
-   - "Avg Cost: [amount]"
-   - These are read-only info labels below the product name/SKU
+### Step 1 — VPS backend-এ missing endpoints যোগ করুন
+`backend/src/routes/` এ নতুন route ফাইল:
+- `dashboard.ts` — `GET /api/dashboard` → dashboardService.ts-এর সব aggregation queries (sales, payments, purchases, stock value, low stock, charts) Knex দিয়ে server-side গণনা করবে। dealer_id middleware থেকে আসবে।
+- `sales.ts`, `payments.ts`, `purchases.ts` — basic CRUD (list/create) যাতে পুরো invoice/payment flow VPS-এ চলে।
+- `stockAdjust.ts` — opening stock / manual adjustment এর জন্য।
 
-4. **Add a rate-change warning badge** next to the Rate input field:
-   - Compare current `watchItems[idx].purchase_rate` with the last purchase rate from the map
-   - If both are > 0 and differ, show an orange/amber badge: "Rate changed from last purchase"
+প্রতিটা route অবশ্যই `tenant.ts` middleware ব্যবহার করবে (dealer_id scoping)।
 
-5. **Dealer isolation**: All queries already filter by `dealer_id` -- no change needed.
+### Step 2 — Frontend services rewire (Supabase → VPS)
+`src/lib/data/vpsAdapter.ts` এ নতুন methods যোগ করে এই ফাইলগুলো VPS adapter-এ পাঠাব:
+- `src/services/dashboardService.ts` → একটি single `GET /api/dashboard` কল
+- `src/services/productService.ts` (5 supabase ref)
+- `src/services/stockService.ts` (13 ref)
+- `src/services/salesService.ts` (44 ref)
+- `src/services/purchaseService.ts`, `paymentService.ts` (একই ভাবে)
 
-### Technical Details
+`AUTH_USE_VPS` flag চালু থাকলে VPS adapter ব্যবহার হবে, নাহলে fallback Supabase — যাতে gradual rollout সম্ভব।
 
-**Query 1 -- Last purchase info (upgraded existing query):**
-```sql
--- Fetched via Supabase JS client
-purchase_items
-  .select("product_id, purchase_rate, landed_cost, purchases!inner(purchase_date, supplier_id, suppliers(name))")
-  .eq("dealer_id", dealerId)
-  .order("purchases(purchase_date)", { ascending: false })
-```
-Build a `Map<string, LastPurchaseInfo>` keeping only the first (most recent) entry per product_id.
+### Step 3 — Data migration script
+`scripts/migrate-supabase-to-vps.ts` — পুরাতন Supabase-এর existing dealer ডাটা (products, customers, sales, payments, batches) export করে VPS Postgres-এ import করবে। এক-বার চলবে প্রতি ডিলারের জন্য।
 
-**Query 2 -- Average cost from stock:**
-```sql
-stock
-  .select("product_id, average_cost_per_unit")
-  .eq("dealer_id", dealerId)
-```
-Build a `Map<string, number>` for average cost.
+### Step 4 — Verify on VPS
+- PM2 restart, nginx unchanged
+- Test: একজন dealer-এ লগইন করে Purchase দিন → Products → quantity বাড়ছে কিনা → Dashboard → Total Stock Value আসছে কিনা
+- লগ চেক: `pm2 logs tilessaas-backend`
 
-**UI in table rows (Product cell):**
-```text
-Product Name
-SKU-001
-Last Rate: ৳ 500 (15/02/2026) - SupplierName
-Avg Cost: ৳ 480
-```
+### Step 5 — Memory + RUNBOOK update
+- `mem://migration/vps-phase-2.md` লিখব: কোন services migrated, কোন endpoints যোগ হয়েছে।
+- `deploy/RUNBOOK.md` এ "Adding stock" section লিখব ডিলারদের জন্য (Bengali guide)।
 
-**Rate change warning (Rate cell):**
-When the entered rate differs from last rate and both are > 0, show below the input:
-```text
-[!] Rate changed from last purchase
-```
-Styled with `text-amber-600` or using the existing Badge component with `variant="outline"`.
+## আপনি এখনই যা করতে পারেন (workaround, প্ল্যান approve করার আগে)
 
-**addProduct change:**
-```typescript
-append({
-  product_id: productId,
-  quantity: 0,
-  purchase_rate: 0,  // Do NOT auto-fill
-  offer_price: 0,
-  ...
-});
-```
+আপনি যদি দ্রুত পুরাতন Supabase ড্যাশবোর্ডে ডাটা দেখতে চান:
+1. লগআউট করে আগের Supabase-based account-এ login করুন (যদি থাকে), অথবা
+2. Purchases পেজে গিয়ে "New Purchase" দিয়ে stock entry করুন — এটা Supabase-এ সেভ হবে এবং ড্যাশবোর্ডে দেখাবে।
 
-### Files Modified
-- `src/modules/purchases/PurchaseForm.tsx` (single file, all changes)
+কিন্তু এটা স্থায়ী সমাধান না। আপনার "many dealers, business will fall down" concern-এর জন্য Step 1-5 implement করতেই হবে।
 
-No database migration needed -- all required data already exists in `purchase_items`, `purchases`, `suppliers`, and `stock` tables.
+## আনুমানিক স্কোপ
+
+- ৬টা নতুন backend route ফাইল (~৪০০ লাইন)
+- ৫টা frontend service rewire (~৩০০ লাইন বদল)
+- ১টা migration script
+- ১টা memory + RUNBOOK update
+
+Approve করলে আমি build mode-এ implement শুরু করব।
