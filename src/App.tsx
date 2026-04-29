@@ -63,6 +63,7 @@ import SADealersPage from "./pages/super-admin/SADealersPage";
 import SAPlansPage from "./pages/super-admin/SAPlansPage";
 import SASubscriptionsPage from "./pages/super-admin/SASubscriptionsPage";
 import SARevenuePage from "./pages/super-admin/SARevenuePage";
+import SADealerPaymentsPage from "./pages/super-admin/SADealerPaymentsPage";
 import SASystemPage from "./pages/super-admin/SASystemPage";
 import SASubscriptionStatusPage from "./pages/super-admin/SASubscriptionStatusPage";
 import SACmsPage from "./pages/super-admin/SACmsPage";
@@ -151,6 +152,7 @@ const App = () => (
               <Route path="subscriptions" element={<SASubscriptionsPage />} />
               <Route path="subscription-status" element={<SASubscriptionStatusPage />} />
               <Route path="revenue" element={<SARevenuePage />} />
+              <Route path="payments" element={<SADealerPaymentsPage />} />
               <Route path="cms" element={<SACmsPage />} />
               <Route path="backups" element={<SABackupPage />} />
               <Route path="user-guide" element={<SAUserGuidePage />} />
