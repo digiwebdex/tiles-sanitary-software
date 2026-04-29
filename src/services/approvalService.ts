@@ -464,6 +464,10 @@ export async function findValidApproval(
  * List pending approvals for a dealer (for dashboard/management).
  */
 export async function listPendingApprovals(dealerId: string): Promise<ApprovalRequest[]> {
+  if (USE_VPS) {
+    const json = await vpsJson(`/api/approvals/pending?dealerId=${encodeURIComponent(dealerId)}`);
+    return (json.rows ?? []) as ApprovalRequest[];
+  }
   const { data, error } = await supabase
     .from("approval_requests")
     .select("*")
