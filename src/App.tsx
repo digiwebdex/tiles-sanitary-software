@@ -55,6 +55,7 @@ import ProjectsPage from "./pages/projects/ProjectsPage";
 import ReferralSourcesPage from "./pages/referrals/ReferralSourcesPage";
 import DisplaySampleStockPage from "./pages/display-sample/DisplaySampleStockPage";
 import WhatsAppLogsPage from "./pages/whatsapp/WhatsAppLogsPage";
+import UserGuidePage from "./pages/UserGuidePage";
 
 // Super Admin
 import SuperAdminLayout from "./pages/super-admin/SuperAdminLayout";
