@@ -1,23 +1,17 @@
 /**
- * customerService — Phase 3C rewire.
+ * customerService — VPS cutover.
  *
- * READS (`list`, `getById`) now go through the shared `dataClient` so that
- * the per-resource flag `VITE_DATA_CUSTOMERS` controls the backend:
+ * On sanitileserp.com (AUTH_BACKEND === "vps"), ALL reads AND writes go
+ * to the self-hosted backend at /api/customers. The Supabase fallback
+ * remains for local dev / preview environments.
  *
- *   supabase (default) → identical legacy behavior
- *   shadow             → Supabase remains primary; VPS read fired in
- *                        parallel and any drift logged to
- *                        `window.__vpsShadowStats` + scoped logger.
- *   vps                → reads served from the self-hosted API (cutover).
- *
- * WRITES (`create`, `update`, `toggleStatus`) intentionally stay on
- * Supabase in Phase 3C. The shadow phase is read-verification only — we
- * do NOT want write traffic doubled or split until shadow runs clean.
- *
- * Public function signatures are UNCHANGED so no UI/page code touches.
+ * Mirrors supplierService exactly — same USE_VPS gate, same vpsRequest
+ * helper, same payload-builder pattern.
  */
 import { supabase } from "@/integrations/supabase/client";
 import { dataClient } from "@/lib/data/dataClient";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export type CustomerType = "retailer" | "customer" | "project";
 
@@ -57,24 +51,58 @@ export interface CustomerFormData {
 }
 
 const PAGE_SIZE = 25;
+const USE_VPS = env.AUTH_BACKEND === "vps";
 
-// Memoized per (resource, backend) inside dataClient itself.
 const customersAdapter = dataClient<Customer>("CUSTOMERS");
 
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
+
+function buildWritePayload(form: Partial<CustomerFormData>): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  if (form.name !== undefined) payload.name = form.name.trim();
+  if (form.type !== undefined) payload.type = form.type;
+  if (form.phone !== undefined) payload.phone = form.phone.trim() || null;
+  if (form.email !== undefined) payload.email = form.email.trim() || null;
+  if (form.address !== undefined) payload.address = form.address.trim() || null;
+  if (form.reference_name !== undefined)
+    payload.reference_name = form.reference_name.trim() || null;
+  if (form.opening_balance !== undefined) payload.opening_balance = form.opening_balance;
+  if (form.status !== undefined) payload.status = form.status;
+  if (form.credit_limit !== undefined) payload.credit_limit = form.credit_limit;
+  if (form.max_overdue_days !== undefined) payload.max_overdue_days = form.max_overdue_days;
+  if (form.price_tier_id !== undefined) payload.price_tier_id = form.price_tier_id;
+  return payload;
+}
+
 export const customerService = {
-  /**
-   * UI contract preserved: 1-indexed page, optional search, optional
-   * type filter. Search uses an OR-ilike across name/phone/reference_name
-   * which the adapter contract does not yet express, so when search is
-   * non-empty we keep the legacy direct Supabase path. Empty-search
-   * pages — the dominant traffic — flow through the adapter and are
-   * therefore eligible for shadow comparisons.
-   */
   async list(dealerId: string, search = "", typeFilter = "", page = 1) {
     const trimmed = search.trim();
 
+    if (USE_VPS) {
+      const params = new URLSearchParams({
+        dealerId,
+        page: String(Math.max(0, page - 1)),
+        pageSize: String(PAGE_SIZE),
+        orderBy: "name",
+        orderDir: "asc",
+      });
+      if (trimmed) params.set("search", trimmed);
+      if (typeFilter) params.set("f.type", typeFilter);
+      const body = await vpsRequest<{ rows: Customer[]; total: number }>(
+        `/api/customers?${params.toString()}`,
+      );
+      return { data: body.rows ?? [], total: body.total ?? 0 };
+    }
+
     if (trimmed) {
-      // Legacy path — preserves OR-ilike search semantics exactly.
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
@@ -96,7 +124,6 @@ export const customerService = {
       return { data: (data ?? []) as Customer[], total: count ?? 0 };
     }
 
-    // Adapter path — eligible for shadow comparisons.
     const result = await customersAdapter.list({
       dealerId,
       page: Math.max(0, page - 1),
@@ -108,9 +135,12 @@ export const customerService = {
   },
 
   async getById(id: string) {
-    // Resolve dealerId from the current authenticated user so the adapter
-    // call stays tenant-scoped. Falls back to the legacy direct read if
-    // the profile lookup yields no dealerId (e.g. super_admin contexts).
+    if (USE_VPS) {
+      const body = await vpsRequest<{ row: Customer }>(`/api/customers/${id}`);
+      if (!body.row) throw new Error("Customer not found");
+      return body.row;
+    }
+
     const { data: authData } = await supabase.auth.getUser();
     const userId = authData.user?.id;
 
@@ -139,7 +169,11 @@ export const customerService = {
     return row;
   },
 
-  /** Fetch customer due balance from customer_ledger (sum of all entries). */
+  /**
+   * Fetch customer due balance from customer_ledger.
+   * NOTE: Customer-ledger VPS endpoint is not yet built — this still uses
+   * Supabase. Will be migrated in the next phase along with payments/ledger.
+   */
   async getDueBalance(customerId: string, dealerId: string): Promise<number> {
     const { data, error } = await supabase
       .from("customer_ledger")
@@ -147,20 +181,25 @@ export const customerService = {
       .eq("customer_id", customerId)
       .eq("dealer_id", dealerId);
     if (error) throw new Error(error.message);
-    // sale → debit (owed by customer), refund/adjustment → credit (reduces due)
     const total = (data ?? []).reduce((sum, row) => {
       const amt = Number(row.amount);
       if (row.type === "sale") return sum + amt;
       if (row.type === "payment" || row.type === "refund") return sum - amt;
-      // opening balance adjustment = debit (customer owes from day 1)
       if (row.type === "adjustment") return sum + amt;
       return sum;
     }, 0);
     return Math.round(total * 100) / 100;
   },
 
-  // ── Writes stay on Supabase in Phase 3C ──────────────────────────────────
   async create(dealerId: string, form: CustomerFormData) {
+    if (USE_VPS) {
+      const body = await vpsRequest<{ row: Customer }>(`/api/customers`, {
+        method: "POST",
+        body: JSON.stringify({ dealerId, data: buildWritePayload(form) }),
+      });
+      return body.row;
+    }
+
     const { data, error } = await supabase
       .from("customers")
       .insert({
@@ -187,6 +226,17 @@ export const customerService = {
   },
 
   async update(id: string, form: Partial<CustomerFormData>) {
+    if (USE_VPS) {
+      const payload = buildWritePayload(form);
+      // opening_balance is not editable post-creation (backend also enforces)
+      delete payload.opening_balance;
+      await vpsRequest(`/api/customers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ data: payload }),
+      });
+      return;
+    }
+
     const payload: Record<string, unknown> = {};
     if (form.name !== undefined) payload.name = form.name.trim();
     if (form.type !== undefined) payload.type = form.type;
@@ -198,7 +248,6 @@ export const customerService = {
     if (form.credit_limit !== undefined) payload.credit_limit = form.credit_limit;
     if (form.max_overdue_days !== undefined) payload.max_overdue_days = form.max_overdue_days;
     if (form.price_tier_id !== undefined) payload.price_tier_id = form.price_tier_id;
-    // opening_balance intentionally NOT editable after creation
 
     const { error } = await supabase.from("customers").update(payload).eq("id", id);
     if (error) {
@@ -208,6 +257,13 @@ export const customerService = {
   },
 
   async toggleStatus(id: string, status: "active" | "inactive") {
+    if (USE_VPS) {
+      await vpsRequest(`/api/customers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ data: { status } }),
+      });
+      return;
+    }
     const { error } = await supabase.from("customers").update({ status }).eq("id", id);
     if (error) throw new Error(error.message);
   },
