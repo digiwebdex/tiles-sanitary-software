@@ -7,7 +7,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
-  LayoutDashboard, Store, CreditCard, CalendarPlus, Banknote, Settings, LogOut, Menu, X, Shield, Activity, Globe, HardDrive, BookOpen,
+  LayoutDashboard, Store, CreditCard, CalendarPlus, Banknote, Settings, LogOut, Menu, X, Shield, Activity, Globe, HardDrive, BookOpen, Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ const sidebarItems = [
   { path: "/super-admin/subscriptions", label: "Subscriptions", icon: CalendarPlus },
   { path: "/super-admin/subscription-status", label: "Sub. Status", icon: Activity },
   { path: "/super-admin/revenue", label: "Revenue", icon: Banknote },
+  { path: "/super-admin/payments", label: "Payments", icon: Receipt },
   { path: "/super-admin/cms", label: "CMS", icon: Globe },
   { path: "/super-admin/backups", label: "Backups", icon: HardDrive },
   { path: "/super-admin/user-guide", label: "User Guide", icon: BookOpen },
