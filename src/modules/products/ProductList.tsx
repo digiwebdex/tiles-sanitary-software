@@ -583,6 +583,13 @@ const ProductList = ({ dealerId }: ProductListProps) => {
                     </TableRow>
                   );
                 })}
+                {filteredProducts.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={permissions.canViewCostPrice ? 11 : 9} className="text-center py-8 text-muted-foreground">
+                      No products match the current filters.
+                    </TableCell>
+                  </TableRow>
+                )}
                 {/* Summary Footer */}
                 {filteredProducts.length > 0 && (() => {
                   const totals = filteredProducts.reduce(
