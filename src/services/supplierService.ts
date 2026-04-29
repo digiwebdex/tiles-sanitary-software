@@ -1,24 +1,20 @@
 /**
- * supplierService — Phase 3B rewire.
+ * supplierService — Phase 3C cutover for VPS hosts.
  *
- * READS (`list`, `getById`) now go through the shared `dataClient` so that
- * the per-resource flag `VITE_DATA_SUPPLIERS` controls the backend:
+ * On sanitileserp.com (AUTH_BACKEND === "vps"), ALL reads AND writes go
+ * to the self-hosted backend at /api/suppliers. The Supabase fallback
+ * remains for local dev / preview environments where VPS is not the
+ * active backend.
  *
- *   supabase (default) → identical legacy behavior
- *   shadow             → Supabase remains primary; VPS read fired in
- *                        parallel and any drift logged to
- *                        `window.__vpsShadowStats` + scoped logger.
- *   vps                → reads served from the self-hosted API (cutover).
- *
- * WRITES (`create`, `update`, `toggleStatus`) intentionally stay on
- * Supabase in Phase 3B. The shadow phase is read-verification only — we
- * do NOT want write traffic doubled or split until shadow runs clean.
- *
- * The public function signatures are UNCHANGED so that no UI/page code
- * needs to be touched in this phase.
+ * Why: after the auth migration to VPS, the Supabase session no longer
+ * exists in production, so any direct Supabase write fails with 401 +
+ * RLS "new row violates row-level security policy" — exactly what the
+ * Add Supplier form was hitting.
  */
 import { supabase } from "@/integrations/supabase/client";
 import { dataClient } from "@/lib/data/dataClient";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export interface Supplier {
   id: string;
@@ -46,27 +42,53 @@ export interface SupplierFormData {
 }
 
 const PAGE_SIZE = 25;
+const USE_VPS = env.AUTH_BACKEND === "vps";
 
-// Single shared adapter handle for the SUPPLIERS resource.
-// dataClient is itself memoized per (resource, backend), so this is safe.
 const suppliersAdapter = dataClient<Supplier>("SUPPLIERS");
 
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body as T;
+}
+
+function buildWritePayload(form: Partial<SupplierFormData>): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  if (form.name !== undefined) payload.name = form.name.trim();
+  if (form.contact_person !== undefined) payload.contact_person = form.contact_person.trim() || null;
+  if (form.phone !== undefined) payload.phone = form.phone.trim() || null;
+  if (form.email !== undefined) payload.email = form.email.trim() || null;
+  if (form.address !== undefined) payload.address = form.address.trim() || null;
+  if (form.gstin !== undefined) payload.gstin = form.gstin.trim() || null;
+  if (form.opening_balance !== undefined) payload.opening_balance = form.opening_balance;
+  if (form.status !== undefined) payload.status = form.status;
+  return payload;
+}
+
 export const supplierService = {
-  /**
-   * UI contract preserved: 1-indexed page, optional search string.
-   *
-   * Internally we translate to the adapter's 0-indexed `ListQuery`. The
-   * Supabase adapter does not yet implement free-text search the same way
-   * the legacy code did (name/contact/phone OR-ilike), so when a search
-   * term is supplied we fall back to the legacy direct Supabase query to
-   * avoid behavior regression. Empty-search list pages — by far the most
-   * common path — flow through the adapter and therefore through shadow.
-   */
   async list(dealerId: string, search = "", page = 1) {
     const trimmed = search.trim();
 
+    if (USE_VPS) {
+      const params = new URLSearchParams({
+        dealerId,
+        page: String(Math.max(0, page - 1)),
+        pageSize: String(PAGE_SIZE),
+        orderBy: "name",
+        orderDir: "asc",
+      });
+      if (trimmed) params.set("search", trimmed);
+      const body = await vpsRequest<{ rows: Supplier[]; total: number }>(
+        `/api/suppliers?${params.toString()}`,
+      );
+      return { data: body.rows ?? [], total: body.total ?? 0 };
+    }
+
     if (trimmed) {
-      // Legacy path — preserves OR-ilike search semantics exactly.
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       const { data, error, count } = await supabase
@@ -82,7 +104,6 @@ export const supplierService = {
       return { data: (data ?? []) as Supplier[], total: count ?? 0 };
     }
 
-    // Adapter path — eligible for shadow comparisons.
     const result = await suppliersAdapter.list({
       dealerId,
       page: Math.max(0, page - 1),
@@ -93,9 +114,13 @@ export const supplierService = {
   },
 
   async getById(id: string) {
-    // We need the row's dealer_id for tenant-safe adapter access. The
-    // legacy call site (`EditSupplier`) does not pass dealerId, so we
-    // resolve it from the current authenticated user's profile.
+    if (USE_VPS) {
+      // Backend resolves dealer scope from the JWT for dealer users.
+      const body = await vpsRequest<{ row: Supplier }>(`/api/suppliers/${id}`);
+      if (!body.row) throw new Error("Supplier not found");
+      return body.row;
+    }
+
     const { data: authData } = await supabase.auth.getUser();
     const userId = authData.user?.id;
 
@@ -110,8 +135,6 @@ export const supplierService = {
     }
 
     if (!dealerId) {
-      // Fallback to legacy direct read (preserves existing behavior for
-      // super-admin / edge cases where the profile lookup fails).
       const { data, error } = await supabase
         .from("suppliers")
         .select("*")
@@ -126,8 +149,15 @@ export const supplierService = {
     return row;
   },
 
-  // ── Writes stay on Supabase in Phase 3B ──────────────────────────────────
   async create(dealerId: string, form: SupplierFormData) {
+    if (USE_VPS) {
+      const body = await vpsRequest<{ row: Supplier }>(`/api/suppliers`, {
+        method: "POST",
+        body: JSON.stringify({ dealerId, data: buildWritePayload(form) }),
+      });
+      return body.row;
+    }
+
     const { data, error } = await supabase
       .from("suppliers")
       .insert({
@@ -151,6 +181,17 @@ export const supplierService = {
   },
 
   async update(id: string, form: Partial<SupplierFormData>) {
+    if (USE_VPS) {
+      const payload = buildWritePayload(form);
+      // opening_balance is not editable post-creation (backend also enforces)
+      delete payload.opening_balance;
+      await vpsRequest(`/api/suppliers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ data: payload }),
+      });
+      return;
+    }
+
     const payload: Record<string, unknown> = {};
     if (form.name !== undefined) payload.name = form.name.trim();
     if (form.contact_person !== undefined) payload.contact_person = form.contact_person.trim() || null;
@@ -159,7 +200,6 @@ export const supplierService = {
     if (form.address !== undefined) payload.address = form.address.trim() || null;
     if (form.gstin !== undefined) payload.gstin = form.gstin.trim() || null;
     if (form.status !== undefined) payload.status = form.status;
-    // opening_balance is intentionally NOT editable after creation
 
     const { error } = await supabase.from("suppliers").update(payload).eq("id", id);
     if (error) {
@@ -169,6 +209,13 @@ export const supplierService = {
   },
 
   async toggleStatus(id: string, status: "active" | "inactive") {
+    if (USE_VPS) {
+      await vpsRequest(`/api/suppliers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ data: { status } }),
+      });
+      return;
+    }
     const { error } = await supabase.from("suppliers").update({ status }).eq("id", id);
     if (error) throw new Error(error.message);
   },
