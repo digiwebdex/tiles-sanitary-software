@@ -185,7 +185,7 @@ const ProductList = ({ dealerId }: ProductListProps) => {
       const si = stockData?.get(p.id);
       const qty = si?.total ?? 0;
       const reorder = Number(p.reorder_level) || 0;
-      const cost = Number(p.default_cost) || 0;
+      const cost = Number(p.cost_price) || 0;
       stockValue += qty * cost;
       if (qty <= 0) outOfStock += 1;
       else if (qty <= reorder) lowStock += 1;
