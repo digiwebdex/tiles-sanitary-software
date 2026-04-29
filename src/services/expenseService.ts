@@ -1,4 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { expenseLedgerService } from "@/services/ledgerService";
 import { cashLedgerService } from "@/services/ledgerService";
 import { validateInput, createExpenseServiceSchema } from "@/lib/validators";
@@ -13,8 +15,26 @@ export interface CreateExpenseInput {
   created_by?: string;
 }
 
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+  return body as T;
+}
+
 export const expenseService = {
   async list(dealerId: string) {
+    if (USE_VPS) {
+      const body = await vpsRequest<{ rows: any[] }>(
+        `/api/expenses?dealerId=${dealerId}`,
+      );
+      return body.rows ?? [];
+    }
     const { data, error } = await supabase
       .from("expenses")
       .select("*")
@@ -25,11 +45,25 @@ export const expenseService = {
   },
 
   async create(input: CreateExpenseInput) {
-    // Tenant isolation guard
     await assertDealerId(input.dealer_id);
-    // Service-level validation
     validateInput(createExpenseServiceSchema, input);
 
+    if (USE_VPS) {
+      // Atomic on the server (header + expense_ledger + cash_ledger).
+      const body = await vpsRequest<{ expense: any }>(`/api/expenses`, {
+        method: "POST",
+        body: JSON.stringify({
+          dealer_id: input.dealer_id,
+          description: input.description,
+          amount: input.amount,
+          expense_date: input.expense_date,
+          category: input.category ?? null,
+        }),
+      });
+      return body.expense;
+    }
+
+    // Legacy Supabase fallback (3-step non-atomic).
     const { data: expense, error } = await supabase
       .from("expenses")
       .insert({

@@ -1,6 +1,25 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/services/auditService";
 import { validateInput, stockAdjustmentServiceSchema } from "@/lib/validators";
+import { env } from "@/lib/env";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+const USE_VPS = env.AUTH_BACKEND === "vps";
+
+async function vpsAdjustment(
+  type: "add" | "deduct" | "restore" | "broken",
+  body: Record<string, unknown>,
+) {
+  const res = await vpsAuthedFetch(`/api/adjustments/${type}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (data as any)?.error || `Stock adjustment failed (${res.status})`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+}
 
 interface StockProduct {
   id: string;
@@ -169,14 +188,20 @@ async function updateAverageCost(
 }
 
 export const stockService = {
-  addStock: (productId: string, quantity: number, dealerId: string) =>
-    applyStockChange(productId, dealerId, quantity, "add"),
+  addStock: (productId: string, quantity: number, dealerId: string) => {
+    if (USE_VPS) return vpsAdjustment("add", { dealer_id: dealerId, product_id: productId, quantity });
+    return applyStockChange(productId, dealerId, quantity, "add");
+  },
 
-  deductStock: (productId: string, quantity: number, dealerId: string) =>
-    applyStockChange(productId, dealerId, quantity, "deduct"),
+  deductStock: (productId: string, quantity: number, dealerId: string) => {
+    if (USE_VPS) return vpsAdjustment("deduct", { dealer_id: dealerId, product_id: productId, quantity });
+    return applyStockChange(productId, dealerId, quantity, "deduct");
+  },
 
-  restoreStock: (productId: string, quantity: number, dealerId: string) =>
-    applyStockChange(productId, dealerId, quantity, "restore"),
+  restoreStock: (productId: string, quantity: number, dealerId: string) => {
+    if (USE_VPS) return vpsAdjustment("restore", { dealer_id: dealerId, product_id: productId, quantity });
+    return applyStockChange(productId, dealerId, quantity, "restore");
+  },
 
   adjustStock: (
     productId: string,
@@ -190,6 +215,7 @@ export const stockService = {
       quantity,
       type,
     });
+    if (USE_VPS) return vpsAdjustment(type, { dealer_id: dealerId, product_id: productId, quantity });
     return applyStockChange(productId, dealerId, quantity, type);
   },
 
@@ -327,6 +353,15 @@ export const stockService = {
    */
   async deductBrokenStock(productId: string, quantity: number, dealerId: string, reason: string) {
     if (quantity <= 0) throw new Error("Quantity must be positive");
+
+    if (USE_VPS) {
+      return vpsAdjustment("broken", {
+        dealer_id: dealerId,
+        product_id: productId,
+        quantity,
+        reason,
+      });
+    }
 
     const product = await getProduct(productId);
     const stock = await getOrCreateStock(productId, dealerId);
