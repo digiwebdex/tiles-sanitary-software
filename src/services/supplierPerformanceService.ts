@@ -217,6 +217,12 @@ function computePriceTrends(
 
 export const supplierPerformanceService = {
   async list(dealerId: string, opts: ListOptions = {}): Promise<SupplierPerformance[]> {
+    if (USE_VPS) {
+      const params = new URLSearchParams({ dealerId });
+      if (opts.startDate) params.set("startDate", opts.startDate);
+      if (opts.endDate) params.set("endDate", opts.endDate);
+      return vpsGet<SupplierPerformance[]>(`/api/reports/supplier-performance?${params}`);
+    }
     const [supRes, purRes, retRes, ledRes, itemsRes] = await Promise.all([
       supabase
         .from("suppliers")
@@ -389,6 +395,7 @@ export const supplierPerformanceService = {
   },
 
   async getForSupplier(dealerId: string, supplierId: string): Promise<SupplierPerformance | null> {
+    if (USE_VPS) return vpsGet<SupplierPerformance | null>(`/api/reports/supplier-performance/${encodeURIComponent(supplierId)}?dealerId=${encodeURIComponent(dealerId)}`);
     const all = await this.list(dealerId);
     return all.find((s) => s.supplier_id === supplierId) ?? null;
   },
@@ -398,6 +405,7 @@ export const supplierPerformanceService = {
    * Used in supplier detail drilldown.
    */
   async getPriceTrendDetail(dealerId: string, supplierId: string) {
+    if (USE_VPS) return vpsGet<any>(`/api/reports/supplier-performance/${encodeURIComponent(supplierId)}/price-trend?dealerId=${encodeURIComponent(dealerId)}`);
     const [purRes, itemsRes, prodRes] = await Promise.all([
       supabase
         .from("purchases")
@@ -463,6 +471,7 @@ export const supplierPerformanceService = {
   },
 
   async getDashboardStats(dealerId: string) {
+    if (USE_VPS) return vpsGet<any>(`/api/reports/supplier-performance/dashboard?dealerId=${encodeURIComponent(dealerId)}`);
     const all = await this.list(dealerId);
     const active = all.filter((s) => s.total_purchases > 0);
 
