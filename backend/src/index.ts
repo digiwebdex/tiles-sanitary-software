@@ -150,6 +150,10 @@ async function start() {
   const server = app.listen(env.PORT, '127.0.0.1', () => {
     console.log(`[API] Server running on 127.0.0.1:${env.PORT}`);
   });
+  server.on('error', (err) => {
+    console.error('[API] Server error:', err);
+    process.exit(1);
+  });
 
   const dbOk = await checkDbConnection();
   if (!dbOk) {
@@ -157,11 +161,6 @@ async function start() {
     return;
   }
   console.log('[DB] Connected successfully');
-
-  server.on('error', (err) => {
-    console.error('[API] Server error:', err);
-    process.exit(1);
-  });
 }
 
 start();
