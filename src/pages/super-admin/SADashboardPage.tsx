@@ -104,14 +104,16 @@ const SADashboardPage = () => {
       const trueExpired = subs.filter((s: any) => {
         if (s.status !== "expired") return false;
         if (!s.end_date) return true;
-        const daysSince = differenceInDays(now, parseISO(s.end_date));
+        const end = parseLocalDate(s.end_date);
+        if (!end) return false;
+        const daysSince = differenceInDays(now, end);
         return daysSince > GRACE_DAYS;
       }).length;
 
       // MRR
       const monthlyRevenue = subs
         .filter((s: any) => s.status === "active")
-        .reduce((sum: number, s: any) => sum + (Number(s.subscription_plans?.monthly_price) || 0), 0);
+        .reduce((sum: number, s: any) => sum + (Number(s.subscription_plans?.monthly_price ?? s.price_monthly) || 0), 0);
 
       // This month collected revenue from subscription_payments
       const thisMonthStart = startOfMonth(now);
@@ -120,8 +122,8 @@ const SADashboardPage = () => {
         .filter((p: any) =>
           (p.payment_status === "paid" || p.payment_status === "partial") &&
           p.payment_date &&
-          parseISO(p.payment_date) >= thisMonthStart &&
-          parseISO(p.payment_date) <= thisMonthEnd
+          (parseLocalDate(p.payment_date) ?? new Date(0)) >= thisMonthStart &&
+          (parseLocalDate(p.payment_date) ?? new Date(0)) <= thisMonthEnd
         )
         .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
 
@@ -140,9 +142,9 @@ const SADashboardPage = () => {
 
         let expected = 0;
         subs.forEach((s: any) => {
-          const sStart = new Date(s.start_date);
-          const sEnd = s.end_date ? new Date(s.end_date) : new Date("2099-12-31");
-          const monthly = Number(s.plans?.price_monthly) || 0;
+          const sStart = parseLocalDate(s.start_date) ?? new Date(0);
+          const sEnd = parseLocalDate(s.end_date) ?? new Date("2099-12-31");
+          const monthly = Number(s.subscription_plans?.monthly_price ?? s.price_monthly) || 0;
           if (sStart <= mEnd && sEnd >= mStart && monthly > 0) {
             expected += monthly;
           }
@@ -152,8 +154,8 @@ const SADashboardPage = () => {
           .filter((p: any) =>
             (p.payment_status === "paid" || p.payment_status === "partial") &&
             p.payment_date &&
-            parseISO(p.payment_date) >= mStart &&
-            parseISO(p.payment_date) <= mEnd
+            (parseLocalDate(p.payment_date) ?? new Date(0)) >= mStart &&
+            (parseLocalDate(p.payment_date) ?? new Date(0)) <= mEnd
           )
           .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
 
