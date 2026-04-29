@@ -10,6 +10,41 @@ import type { Knex } from 'knex';
  */
 export async function up(knex: Knex): Promise<void> {
   await knex.raw(`
+    CREATE TABLE IF NOT EXISTS public.backup_logs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      backup_type text NOT NULL,
+      database_name text NOT NULL,
+      app_name text NOT NULL DEFAULT 'unknown',
+      file_name text,
+      file_size bigint,
+      storage_location text DEFAULT 'google_drive',
+      status text NOT NULL DEFAULT 'pending',
+      error_message text,
+      started_at timestamptz DEFAULT now(),
+      completed_at timestamptz,
+      created_at timestamptz DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS public.restore_logs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      backup_log_id uuid REFERENCES public.backup_logs(id),
+      backup_file_name text NOT NULL,
+      backup_type text NOT NULL,
+      database_name text NOT NULL,
+      app_name text NOT NULL DEFAULT 'unknown',
+      initiated_by uuid,
+      initiated_by_name text,
+      status text NOT NULL DEFAULT 'pending',
+      pre_restore_backup_taken boolean DEFAULT false,
+      error_message text,
+      logs text,
+      started_at timestamptz DEFAULT now(),
+      completed_at timestamptz,
+      created_at timestamptz DEFAULT now()
+    );
+  `);
+
+  await knex.raw(`
     ALTER TABLE public.backup_logs
       ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'auto',
       ADD COLUMN IF NOT EXISTS local_path TEXT,
