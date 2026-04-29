@@ -263,3 +263,43 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 This leaves every other site on the VPS untouched.
+
+---
+
+## 10. Phase 2: Dashboard data path (deploy)
+
+After pulling the latest code, redeploy backend so the new
+`/api/dashboard` endpoint is live:
+
+```bash
+cd /var/www/tilessaas
+git pull
+cd backend && bun install && bun run build
+pm2 restart tilessaas-backend --update-env
+pm2 save
+
+# Smoke test (replace TOKEN + DEALER_ID)
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  "https://api.sanitileserp.com/api/dashboard?dealerId=$DEALER_ID" | jq .
+```
+
+If the JSON includes `totalStockValue`, `lowStockItems`, `monthlySalesChart`,
+the dashboard will render with real data on `app.sanitileserp.com`.
+
+## 11. ডিলার গাইড — স্টক কীভাবে এড করবেন (Bengali)
+
+ড্যাশবোর্ডে stock value / low stock দেখানোর জন্য নিচের ক্রম অনুসরণ করুন:
+
+1. **Suppliers** মেনু → "Add Supplier" দিয়ে সাপ্লায়ার যোগ করুন।
+2. **Products** মেনু → "Add Product" দিয়ে SKU তৈরি করুন
+   (cost_price, sale_rate, reorder_level সঠিকভাবে দিন — না দিলে stock value
+   ০ দেখাবে)।
+3. **Purchases** মেনু → "New Purchase" → সাপ্লায়ার + প্রোডাক্ট + quantity +
+   rate দিয়ে save করুন। এতে `product_batches` তৈরি হয়ে stock অটো বাড়বে।
+4. দ্রুত opening stock দিতে চাইলে: Products → প্রোডাক্ট-এর "Actions →
+   Stock Adjust" ব্যবহার করুন।
+5. Sales মেনু → "New Sale" দিলে stock কমবে এবং dashboard-এ today/monthly
+   sales, profit, top customers আসবে।
+
+**মনে রাখবেন:** ড্যাশবোর্ড real-time না — page refresh (F5) দিলে আপডেটেড
+সংখ্যা দেখাবে।
