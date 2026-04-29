@@ -77,13 +77,23 @@ const SADashboardPage = () => {
       }
 
       const totalDealers = dealers.length;
-      const activeSubs = subs.filter((s: any) => s.status === "active").length;
-      const expiredSubs = subs.filter((s: any) => s.status === "expired").length;
-      const suspendedSubs = subs.filter((s: any) => s.status === "suspended").length;
+      const latestSubs = Array.from(
+        subs.reduce((map: Map<string, any>, sub: any) => {
+          const key = sub.dealer_id ?? sub.id;
+          const current = map.get(key);
+          const currentTime = current ? new Date(current.created_at ?? current.start_date ?? 0).getTime() : -1;
+          const nextTime = new Date(sub.created_at ?? sub.start_date ?? 0).getTime();
+          if (!current || nextTime >= currentTime) map.set(key, sub);
+          return map;
+        }, new Map<string, any>()).values()
+      );
+      const activeSubs = latestSubs.filter((s: any) => s.status === "active").length;
+      const expiredSubs = latestSubs.filter((s: any) => s.status === "expired").length;
+      const suspendedSubs = latestSubs.filter((s: any) => s.status === "suspended").length;
 
       // Grace period dealers: expired but within 3 days
       const now = new Date();
-      const graceDealers = subs.filter((s: any) => {
+      const graceDealers = latestSubs.filter((s: any) => {
         if (s.status !== "expired" || !s.end_date) return false;
         const end = parseLocalDate(s.end_date);
         if (!end) return false;
@@ -92,7 +102,7 @@ const SADashboardPage = () => {
       }).length;
 
       // Expiring soon: active subs with end_date within 7 days
-      const expiringSoon = subs.filter((s: any) => {
+      const expiringSoon = latestSubs.filter((s: any) => {
         if (s.status !== "active" || !s.end_date) return false;
         const end = parseLocalDate(s.end_date);
         if (!end) return false;
@@ -101,7 +111,7 @@ const SADashboardPage = () => {
       }).length;
 
       // True expired (past grace)
-      const trueExpired = subs.filter((s: any) => {
+      const trueExpired = latestSubs.filter((s: any) => {
         if (s.status !== "expired") return false;
         if (!s.end_date) return true;
         const end = parseLocalDate(s.end_date);
