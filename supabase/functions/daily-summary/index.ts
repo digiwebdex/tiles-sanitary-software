@@ -22,22 +22,86 @@ Deno.serve(async (req) => {
   console.log(`[DailySummary] Running for date: ${dateStr}`);
 
   try {
-    // 1. Get all active dealers with notification settings
-    const { data: dealers, error: dealerErr } = await supabase
+    // 1. Get notification settings, then filter to ONLY dealers that are
+    //    (a) status = 'active' in dealers table
+    //    (b) have a non-suspended subscription whose end_date >= today
+    //    Pending/suspended/expired dealers are silently skipped.
+    const { data: nsRows, error: dealerErr } = await supabase
       .from("notification_settings")
       .select("dealer_id, owner_phone, owner_email, enable_daily_summary_sms, enable_daily_summary_email");
 
     if (dealerErr) {
-      console.error("[DailySummary] Failed to fetch dealers:", dealerErr.message);
+      console.error("[DailySummary] Failed to fetch notification_settings:", dealerErr.message);
       return new Response(JSON.stringify({ error: dealerErr.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (!dealers || dealers.length === 0) {
-      console.log("[DailySummary] No dealers with notification settings found");
+    if (!nsRows || nsRows.length === 0) {
+      console.log("[DailySummary] No notification_settings rows found");
       return new Response(JSON.stringify({ success: true, processed: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const candidateIds = Array.from(new Set(nsRows.map((r) => r.dealer_id).filter(Boolean)));
+
+    // Fetch matching active dealers
+    const { data: activeDealers, error: dErr } = await supabase
+      .from("dealers")
+      .select("id, name, status")
+      .in("id", candidateIds)
+      .eq("status", "active");
+
+    if (dErr) {
+      console.error("[DailySummary] Failed to fetch dealers:", dErr.message);
+      return new Response(JSON.stringify({ error: dErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const activeDealerMap = new Map((activeDealers ?? []).map((d) => [d.id, d.name as string]));
+
+    // Fetch subscriptions for those dealers, keep only valid ones
+    const { data: subs, error: sErr } = await supabase
+      .from("subscriptions")
+      .select("dealer_id, status, end_date")
+      .in("dealer_id", Array.from(activeDealerMap.keys()));
+
+    if (sErr) {
+      console.error("[DailySummary] Failed to fetch subscriptions:", sErr.message);
+      return new Response(JSON.stringify({ error: sErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const validSubDealerIds = new Set(
+      (subs ?? [])
+        .filter(
+          (s) =>
+            s.status === "active" &&
+            !!s.end_date &&
+            String(s.end_date) >= dateStr,
+        )
+        .map((s) => s.dealer_id),
+    );
+
+    // Final eligible list: notification_settings rows ∩ active dealers ∩ valid subscription
+    const dealers = nsRows.filter(
+      (r) => activeDealerMap.has(r.dealer_id) && validSubDealerIds.has(r.dealer_id),
+    );
+
+    const skipped = nsRows.length - dealers.length;
+    if (skipped > 0) {
+      console.log(`[DailySummary] Skipped ${skipped} dealer(s) — not active or no valid subscription`);
+    }
+
+    if (dealers.length === 0) {
+      console.log("[DailySummary] No eligible (active + subscribed) dealers");
+      return new Response(JSON.stringify({ success: true, processed: 0, skipped }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -92,14 +156,8 @@ Deno.serve(async (req) => {
 
         const totalCollections = collections?.reduce((sum, c) => sum + Number(c.amount || 0), 0) ?? 0;
 
-        // 5. Fetch dealer name
-        const { data: dealerInfo } = await supabase
-          .from("dealers")
-          .select("name")
-          .eq("id", dealer_id)
-          .single();
-
-        const dealerName = dealerInfo?.name ?? "Dealer";
+        // 5. Dealer name (already fetched in pre-check)
+        const dealerName = activeDealerMap.get(dealer_id) ?? "Dealer";
 
         // 6. Build the summary payload
         const payload = {
