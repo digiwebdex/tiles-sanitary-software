@@ -32,6 +32,6 @@ export async function up(knex: Knex): Promise<void> {
   });
 }
 
-export async function down(_knex: Knx): Promise<void> {
+export async function down(_knex: Knex): Promise<void> {
   // Intentionally no-op: this migration repairs production login access.
 }
