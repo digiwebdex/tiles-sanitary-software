@@ -156,14 +156,8 @@ Deno.serve(async (req) => {
 
         const totalCollections = collections?.reduce((sum, c) => sum + Number(c.amount || 0), 0) ?? 0;
 
-        // 5. Fetch dealer name
-        const { data: dealerInfo } = await supabase
-          .from("dealers")
-          .select("name")
-          .eq("id", dealer_id)
-          .single();
-
-        const dealerName = dealerInfo?.name ?? "Dealer";
+        // 5. Dealer name (already fetched in pre-check)
+        const dealerName = activeDealerMap.get(dealer_id) ?? "Dealer";
 
         // 6. Build the summary payload
         const payload = {
