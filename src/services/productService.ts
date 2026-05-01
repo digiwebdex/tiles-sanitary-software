@@ -1,24 +1,7 @@
 /**
- * productService — full VPS rewire (Phase 3D ⇒ 3D-cutover).
- *
- * Every entry point now flows through the shared `dataClient` so the
- * per-resource flag `VITE_DATA_PRODUCTS` controls the backend:
- *
- *   supabase (default) → identical legacy behavior (Lovable Cloud / PostgREST).
- *   shadow             → Supabase primary + parallel VPS read for diff logging.
- *   vps                → ALL reads + writes served by the self-hosted API.
- *
- * Writes (`create`, `update`, `toggleActive`) used to stay on Supabase. With
- * VITE_DATA_PRODUCTS=vps they now POST/PATCH /api/products on the VPS — the
- * backend route handles barcode auto-generation, dealer scoping, role gates,
- * and uniqueness errors. This removes the cross-domain RLS error that
- * appeared when the frontend was authed against VPS but products still
- * targeted Supabase.
- *
- * Search-mode list also routes through the adapter — VPS supports the same
- * sku|name|barcode ILIKE semantics natively.
- *
- * Public function signatures are UNCHANGED so no UI/page code touches.
+ * productService — VPS-only.
+ * All reads + writes served by the self-hosted API via dataClient.
+ * Public function signatures unchanged.
  */
 import type { Database } from "@/integrations/supabase/types";
 import { validateInput, createProductServiceSchema, updateProductServiceSchema } from "@/lib/validators";
