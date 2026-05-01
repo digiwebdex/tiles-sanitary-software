@@ -71,9 +71,8 @@ const CreateDeliveryDialog = ({ open, onClose, sale, dealerId }: Props) => {
         created_by: profile?.id,
         items,
       });
-
-      // Update sale delivery status
-      await deliveryService.updateSaleDeliveryStatus(saleId, dealerId);
+      // Sale fulfillment + sale_status sync is handled atomically by the
+      // VPS POST /api/deliveries endpoint (Phase 3O). No client-side fan-out.
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deliveries"] });
