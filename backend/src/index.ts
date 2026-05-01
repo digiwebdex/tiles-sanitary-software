@@ -45,6 +45,9 @@ import pricingTiersRoutes from './routes/pricingTiers';
 import commissionsRoutes from './routes/commissions';
 import campaignGiftsRoutes from './routes/campaignGifts';
 import demandPlanningSettingsRoutes from './routes/demandPlanningSettings';
+import displayStockRoutes from './routes/displayStock';
+import sampleIssuesRoutes from './routes/sampleIssues';
+import purchasePlanningRoutes from './routes/purchasePlanning';
 import path from 'path';
 
 const app = express();
@@ -167,6 +170,9 @@ app.use('/api/pricing-tiers', pricingTiersRoutes);
 app.use('/api/commissions', commissionsRoutes);
 app.use('/api/campaign-gifts', campaignGiftsRoutes);
 app.use('/api/demand-planning-settings', demandPlanningSettingsRoutes);
+app.use('/api/display-stock', displayStockRoutes);
+app.use('/api/sample-issues', sampleIssuesRoutes);
+app.use('/api/purchase-planning', purchasePlanningRoutes);
 
 // Static file serving for uploaded product images, etc.
 app.use(
