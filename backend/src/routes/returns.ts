@@ -127,6 +127,113 @@ async function adjustAggregateStock(
 // PURCHASE RETURNS
 // ────────────────────────────────────────────────────────────────────────────
 
+// ─── READS (Phase 3U-17) ────────────────────────────────────────────────
+
+const PAGE_SIZE = 25;
+
+router.get('/purchases', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
+  const offset = (page - 1) * PAGE_SIZE;
+
+  try {
+    const base = db('purchase_returns').where({ dealer_id: dealerId });
+    const [{ count }] = await base
+      .clone()
+      .clearSelect()
+      .clearOrder()
+      .count<{ count: string }[]>('id as count');
+
+    const rows = await base
+      .clone()
+      .select('*')
+      .orderBy([
+        { column: 'return_date', order: 'desc' },
+        { column: 'created_at', order: 'desc' },
+      ])
+      .limit(PAGE_SIZE)
+      .offset(offset);
+
+    const supIds = Array.from(new Set(rows.map((r: any) => r.supplier_id).filter(Boolean)));
+    const suppliers = supIds.length
+      ? await db('suppliers').whereIn('id', supIds).select('id', 'name')
+      : [];
+    const supMap = new Map(suppliers.map((s: any) => [s.id, s]));
+
+    const data = rows.map((r: any) => ({
+      ...r,
+      suppliers: r.supplier_id ? supMap.get(r.supplier_id) ?? null : null,
+    }));
+
+    res.json({ data, total: Number(count) || 0 });
+  } catch (err: any) {
+    console.error('[returns.purchases.list] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to load purchase returns' });
+  }
+});
+
+router.get('/sales', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  try {
+    const rows = await db('sales_returns as sr')
+      .leftJoin('sales as s', 's.id', 'sr.sale_id')
+      .leftJoin('customers as c', 'c.id', 's.customer_id')
+      .leftJoin('products as p', 'p.id', 'sr.product_id')
+      .where('sr.dealer_id', dealerId)
+      .orderBy('sr.return_date', 'desc')
+      .select(
+        'sr.*',
+        db.raw(`json_build_object(
+          'invoice_number', s.invoice_number,
+          'customer_id', s.customer_id,
+          'customers', json_build_object('name', c.name)
+        ) as sales`),
+        db.raw(`json_build_object(
+          'name', p.name,
+          'sku', p.sku
+        ) as products`),
+      );
+    res.json(rows);
+  } catch (err: any) {
+    console.error('[returns.sales.list] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to load sales returns' });
+  }
+});
+
+router.get('/sales/sale-items/:saleId', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const { saleId } = req.params;
+
+  try {
+    // Tenant guard: ensure sale belongs to this dealer
+    const sale = await db('sales').where({ id: saleId, dealer_id: dealerId }).first('id');
+    if (!sale) {
+      res.status(404).json({ error: 'Sale not found' });
+      return;
+    }
+    const rows = await db('sale_items as si')
+      .leftJoin('products as p', 'p.id', 'si.product_id')
+      .where('si.sale_id', saleId)
+      .select(
+        'si.*',
+        db.raw(`json_build_object(
+          'name', p.name,
+          'sku', p.sku,
+          'unit_type', p.unit_type,
+          'per_box_sft', p.per_box_sft
+        ) as products`),
+      );
+    res.json(rows);
+  } catch (err: any) {
+    console.error('[returns.sales.getSaleItems] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to load sale items' });
+  }
+});
+
 router.get('/purchases/next-no', async (req: Request, res: Response) => {
   const dealerId = resolveDealer(req, res);
   if (!dealerId) return;

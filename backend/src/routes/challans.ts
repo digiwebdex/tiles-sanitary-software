@@ -217,6 +217,127 @@ async function tryPromoteCommission(trx: any, saleId: string, dealerId: string) 
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// READS (Phase 3U-17)
+// ────────────────────────────────────────────────────────────────────────────
+
+router.get('/', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const projectId = (req.query.projectId as string | undefined) || null;
+  const siteId = (req.query.siteId as string | undefined) || null;
+
+  try {
+    const q = db('challans as c')
+      .leftJoin('sales as s', 's.id', 'c.sale_id')
+      .leftJoin('customers as cu', 'cu.id', 's.customer_id')
+      .leftJoin('projects as pr', 'pr.id', 'c.project_id')
+      .leftJoin('project_sites as ps', 'ps.id', 'c.site_id')
+      .where('c.dealer_id', dealerId)
+      .orderBy('c.created_at', 'desc')
+      .select(
+        'c.*',
+        db.raw(`json_build_object(
+          'invoice_number', s.invoice_number,
+          'customer_id', s.customer_id,
+          'customers', json_build_object('name', cu.name)
+        ) as sales`),
+        db.raw(`CASE WHEN pr.id IS NULL THEN NULL ELSE json_build_object(
+          'id', pr.id,
+          'project_name', pr.project_name,
+          'project_code', pr.project_code
+        ) END as projects`),
+        db.raw(`CASE WHEN ps.id IS NULL THEN NULL ELSE json_build_object(
+          'id', ps.id,
+          'site_name', ps.site_name,
+          'address', ps.address
+        ) END as project_sites`),
+      );
+    if (projectId) q.andWhere('c.project_id', projectId);
+    if (siteId) q.andWhere('c.site_id', siteId);
+    const rows = await q;
+    res.json(rows);
+  } catch (err: any) {
+    console.error('[challans.list] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to load challans' });
+  }
+});
+
+router.get('/by-sale/:saleId', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('challans')
+      .where({ dealer_id: dealerId, sale_id: req.params.saleId })
+      .orderBy('created_at', 'desc')
+      .select('*');
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to load challans for sale' });
+  }
+});
+
+router.get('/:id', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const { id } = req.params;
+  try {
+    const challan = await db('challans').where({ id, dealer_id: dealerId }).first();
+    if (!challan) {
+      res.status(404).json({ error: 'Challan not found' });
+      return;
+    }
+
+    const [sale, project, site] = await Promise.all([
+      db('sales').where({ id: challan.sale_id }).first(),
+      challan.project_id
+        ? db('projects')
+            .where({ id: challan.project_id })
+            .first('id', 'project_name', 'project_code')
+        : Promise.resolve(null),
+      challan.site_id
+        ? db('project_sites')
+            .where({ id: challan.site_id })
+            .first('id', 'site_name', 'address', 'contact_person', 'contact_phone')
+        : Promise.resolve(null),
+    ]);
+
+    let customer = null;
+    let saleItems: any[] = [];
+    if (sale) {
+      [customer, saleItems] = await Promise.all([
+        sale.customer_id
+          ? db('customers')
+              .where({ id: sale.customer_id })
+              .first('name', 'type', 'phone', 'address')
+          : Promise.resolve(null),
+        db('sale_items as si')
+          .leftJoin('products as p', 'p.id', 'si.product_id')
+          .where('si.sale_id', sale.id)
+          .select(
+            'si.*',
+            db.raw(`json_build_object(
+              'name', p.name,
+              'sku', p.sku,
+              'unit_type', p.unit_type,
+              'per_box_sft', p.per_box_sft
+            ) as products`),
+          ),
+      ]);
+    }
+
+    res.json({
+      ...challan,
+      sales: sale ? { ...sale, customers: customer, sale_items: saleItems } : null,
+      projects: project,
+      project_sites: site,
+    });
+  } catch (err: any) {
+    console.error('[challans.getById] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to load challan' });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // POST /api/challans  — create + reserve
 // ────────────────────────────────────────────────────────────────────────────
 

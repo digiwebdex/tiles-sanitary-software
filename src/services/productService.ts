@@ -20,11 +20,9 @@
  *
  * Public function signatures are UNCHANGED so no UI/page code touches.
  */
-import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { validateInput, createProductServiceSchema, updateProductServiceSchema } from "@/lib/validators";
 import { dataClient } from "@/lib/data/dataClient";
-import { authBridge } from "@/lib/authBridge";
 import { vpsTokenStore } from "@/lib/vpsAuthClient";
 
 type Product = Database["public"]["Tables"]["products"]["Row"];
@@ -37,24 +35,11 @@ const PAGE_SIZE = 25;
 const productsAdapter = dataClient<Product>("PRODUCTS");
 
 /**
- * Resolve a dealerId for write/getById calls.
- *   - VPS auth path: read from the locally cached VPS user.
- *   - Supabase auth path: read profiles.dealer_id for the auth user.
- *   - super_admin (no dealer) → return null so callers can fall back.
+ * Resolve a dealerId for write/getById calls from the VPS token store.
+ * super_admin (no dealer) → return null so callers can fall back.
  */
-async function resolveCurrentDealerId(): Promise<string | null> {
-  if (authBridge.isVps) {
-    return vpsTokenStore.user?.dealerId ?? null;
-  }
-  const { data: authData } = await supabase.auth.getUser();
-  const userId = authData.user?.id;
-  if (!userId) return null;
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("dealer_id")
-    .eq("id", userId)
-    .maybeSingle();
-  return (profile?.dealer_id as string | null) ?? null;
+function resolveCurrentDealerId(): string | null {
+  return vpsTokenStore.user?.dealerId ?? null;
 }
 
 export const productService = {
