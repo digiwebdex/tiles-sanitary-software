@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { salesReturnSchema, type SalesReturnFormValues } from "@/modules/sales-returns/salesReturnSchema";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { salesReturnService } from "@/services/salesReturnService";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
