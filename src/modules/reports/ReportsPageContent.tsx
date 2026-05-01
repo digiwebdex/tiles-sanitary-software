@@ -874,23 +874,11 @@ function SalesReport({ dealerId }: { dealerId: string }) {
   const { data: salesData, isLoading } = useQuery({
     queryKey: ["report-monthly-sales-grid", dealerId, year],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sales")
-        .select("sale_date, total_amount, discount")
-        .eq("dealer_id", dealerId)
-        .gte("sale_date", `${year}-01-01`)
-        .lte("sale_date", `${year}-12-31`);
-
-      if (error) throw new Error(error.message);
-
-      const monthMap: Record<number, { discount: number; total: number }> = {};
-      for (const row of data ?? []) {
-        const m = new Date(row.sale_date).getMonth();
-        if (!monthMap[m]) monthMap[m] = { discount: 0, total: 0 };
-        monthMap[m].discount += Number(row.discount);
-        monthMap[m].total += Number(row.total_amount);
-      }
-      return monthMap;
+      const params = new URLSearchParams({ dealerId, year: String(year) });
+      const res = await vpsAuthedFetch(`/api/reports/page/monthly-sales-grid?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.monthMap ?? {}) as Record<number, { discount: number; total: number }>;
     },
   });
 
