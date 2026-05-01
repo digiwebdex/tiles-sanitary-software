@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { salesReturnSchema, type SalesReturnFormValues } from "@/modules/sales-returns/salesReturnSchema";
 import { useQuery } from "@tanstack/react-query";
-import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+import { salesService } from "@/services/salesService";
 import { salesReturnService } from "@/services/salesReturnService";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
@@ -47,15 +47,17 @@ const SalesReturnForm = ({ dealerId, onSubmit, isLoading }: SalesReturnFormProps
     },
   });
 
+  // Phase 3U-30: VPS GET /api/sales (most recent page; backend hydrates customers).
   const { data: sales = [] } = useQuery({
     queryKey: ["sales-for-return", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("sales")
-        .select("id, invoice_number, sale_date, customers(name)")
-        .eq("dealer_id", dealerId)
-        .order("sale_date", { ascending: false });
-      return data ?? [];
+      const { data } = await salesService.list(dealerId, 1);
+      return data as Array<{
+        id: string;
+        invoice_number: string;
+        sale_date: string;
+        customers?: { name: string } | null;
+      }>;
     },
     enabled: !!dealerId,
   });
