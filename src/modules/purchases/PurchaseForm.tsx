@@ -104,29 +104,32 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
     enabled: !!dealerId,
   });
 
-  // Phase 3U-30: VPS GET /api/products/last-purchase-map (dealer_admin only —
-  // backend returns 403 for salesman, which we tolerate as an empty map).
-  const { data: lastPurchaseMap = {} as Record<string, LastPurchaseInfo> } = useQuery({
+  // Phase 3U-30: VPS GET /api/products/last-purchase-map (dealer_admin only).
+  const { data: lastPurchaseMap = new Map<string, LastPurchaseInfo>() } = useQuery({
     queryKey: ["products-last-purchase-info", dealerId],
     queryFn: async () => {
       const res = await vpsAuthedFetch(
         `/api/products/last-purchase-map?dealerId=${dealerId}`,
       );
-      if (!res.ok) return {} as Record<string, LastPurchaseInfo>;
+      if (!res.ok) return new Map<string, LastPurchaseInfo>();
       const body = await res.json().catch(() => ({} as any));
-      return (body ?? {}) as Record<string, LastPurchaseInfo>;
+      const obj = (body ?? {}) as Record<string, LastPurchaseInfo>;
+      return new Map<string, LastPurchaseInfo>(Object.entries(obj));
     },
     enabled: !!dealerId,
   });
 
   // Phase 3U-30: VPS GET /api/products/cost-map (dealer_admin only).
-  const { data: avgCostMap = {} as Record<string, number> } = useQuery({
+  const { data: avgCostMap = new Map<string, number>() } = useQuery({
     queryKey: ["products-avg-cost", dealerId],
     queryFn: async () => {
       const res = await vpsAuthedFetch(`/api/products/cost-map?dealerId=${dealerId}`);
-      if (!res.ok) return {} as Record<string, number>;
+      if (!res.ok) return new Map<string, number>();
       const body = await res.json().catch(() => ({} as any));
-      return (body ?? {}) as Record<string, number>;
+      const obj = (body ?? {}) as Record<string, number>;
+      return new Map<string, number>(
+        Object.entries(obj).map(([k, v]) => [k, Number(v) || 0]),
+      );
     },
     enabled: !!dealerId,
   });
