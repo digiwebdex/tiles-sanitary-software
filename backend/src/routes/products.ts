@@ -661,4 +661,119 @@ router.get('/:id/stock-movement', async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/products/:id/last-purchase ───────────────────────────────────
+// Returns the most recent purchase_items row for a product (rate + landed cost).
+// Used by ProductForm to surface "last purchased at" hints in edit mode.
+router.get('/:id/last-purchase', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const row = await db('purchase_items as pi')
+      .innerJoin('purchases as pu', 'pu.id', 'pi.purchase_id')
+      .where({ 'pi.product_id': req.params.id, 'pi.dealer_id': dealerId })
+      .orderBy('pu.purchase_date', 'desc')
+      .first('pi.landed_cost', 'pi.purchase_rate', 'pu.purchase_date');
+    if (!row) { res.json(null); return; }
+    res.json({
+      landed_cost: Number(row.landed_cost) || 0,
+      purchase_rate: Number(row.purchase_rate) || 0,
+      purchase_date: row.purchase_date ?? null,
+    });
+  } catch (err: any) {
+    console.error('[products/:id/last-purchase]', err.message);
+    res.status(500).json({ error: 'Failed to load last purchase' });
+  }
+});
+
+// ── GET /api/products/last-purchase-map ───────────────────────────────────
+// Returns a per-product map of the most recent purchase rate / landed cost /
+// supplier for the dealer. Used by PurchaseForm to pre-fill rate hints.
+router.get('/last-purchase-map', requireRole('dealer_admin'), async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const rows = await db('purchase_items as pi')
+      .innerJoin('purchases as pu', 'pu.id', 'pi.purchase_id')
+      .leftJoin('suppliers as s', 's.id', 'pu.supplier_id')
+      .where({ 'pi.dealer_id': dealerId })
+      .orderBy('pu.purchase_date', 'desc')
+      .select(
+        'pi.product_id',
+        'pi.purchase_rate',
+        'pi.landed_cost',
+        'pu.purchase_date',
+        's.name as supplier_name',
+      );
+    const map: Record<string, any> = {};
+    for (const r of rows as any[]) {
+      if (map[r.product_id]) continue;
+      map[r.product_id] = {
+        purchase_rate: Number(r.purchase_rate) || 0,
+        landed_cost: Number(r.landed_cost) || 0,
+        purchase_date: r.purchase_date ?? '',
+        supplier_name: r.supplier_name ?? '',
+      };
+    }
+    res.json(map);
+  } catch (err: any) {
+    console.error('[products/last-purchase-map]', err.message);
+    res.status(500).json({ error: 'Failed to load last-purchase map' });
+  }
+});
+
+// ── POST /api/products/:id/cost-price ─────────────────────────────────────
+// dealer_admin only. Manually sets the average_cost_per_unit on the dealer's
+// stock row for this product, with a mandatory reason that lands in the
+// audit log. Replaces direct supabase.from('stock').update from the
+// UpdateCostPriceDialog.
+router.post('/:id/cost-price', requireRole('dealer_admin'), async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const cost = Number(req.body?.cost);
+    const reason = String(req.body?.reason ?? '').trim();
+    if (!Number.isFinite(cost) || cost < 0) { res.status(400).json({ error: 'Cost must be >= 0' }); return; }
+    if (!reason) { res.status(400).json({ error: 'Reason is required' }); return; }
+
+    const stockRow = await db('stock')
+      .where({ product_id: req.params.id, dealer_id: dealerId })
+      .first('id', 'average_cost_per_unit');
+    const previous = Number(stockRow?.average_cost_per_unit ?? 0);
+
+    if (stockRow) {
+      await db('stock')
+        .where({ product_id: req.params.id, dealer_id: dealerId })
+        .update({ average_cost_per_unit: cost });
+    } else {
+      await db('stock').insert({
+        product_id: req.params.id,
+        dealer_id: dealerId,
+        average_cost_per_unit: cost,
+        box_qty: 0,
+        piece_qty: 0,
+      });
+    }
+
+    // Audit
+    try {
+      await db('audit_logs').insert({
+        dealer_id: dealerId,
+        user_id: req.user?.userId ?? null,
+        action: 'PRICE_CHANGE',
+        table_name: 'stock',
+        record_id: req.params.id,
+        old_data: { average_cost_per_unit: previous },
+        new_data: { average_cost_per_unit: cost, reason },
+      });
+    } catch (auditErr: any) {
+      console.warn('[products/cost-price] audit failed:', auditErr.message);
+    }
+
+    res.json({ ok: true, previous, current: cost });
+  } catch (err: any) {
+    console.error('[products/cost-price]', err.message);
+    res.status(500).json({ error: 'Failed to update cost price' });
+  }
+});
+
 export default router;
