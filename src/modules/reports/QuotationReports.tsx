@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -34,17 +34,13 @@ export function QuotationListReport({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-quotations-list", dealerId, from, to, status],
     queryFn: async () => {
-      let q = supabase
-        .from("quotations")
-        .select("*, customers(name)")
-        .eq("dealer_id", dealerId)
-        .gte("quote_date", from)
-        .lte("quote_date", to)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (status !== "all") q = q.eq("status", status);
-      const { data } = await q;
-      return data ?? [];
+      const params = new URLSearchParams({
+        dealerId, from, to, status,
+      });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/list?${params.toString()}`);
+      if (!res.ok) throw new Error(`quotations list failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
   });
 
@@ -154,26 +150,14 @@ export function QuotationConversionReport({ dealerId }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-quotation-conversion", dealerId, from, to],
     queryFn: async () => {
-      const { data: rows } = await supabase
-        .from("quotations")
-        .select("id, status, total_amount, created_at, converted_at")
-        .eq("dealer_id", dealerId)
-        .gte("quote_date", from)
-        .lte("quote_date", to);
-      const all = rows ?? [];
-      const finalized = all.filter((r: any) => r.status !== "draft" && r.status !== "cancelled");
-      const converted = all.filter((r: any) => r.status === "converted");
-      const totalQuotedValue = finalized.reduce((s, r: any) => s + Number(r.total_amount), 0);
-      const convertedValue = converted.reduce((s, r: any) => s + Number(r.total_amount), 0);
-      const conversionPct = finalized.length > 0 ? (converted.length / finalized.length) * 100 : 0;
-      const avgDays = converted.length > 0
-        ? converted.reduce((s, r: any) => {
-            const c = new Date(r.created_at).getTime();
-            const cv = r.converted_at ? new Date(r.converted_at).getTime() : c;
-            return s + Math.max(0, (cv - c) / 86400000);
-          }, 0) / converted.length
-        : 0;
-      return { finalizedCount: finalized.length, convertedCount: converted.length, totalQuotedValue, convertedValue, conversionPct, avgDays };
+      const params = new URLSearchParams({ dealerId, from, to });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/conversion?${params.toString()}`);
+      if (!res.ok) throw new Error(`quotation conversion failed: ${res.status}`);
+      return res.json() as Promise<{
+        finalizedCount: number; convertedCount: number;
+        totalQuotedValue: number; convertedValue: number;
+        conversionPct: number; avgDays: number;
+      }>;
     },
   });
 
@@ -205,14 +189,11 @@ export function ExpiredQuotationsReport({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-quotations-expired", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("quotations")
-        .select("*, customers(name)")
-        .eq("dealer_id", dealerId)
-        .eq("status", "expired")
-        .order("valid_until", { ascending: false })
-        .limit(500);
-      return data ?? [];
+      const params = new URLSearchParams({ dealerId });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/expired?${params.toString()}`);
+      if (!res.ok) throw new Error(`expired quotations failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
   });
 
@@ -253,25 +234,11 @@ export function SalesmanQuotationPerformance({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-quotation-salesman", dealerId, from, to],
     queryFn: async () => {
-      const { data: quotes } = await supabase
-        .from("quotations")
-        .select("created_by, status, total_amount")
-        .eq("dealer_id", dealerId)
-        .gte("quote_date", from)
-        .lte("quote_date", to);
-      const { data: profs } = await supabase
-        .from("profiles").select("id, name").eq("dealer_id", dealerId);
-      const nameMap = new Map((profs ?? []).map((p) => [p.id, p.name]));
-      const agg = new Map<string, { name: string; quotes: number; converted: number; value: number; convertedValue: number }>();
-      for (const q of quotes ?? []) {
-        const key = q.created_by ?? "unknown";
-        const cur = agg.get(key) ?? { name: nameMap.get(key as string) ?? "Unknown", quotes: 0, converted: 0, value: 0, convertedValue: 0 };
-        cur.quotes++;
-        cur.value += Number(q.total_amount);
-        if (q.status === "converted") { cur.converted++; cur.convertedValue += Number(q.total_amount); }
-        agg.set(key, cur);
-      }
-      return Array.from(agg.values()).sort((a, b) => b.value - a.value);
+      const params = new URLSearchParams({ dealerId, from, to });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/salesman?${params.toString()}`);
+      if (!res.ok) throw new Error(`salesman quotation perf failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as { name: string; quotes: number; converted: number; value: number; convertedValue: number }[];
     },
   });
 
@@ -320,24 +287,11 @@ export function TopQuotedProductsReport({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-top-quoted-products", dealerId, from, to],
     queryFn: async () => {
-      const { data: items } = await supabase
-        .from("quotation_items")
-        .select("product_name_snapshot, quantity, line_total, quotations!inner(dealer_id, quote_date, status)")
-        .eq("dealer_id", dealerId)
-        .gte("quotations.quote_date", from)
-        .lte("quotations.quote_date", to)
-        .neq("quotations.status", "draft")
-        .neq("quotations.status", "cancelled");
-      const agg = new Map<string, { name: string; qty: number; value: number; count: number }>();
-      for (const it of items ?? []) {
-        const key = it.product_name_snapshot;
-        const cur = agg.get(key) ?? { name: key, qty: 0, value: 0, count: 0 };
-        cur.qty += Number(it.quantity);
-        cur.value += Number(it.line_total);
-        cur.count++;
-        agg.set(key, cur);
-      }
-      return Array.from(agg.values()).sort((a, b) => b.value - a.value).slice(0, 25);
+      const params = new URLSearchParams({ dealerId, from, to });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/top-products?${params.toString()}`);
+      if (!res.ok) throw new Error(`top quoted products failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as { name: string; qty: number; value: number; count: number }[];
     },
   });
 

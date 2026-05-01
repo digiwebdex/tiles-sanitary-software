@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,79 +12,27 @@ interface ReservationWidgetsProps {
   dealerId: string;
 }
 
+interface SummaryResponse {
+  activeHolds: number;
+  totalReservedQty: number;
+  totalReservedValue: number;
+  expiringToday: number;
+  expiringItems: { product: string; customer: string; remaining: number; daysLeft: number }[];
+  totalStock: number;
+  totalReservedAgg: number;
+  freeStock: number;
+  reservedPct: number;
+}
+
 export function ReservationDashboardWidgets({ dealerId }: ReservationWidgetsProps) {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-reservation-summary", dealerId],
-    queryFn: async () => {
-      const { data: reservations, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          id, reserved_qty, fulfilled_qty, released_qty, status, expires_at,
-          products:product_id (name, sku, default_sale_rate, unit_type),
-          customers:customer_id (name)
-        `)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active");
-      if (error) throw new Error(error.message);
-
-      const now = new Date();
-      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-
-      let activeHolds = 0;
-      let totalReservedQty = 0;
-      let totalReservedValue = 0;
-      let expiringToday = 0;
-      const expiringItems: { product: string; customer: string; remaining: number; daysLeft: number }[] = [];
-
-      for (const r of reservations ?? []) {
-        const remaining = Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
-        if (remaining <= 0) continue;
-
-        activeHolds++;
-        totalReservedQty += remaining;
-        totalReservedValue += remaining * Number((r as any).products?.default_sale_rate ?? 0);
-
-        if (r.expires_at) {
-          const exp = new Date(r.expires_at);
-          const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / 86400000);
-          if (exp <= todayEnd && exp >= now) expiringToday++;
-          if (daysLeft <= 3 && daysLeft >= 0) {
-            expiringItems.push({
-              product: (r as any).products?.name ?? "—",
-              customer: (r as any).customers?.name ?? "—",
-              remaining,
-              daysLeft,
-            });
-          }
-        }
-      }
-
-      // Get aggregate reserved vs total
-      const { data: stockData } = await supabase
-        .from("stock")
-        .select("box_qty, piece_qty, reserved_box_qty, reserved_piece_qty")
-        .eq("dealer_id", dealerId);
-
-      let totalStock = 0;
-      let totalReservedAgg = 0;
-      for (const s of stockData ?? []) {
-        totalStock += Number(s.box_qty ?? 0) + Number(s.piece_qty ?? 0);
-        totalReservedAgg += Number(s.reserved_box_qty ?? 0) + Number(s.reserved_piece_qty ?? 0);
-      }
-      const freeStock = totalStock - totalReservedAgg;
-      const reservedPct = totalStock > 0 ? Math.round((totalReservedAgg / totalStock) * 100) : 0;
-
-      return {
-        activeHolds,
-        totalReservedQty,
-        totalReservedValue,
-        expiringToday,
-        expiringItems: expiringItems.sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 5),
-        totalStock,
-        totalReservedAgg,
-        freeStock,
-        reservedPct,
-      };
+    queryFn: async (): Promise<SummaryResponse> => {
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/reservation-summary?dealerId=${encodeURIComponent(dealerId)}`,
+      );
+      if (!res.ok) throw new Error(`reservation-summary failed: ${res.status}`);
+      return res.json();
     },
     enabled: !!dealerId,
   });

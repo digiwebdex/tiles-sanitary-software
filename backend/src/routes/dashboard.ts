@@ -575,4 +575,128 @@ router.get('/latest-customers', async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/dashboard/reservation-summary ────────────────────────────────
+router.get('/reservation-summary', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const reservations = await db('stock_reservations as r')
+      .leftJoin('products as p', 'p.id', 'r.product_id')
+      .leftJoin('customers as c', 'c.id', 'r.customer_id')
+      .where({ 'r.dealer_id': dealerId, 'r.status': 'active' })
+      .select(
+        'r.id', 'r.reserved_qty', 'r.fulfilled_qty', 'r.released_qty', 'r.expires_at',
+        'p.name as product_name', 'p.default_sale_rate',
+        'c.name as customer_name',
+      );
+
+    const now = new Date();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+    let activeHolds = 0;
+    let totalReservedQty = 0;
+    let totalReservedValue = 0;
+    let expiringToday = 0;
+    const expiringItems: { product: string; customer: string; remaining: number; daysLeft: number }[] = [];
+
+    for (const r of reservations) {
+      const remaining = Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
+      if (remaining <= 0) continue;
+      activeHolds++;
+      totalReservedQty += remaining;
+      totalReservedValue += remaining * Number(r.default_sale_rate ?? 0);
+      if (r.expires_at) {
+        const exp = new Date(r.expires_at);
+        const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / 86400000);
+        if (exp <= todayEnd && exp >= now) expiringToday++;
+        if (daysLeft <= 3 && daysLeft >= 0) {
+          expiringItems.push({
+            product: r.product_name ?? '—',
+            customer: r.customer_name ?? '—',
+            remaining,
+            daysLeft,
+          });
+        }
+      }
+    }
+
+    const stockData = await db('stock')
+      .where({ dealer_id: dealerId })
+      .select('box_qty', 'piece_qty', 'reserved_box_qty', 'reserved_piece_qty');
+
+    let totalStock = 0;
+    let totalReservedAgg = 0;
+    for (const s of stockData) {
+      totalStock += Number(s.box_qty ?? 0) + Number(s.piece_qty ?? 0);
+      totalReservedAgg += Number(s.reserved_box_qty ?? 0) + Number(s.reserved_piece_qty ?? 0);
+    }
+    const freeStock = totalStock - totalReservedAgg;
+    const reservedPct = totalStock > 0 ? Math.round((totalReservedAgg / totalStock) * 100) : 0;
+
+    res.json({
+      activeHolds,
+      totalReservedQty,
+      totalReservedValue: round2(totalReservedValue),
+      expiringToday,
+      expiringItems: expiringItems.sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 5),
+      totalStock,
+      totalReservedAgg,
+      freeStock,
+      reservedPct,
+    });
+  } catch (err: any) {
+    console.error('[dashboard/reservation-summary]', err.message);
+    res.status(500).json({ error: 'Failed to load reservation summary' });
+  }
+});
+
+// ── GET /api/dashboard/approval-widgets ───────────────────────────────────
+router.get('/approval-widgets', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const nowIso = new Date().toISOString();
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
+    const pending = await db('approval_requests')
+      .where({ dealer_id: dealerId, status: 'pending' })
+      .where('expires_at', '>', nowIso)
+      .orderBy('created_at', 'desc')
+      .limit(5)
+      .select('id', 'approval_type', 'created_at', 'context_data', 'requested_by');
+
+    const todayRows = await db('approval_requests')
+      .where({ dealer_id: dealerId })
+      .where('decided_at', '>=', startOfDay.toISOString())
+      .select('status');
+    const approved = todayRows.filter((r: any) => r.status === 'approved' || r.status === 'consumed').length;
+    const rejected = todayRows.filter((r: any) => r.status === 'rejected').length;
+    const auto = todayRows.filter((r: any) => r.status === 'auto_approved').length;
+
+    const recentRows = await db('approval_requests')
+      .where({ dealer_id: dealerId })
+      .where('created_at', '>=', sevenDaysAgo)
+      .select('approval_type');
+    const counts = new Map<string, number>();
+    for (const r of recentRows) {
+      counts.set(r.approval_type, (counts.get(r.approval_type) ?? 0) + 1);
+    }
+    const typeSummary = Array.from(counts.entries())
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    res.json({
+      pending,
+      todayDecisions: { approved, rejected, auto, total: todayRows.length },
+      typeSummary,
+    });
+  } catch (err: any) {
+    console.error('[dashboard/approval-widgets]', err.message);
+    res.status(500).json({ error: 'Failed to load approval widgets' });
+  }
+});
+
 export default router;
