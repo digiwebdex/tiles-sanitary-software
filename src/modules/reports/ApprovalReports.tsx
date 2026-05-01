@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -49,20 +49,13 @@ export function ApprovalHistoryReport({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-approval-history", dealerId, from, to, statusFilter, typeFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("approval_requests")
-        .select("*")
-        .eq("dealer_id", dealerId)
-        .gte("created_at", `${from}T00:00:00`)
-        .lte("created_at", `${to}T23:59:59`)
-        .order("created_at", { ascending: false })
-        .limit(500);
-
-      if (statusFilter !== "all") query = query.eq("status", statusFilter);
-      if (typeFilter !== "all") query = query.eq("approval_type", typeFilter as ApprovalType);
-
-      const { data } = await query;
-      return data ?? [];
+      const params = new URLSearchParams({
+        dealerId, from, to, status: statusFilter, type: typeFilter,
+      });
+      const res = await vpsAuthedFetch(`/api/reports/approvals/history?${params.toString()}`);
+      if (!res.ok) throw new Error(`approval history failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
     enabled: !!dealerId,
   });
