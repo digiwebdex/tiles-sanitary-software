@@ -204,32 +204,14 @@ export function ApprovalTypeSummaryReport({ dealerId }: Props) {
   const { data: summary = [], isLoading } = useQuery({
     queryKey: ["report-approval-type-summary", dealerId, from, to],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("approval_requests")
-        .select("approval_type, status")
-        .eq("dealer_id", dealerId)
-        .gte("created_at", `${from}T00:00:00`)
-        .lte("created_at", `${to}T23:59:59`);
-
-      const map = new Map<
-        ApprovalType,
-        { total: number; approved: number; rejected: number; pending: number; auto: number }
-      >();
-
-      for (const r of data ?? []) {
-        const t = r.approval_type as ApprovalType;
-        const cur = map.get(t) ?? { total: 0, approved: 0, rejected: 0, pending: 0, auto: 0 };
-        cur.total++;
-        if (r.status === "approved" || r.status === "consumed") cur.approved++;
-        else if (r.status === "rejected") cur.rejected++;
-        else if (r.status === "pending") cur.pending++;
-        else if (r.status === "auto_approved") cur.auto++;
-        map.set(t, cur);
-      }
-
-      return Array.from(map.entries())
-        .map(([type, stats]) => ({ type, ...stats }))
-        .sort((a, b) => b.total - a.total);
+      const params = new URLSearchParams({ dealerId, from, to });
+      const res = await vpsAuthedFetch(`/api/reports/approvals/type-summary?${params.toString()}`);
+      if (!res.ok) throw new Error(`approval type-summary failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as Array<{
+        type: ApprovalType; total: number; approved: number;
+        rejected: number; pending: number; auto: number;
+      }>;
     },
     enabled: !!dealerId,
   });
@@ -300,73 +282,13 @@ export function UserApprovalStatsReport({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-user-approval-stats", dealerId, from, to],
     queryFn: async () => {
-      // Fetch all approvals in range
-      const { data: approvals } = await supabase
-        .from("approval_requests")
-        .select("requested_by, decided_by, status")
-        .eq("dealer_id", dealerId)
-        .gte("created_at", `${from}T00:00:00`)
-        .lte("created_at", `${to}T23:59:59`);
-
-      // Collect unique user IDs
-      const userIds = new Set<string>();
-      for (const a of approvals ?? []) {
-        if (a.requested_by) userIds.add(a.requested_by);
-        if (a.decided_by) userIds.add(a.decided_by);
-      }
-
-      // Fetch profiles
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, name, email")
-        .in("id", Array.from(userIds));
-
-      const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
-
-      const userStats = new Map<
-        string,
-        { name: string; requested: number; approved: number; rejected: number }
-      >();
-
-      for (const a of approvals ?? []) {
-        if (a.requested_by) {
-          const user = profileMap.get(a.requested_by);
-          const cur = userStats.get(a.requested_by) ?? {
-            name: user?.name ?? user?.email ?? "Unknown",
-            requested: 0,
-            approved: 0,
-            rejected: 0,
-          };
-          cur.requested++;
-          userStats.set(a.requested_by, cur);
-        }
-        if (a.decided_by && (a.status === "approved" || a.status === "consumed")) {
-          const user = profileMap.get(a.decided_by);
-          const cur = userStats.get(a.decided_by) ?? {
-            name: user?.name ?? user?.email ?? "Unknown",
-            requested: 0,
-            approved: 0,
-            rejected: 0,
-          };
-          cur.approved++;
-          userStats.set(a.decided_by, cur);
-        }
-        if (a.decided_by && a.status === "rejected") {
-          const user = profileMap.get(a.decided_by);
-          const cur = userStats.get(a.decided_by) ?? {
-            name: user?.name ?? user?.email ?? "Unknown",
-            requested: 0,
-            approved: 0,
-            rejected: 0,
-          };
-          cur.rejected++;
-          userStats.set(a.decided_by, cur);
-        }
-      }
-
-      return Array.from(userStats.entries())
-        .map(([id, s]) => ({ id, ...s }))
-        .sort((a, b) => (b.requested + b.approved + b.rejected) - (a.requested + a.approved + a.rejected));
+      const params = new URLSearchParams({ dealerId, from, to });
+      const res = await vpsAuthedFetch(`/api/reports/approvals/user-stats?${params.toString()}`);
+      if (!res.ok) throw new Error(`user-approval-stats failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as Array<{
+        id: string; name: string; requested: number; approved: number; rejected: number;
+      }>;
     },
     enabled: !!dealerId,
   });
