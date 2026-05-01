@@ -1,5 +1,26 @@
 import type { ColumnDef, ImportResult } from "./BulkImportDialog";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
+async function postImport(
+  endpoint: "products" | "customers" | "suppliers",
+  rows: Record<string, string>[],
+  mode: "skip" | "overwrite",
+  dealerId: string,
+): Promise<ImportResult> {
+  const res = await vpsAuthedFetch(`/api/imports/${endpoint}`, {
+    method: "POST",
+    body: JSON.stringify({ dealerId, mode, rows }),
+  });
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    throw new Error((body as any)?.error || `Bulk import failed (${res.status})`);
+  }
+  return {
+    success: Number((body as any).success ?? 0),
+    skipped: Number((body as any).skipped ?? 0),
+    errors: Array.isArray((body as any).errors) ? (body as any).errors : [],
+  };
+}
 
 // ─── Products ─────────────────────────────────────────────
 export const productColumns: ColumnDef[] = [
@@ -23,56 +44,7 @@ export const productSampleData = [
 ];
 
 export async function importProducts(rows: Record<string, string>[], mode: "skip" | "overwrite", dealerId: string): Promise<ImportResult> {
-  const result: ImportResult = { success: 0, skipped: 0, errors: [] };
-
-  // Get existing SKUs and barcodes for duplicate detection
-  const { data: existing } = await supabase.from("products").select("sku, barcode").eq("dealer_id", dealerId);
-  const existingSkus = new Set((existing ?? []).map((p) => p.sku.toLowerCase()));
-  const existingBarcodes = new Set((existing ?? []).filter((p) => p.barcode).map((p) => p.barcode!.toLowerCase()));
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const sku = row.sku?.trim();
-    if (!sku) { result.errors.push({ row: i + 2, field: "SKU", message: "Missing" }); continue; }
-
-    const isDuplicate = existingSkus.has(sku.toLowerCase());
-    const barcodeConflict = row.barcode?.trim() && existingBarcodes.has(row.barcode.trim().toLowerCase());
-
-    if (isDuplicate && mode === "skip") { result.skipped++; continue; }
-    if (barcodeConflict && mode === "skip") { result.skipped++; continue; }
-
-    const category = row.category?.toLowerCase().trim();
-    if (category === "tiles" && !row.per_box_sft?.trim()) {
-      result.errors.push({ row: i + 2, field: "Per Box SFT", message: "Required for tiles" });
-      continue;
-    }
-
-    const payload = {
-      dealer_id: dealerId,
-      name: row.name?.trim(),
-      sku: sku,
-      category: category as "tiles" | "sanitary",
-      unit_type: (row.unit_type?.toLowerCase().trim() || "piece") as "box_sft" | "piece",
-      per_box_sft: row.per_box_sft ? Number(row.per_box_sft) : null,
-      default_sale_rate: Number(row.default_sale_rate) || 0,
-      cost_price: Number(row.cost_price) || 0,
-      brand: row.brand?.trim() || null,
-      size: row.size?.trim() || null,
-      color: row.color?.trim() || null,
-      barcode: row.barcode?.trim() || null,
-      reorder_level: Number(row.reorder_level) || 0,
-    };
-
-    if (isDuplicate && mode === "overwrite") {
-      const { error } = await supabase.from("products").update(payload).eq("dealer_id", dealerId).eq("sku", sku);
-      if (error) { result.errors.push({ row: i + 2, field: "SKU", message: error.message }); continue; }
-    } else {
-      const { error } = await supabase.from("products").insert(payload);
-      if (error) { result.errors.push({ row: i + 2, field: "SKU", message: error.message }); continue; }
-    }
-    result.success++;
-  }
-  return result;
+  return postImport("products", rows, mode, dealerId);
 }
 
 // ─── Customers ────────────────────────────────────────────
@@ -94,40 +66,7 @@ export const customerSampleData = [
 ];
 
 export async function importCustomers(rows: Record<string, string>[], mode: "skip" | "overwrite", dealerId: string): Promise<ImportResult> {
-  const result: ImportResult = { success: 0, skipped: 0, errors: [] };
-  const { data: existing } = await supabase.from("customers").select("name").eq("dealer_id", dealerId);
-  const existingNames = new Set((existing ?? []).map((c) => c.name.toLowerCase()));
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const name = row.name?.trim();
-    if (!name) { result.errors.push({ row: i + 2, field: "Name", message: "Missing" }); continue; }
-
-    if (existingNames.has(name.toLowerCase()) && mode === "skip") { result.skipped++; continue; }
-
-    const payload = {
-      dealer_id: dealerId,
-      name,
-      type: (row.type?.toLowerCase().trim() || "customer") as "retailer" | "customer" | "project",
-      phone: row.phone?.trim() || null,
-      email: row.email?.trim() || null,
-      address: row.address?.trim() || null,
-      credit_limit: Number(row.credit_limit) || 0,
-      max_overdue_days: Number(row.max_overdue_days) || 0,
-      opening_balance: Number(row.opening_balance) || 0,
-      reference_name: row.reference_name?.trim() || null,
-    };
-
-    if (existingNames.has(name.toLowerCase()) && mode === "overwrite") {
-      const { error } = await supabase.from("customers").update(payload).eq("dealer_id", dealerId).ilike("name", name);
-      if (error) { result.errors.push({ row: i + 2, field: "Name", message: error.message }); continue; }
-    } else {
-      const { error } = await supabase.from("customers").insert(payload);
-      if (error) { result.errors.push({ row: i + 2, field: "Name", message: error.message }); continue; }
-    }
-    result.success++;
-  }
-  return result;
+  return postImport("customers", rows, mode, dealerId);
 }
 
 // ─── Suppliers ────────────────────────────────────────────
@@ -147,36 +86,5 @@ export const supplierSampleData = [
 ];
 
 export async function importSuppliers(rows: Record<string, string>[], mode: "skip" | "overwrite", dealerId: string): Promise<ImportResult> {
-  const result: ImportResult = { success: 0, skipped: 0, errors: [] };
-  const { data: existing } = await supabase.from("suppliers").select("name").eq("dealer_id", dealerId);
-  const existingNames = new Set((existing ?? []).map((s) => s.name.toLowerCase()));
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const name = row.name?.trim();
-    if (!name) { result.errors.push({ row: i + 2, field: "Name", message: "Missing" }); continue; }
-
-    if (existingNames.has(name.toLowerCase()) && mode === "skip") { result.skipped++; continue; }
-
-    const payload = {
-      dealer_id: dealerId,
-      name,
-      contact_person: row.contact_person?.trim() || null,
-      phone: row.phone?.trim() || null,
-      email: row.email?.trim() || null,
-      address: row.address?.trim() || null,
-      gstin: row.gstin?.trim() || null,
-      opening_balance: Number(row.opening_balance) || 0,
-    };
-
-    if (existingNames.has(name.toLowerCase()) && mode === "overwrite") {
-      const { error } = await supabase.from("suppliers").update(payload).eq("dealer_id", dealerId).ilike("name", name);
-      if (error) { result.errors.push({ row: i + 2, field: "Name", message: error.message }); continue; }
-    } else {
-      const { error } = await supabase.from("suppliers").insert(payload);
-      if (error) { result.errors.push({ row: i + 2, field: "Name", message: error.message }); continue; }
-    }
-    result.success++;
-  }
-  return result;
+  return postImport("suppliers", rows, mode, dealerId);
 }
