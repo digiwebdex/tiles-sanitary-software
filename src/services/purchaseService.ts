@@ -1,16 +1,7 @@
-import { supabase } from "@/integrations/supabase/client";
-import { stockService } from "@/services/stockService";
-import { supplierLedgerService, cashLedgerService } from "@/services/ledgerService";
-import { logAudit } from "@/services/auditService";
 import { validateInput, createPurchaseServiceSchema } from "@/lib/validators";
 import { assertDealerId } from "@/lib/tenancy";
 import { rateLimits } from "@/lib/rateLimit";
-import { backorderAllocationService } from "@/services/backorderAllocationService";
-import { batchService } from "@/services/batchService";
-import { env } from "@/lib/env";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
-
-const USE_VPS = env.AUTH_BACKEND === "vps";
 
 async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await vpsAuthedFetch(path, init);
@@ -46,237 +37,35 @@ export interface CreatePurchaseInput {
   items: PurchaseItemInput[];
 }
 
-const PAGE_SIZE = 25;
-
-function calcBaseCost(item: PurchaseItemInput, unitType: string, perBoxSft: number | null): number {
-  if (unitType === "box_sft" && perBoxSft) {
-    const totalSft = item.quantity * perBoxSft;
-    return totalSft * item.purchase_rate;
-  }
-  return item.quantity * item.purchase_rate;
-}
-
-function calcLandedCost(baseCost: number, item: PurchaseItemInput): number {
-  return baseCost + item.transport_cost + item.labor_cost + item.other_cost;
-}
-
-function calcTotalSft(quantity: number, unitType: string, perBoxSft: number | null): number | null {
-  if (unitType === "box_sft" && perBoxSft) return quantity * perBoxSft;
-  return null;
-}
-
 export const purchaseService = {
   async list(dealerId: string, page = 1, search?: string) {
-    if (USE_VPS) {
-      const params = new URLSearchParams({ dealerId, page: String(page) });
-      if (search?.trim()) params.set("search", search.trim());
-      const body = await vpsRequest<{ data: any[]; total: number }>(
-        `/api/purchases?${params.toString()}`,
-      );
-      return { data: body.data ?? [], total: body.total ?? 0 };
-    }
-
-    const from = (page - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-
-    let query = supabase
-      .from("purchases")
-      .select("*, suppliers(name)", { count: "exact" })
-      .eq("dealer_id", dealerId)
-      .order("purchase_date", { ascending: false })
-      .range(from, to);
-
-    if (search?.trim()) {
-      query = query.or(`invoice_number.ilike.%${search.trim()}%`);
-    }
-
-    const { data, error, count } = await query;
-    if (error) throw new Error(error.message);
-    return { data: data ?? [], total: count ?? 0 };
+    const params = new URLSearchParams({ dealerId, page: String(page) });
+    if (search?.trim()) params.set("search", search.trim());
+    const body = await vpsRequest<{ data: any[]; total: number }>(
+      `/api/purchases?${params.toString()}`,
+    );
+    return { data: body.data ?? [], total: body.total ?? 0 };
   },
 
   async getById(id: string) {
-    if (USE_VPS) {
-      return await vpsRequest<any>(`/api/purchases/${id}`);
-    }
-    const { data, error } = await supabase
-      .from("purchases")
-      .select("*, suppliers(name), purchase_items(*, products(name, sku, unit_type, per_box_sft))")
-      .eq("id", id)
-      .single();
-    if (error) throw new Error(error.message);
-    return data;
+    return await vpsRequest<any>(`/api/purchases/${id}`);
   },
 
   async create(input: CreatePurchaseInput) {
     rateLimits.api("purchase_create");
-    // Tenant isolation guard
     await assertDealerId(input.dealer_id);
-    // Service-level validation
     validateInput(createPurchaseServiceSchema, input);
 
-    // ── VPS path: single atomic call ──
-    if (USE_VPS) {
-      const created = await vpsRequest<any>(`/api/purchases`, {
-        method: "POST",
-        body: JSON.stringify({
-          dealer_id: input.dealer_id,
-          supplier_id: input.supplier_id,
-          invoice_number: input.invoice_number || null,
-          purchase_date: input.purchase_date,
-          notes: input.notes ?? null,
-          items: input.items,
-        }),
-      });
-      return created;
-    }
-
-    // ── Legacy Supabase path (unchanged) ──
-    const productIds = input.items.map((i) => i.product_id);
-    const { data: products, error: pErr } = await supabase
-      .from("products")
-      .select("id, unit_type, per_box_sft")
-      .in("id", productIds);
-    if (pErr) throw new Error(pErr.message);
-
-    const productMap = new Map(products!.map((p) => [p.id, p]));
-
-    const itemsWithCalc = input.items.map((item) => {
-      const product = productMap.get(item.product_id);
-      const unitType = product?.unit_type ?? "piece";
-      const perBoxSft = product?.per_box_sft ?? null;
-      const baseCost = calcBaseCost(item, unitType, perBoxSft);
-      const landed = calcLandedCost(baseCost, item);
-      const totalSft = product ? calcTotalSft(item.quantity, unitType, perBoxSft) : null;
-      return { ...item, landed_cost: landed, total_sft: totalSft };
-    });
-
-    const totalAmount = itemsWithCalc.reduce((sum, i) => sum + i.landed_cost, 0);
-
-    const { data: purchase, error: hErr } = await supabase
-      .from("purchases")
-      .insert({
+    return await vpsRequest<any>(`/api/purchases`, {
+      method: "POST",
+      body: JSON.stringify({
         dealer_id: input.dealer_id,
         supplier_id: input.supplier_id,
         invoice_number: input.invoice_number || null,
         purchase_date: input.purchase_date,
-        total_amount: totalAmount,
-        notes: input.notes || null,
-        created_by: input.created_by || null,
-      })
-      .select()
-      .single();
-    if (hErr) throw new Error(hErr.message);
-
-    const itemRows = itemsWithCalc.map((item) => ({
-      purchase_id: purchase!.id,
-      dealer_id: input.dealer_id,
-      product_id: item.product_id,
-      quantity: item.quantity,
-      purchase_rate: item.purchase_rate,
-      offer_price: item.offer_price,
-      transport_cost: item.transport_cost,
-      labor_cost: item.labor_cost,
-      other_cost: item.other_cost,
-      landed_cost: item.landed_cost,
-      total_sft: item.total_sft,
-      total: item.landed_cost,
-    }));
-
-    const { data: insertedItems, error: iErr } = await supabase.from("purchase_items").insert(itemRows).select("id, product_id");
-    if (iErr) throw new Error(iErr.message);
-
-    const insertedItemMap = new Map((insertedItems ?? []).map(i => [i.product_id, i.id]));
-
-    for (let idx = 0; idx < itemsWithCalc.length; idx++) {
-      const item = itemsWithCalc[idx];
-      const originalItem = input.items[idx];
-      const product = productMap.get(item.product_id);
-      const unitType = (product?.unit_type ?? "piece") as "box_sft" | "piece";
-      const perBoxSft = product?.per_box_sft ?? null;
-
-      // Create or top-up batch
-      const batchNo = originalItem.batch_no?.trim() || batchService.generateAutoBatchNo();
-      const { batch_id } = await batchService.findOrCreateBatch(
-        {
-          dealer_id: input.dealer_id,
-          product_id: item.product_id,
-          batch_no: batchNo,
-          lot_no: originalItem.lot_no,
-          shade_code: originalItem.shade_code,
-          caliber: originalItem.caliber,
-        },
-        item.quantity,
-        unitType,
-        perBoxSft
-      );
-
-      // Link purchase_item to batch
-      const purchaseItemId = insertedItemMap.get(item.product_id);
-      if (purchaseItemId) {
-        await supabase
-          .from("purchase_items")
-          .update({ batch_id } as any)
-          .eq("id", purchaseItemId);
-      }
-
-      // Update aggregate stock
-      await stockService.addStock(item.product_id, item.quantity, input.dealer_id);
-
-      // Update average cost
-      if (unitType === "box_sft" && perBoxSft && item.total_sft) {
-        const costPerSft = item.total_sft > 0 ? item.landed_cost / item.total_sft : 0;
-        await stockService.updateAverageCost(item.product_id, input.dealer_id, item.total_sft, costPerSft);
-      } else {
-        const costPerUnit = item.quantity > 0 ? item.landed_cost / item.quantity : 0;
-        await stockService.updateAverageCost(item.product_id, input.dealer_id, item.quantity, costPerUnit);
-      }
-
-      // Auto-allocate to pending backorders (FIFO)
-      if (purchaseItemId) {
-        await backorderAllocationService.allocateNewStock(
-          item.product_id,
-          item.quantity,
-          input.dealer_id,
-          purchaseItemId
-        );
-      }
-    }
-
-    await supplierLedgerService.addEntry({
-      dealer_id: input.dealer_id,
-      supplier_id: input.supplier_id,
-      purchase_id: purchase!.id,
-      type: "purchase",
-      amount: -totalAmount,
-      description: `Purchase ${input.invoice_number || purchase!.id}`,
-      entry_date: input.purchase_date,
+        notes: input.notes ?? null,
+        items: input.items,
+      }),
     });
-
-    await cashLedgerService.addEntry({
-      dealer_id: input.dealer_id,
-      type: "purchase",
-      amount: -totalAmount,
-      description: `Purchase payment: ${input.invoice_number || purchase!.id}`,
-      reference_type: "purchases",
-      reference_id: purchase!.id,
-      entry_date: input.purchase_date,
-    });
-
-    await logAudit({
-      dealer_id: input.dealer_id,
-      user_id: input.created_by,
-      action: "purchase_create",
-      table_name: "purchases",
-      record_id: purchase!.id,
-      new_data: {
-        supplier_id: input.supplier_id,
-        invoice_number: input.invoice_number,
-        total_amount: totalAmount,
-        item_count: input.items.length,
-      },
-    });
-
-    return purchase;
   },
 };
