@@ -1,12 +1,13 @@
-import { supabase } from "@/integrations/supabase/client";
-import { logAudit } from "@/services/auditService";
-
 /**
- * Backorder Allocation Service
- * 
- * Handles FIFO allocation of newly received stock to pending backorder sale items.
- * Called automatically after purchase stock is added.
- * 
+ * Backorder Allocation Service — VPS-only (Phase 3U-21).
+ *
+ * READS only. All write/allocation logic is server-side:
+ *   - allocateNewStock         → atomic inside POST /api/purchases (3K)
+ *   - releaseAllocations       → atomic inside DELETE/PUT /api/sales/:id (3M)
+ *   - updateSaleBackorderFlag  → atomic inside POST /api/sales (3L) + sale mutations
+ *
+ * Frontend reads dispatch to /api/backorders/* endpoints.
+ *
  * Fulfillment status flow:
  *   in_stock            → no shortage at sale time
  *   pending             → backorder exists, nothing allocated yet
@@ -16,6 +17,7 @@ import { logAudit } from "@/services/auditService";
  *   fulfilled           → fully delivered, no pending quantity
  *   cancelled           → cancelled safely
  */
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export type FulfillmentStatus =
   | "in_stock"
@@ -29,19 +31,14 @@ export type FulfillmentStatus =
 export function computeFulfillmentStatus(
   quantity: number,
   backorderQty: number,
-  allocatedQty: number
+  allocatedQty: number,
 ): FulfillmentStatus {
-  // No shortage at sale time
   if (backorderQty <= 0) return "in_stock";
-  // Has shortage, nothing allocated
   if (allocatedQty <= 0) return "pending";
-  // Fully allocated
   if (allocatedQty >= backorderQty) return "ready_for_delivery";
-  // Partial
   return "partially_allocated";
 }
 
-/** Map of status to user-friendly labels */
 export const FULFILLMENT_STATUS_LABELS: Record<string, string> = {
   in_stock: "In Stock",
   pending: "Backordered",
@@ -62,312 +59,64 @@ export const FULFILLMENT_STATUS_COLORS: Record<string, string> = {
   cancelled: "text-muted-foreground",
 };
 
+async function vpsGet<T>(path: string): Promise<T> {
+  const res = await vpsAuthedFetch(path);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as any)?.error ?? `Request failed (${res.status})`);
+  return body as T;
+}
+
 export const backorderAllocationService = {
-  /**
-   * Allocate newly received stock to pending backorders for a product (FIFO).
-   * Called after purchaseService.create() adds stock.
-   */
-  async allocateNewStock(
-    productId: string,
-    receivedQty: number,
-    dealerId: string,
-    purchaseItemId: string
-  ): Promise<number> {
-    if (receivedQty <= 0) return 0;
-
-    // Find pending backorder sale items for this product, oldest first (FIFO)
-    const { data: pendingItems, error: piErr } = await supabase
-      .from("sale_items")
-      .select("id, quantity, backorder_qty, allocated_qty, sale_id")
-      .eq("dealer_id", dealerId)
-      .eq("product_id", productId)
-      .gt("backorder_qty", 0)
-      .order("created_at", { ascending: true }); // FIFO: oldest sale first
-
-    if (piErr) throw new Error(`Failed to fetch pending backorders: ${piErr.message}`);
-    if (!pendingItems || pendingItems.length === 0) return 0;
-
-    let remainingToAllocate = receivedQty;
-    let totalAllocated = 0;
-    const updatedSaleIds = new Set<string>();
-
-    for (const item of pendingItems) {
-      if (remainingToAllocate <= 0) break;
-
-      const currentBackorder = Number(item.backorder_qty);
-      const currentAllocated = Number(item.allocated_qty);
-      const unallocated = currentBackorder - currentAllocated;
-
-      if (unallocated <= 0) continue;
-
-      const allocateNow = Math.min(unallocated, remainingToAllocate);
-      const newAllocated = currentAllocated + allocateNow;
-      const newBackorderQty = currentBackorder - allocateNow;
-      const newStatus = computeFulfillmentStatus(
-        Number(item.quantity),
-        newBackorderQty,
-        newAllocated
-      );
-
-      // Update sale_item
-      const { error: updateErr } = await supabase
-        .from("sale_items")
-        .update({
-          allocated_qty: newAllocated,
-          backorder_qty: newBackorderQty,
-          fulfillment_status: newStatus,
-        } as any)
-        .eq("id", item.id);
-
-      if (updateErr) {
-        console.error(`Failed to update sale_item ${item.id}:`, updateErr.message);
-        continue;
-      }
-
-      // Create allocation record
-      await supabase.from("backorder_allocations").insert({
-        dealer_id: dealerId,
-        product_id: productId,
-        sale_item_id: item.id,
-        purchase_item_id: purchaseItemId,
-        allocated_qty: allocateNow,
-      } as any);
-
-      remainingToAllocate -= allocateNow;
-      totalAllocated += allocateNow;
-      updatedSaleIds.add(item.sale_id);
-    }
-
-    // Update has_backorder flag on affected sales
-    for (const saleId of updatedSaleIds) {
-      await this.updateSaleBackorderFlag(saleId);
-    }
-
-    if (totalAllocated > 0) {
-      await logAudit({
-        dealer_id: dealerId,
-        action: "backorder_allocation",
-        table_name: "backorder_allocations",
-        record_id: purchaseItemId,
-        new_data: {
-          product_id: productId,
-          purchase_item_id: purchaseItemId,
-          received_qty: receivedQty,
-          total_allocated: totalAllocated,
-          remaining_unallocated: remainingToAllocate,
-          sales_affected: Array.from(updatedSaleIds),
-        },
-      });
-    }
-
-    return totalAllocated;
-  },
-
-  /**
-   * Update the has_backorder flag on a sale based on its items' current state.
-   */
-  async updateSaleBackorderFlag(saleId: string) {
-    const { data: items, error } = await supabase
-      .from("sale_items")
-      .select("backorder_qty, fulfillment_status")
-      .eq("sale_id", saleId);
-
-    if (error || !items) return;
-
-    const hasBackorder = items.some(
-      (i) => Number(i.backorder_qty) > 0 || 
-             !["in_stock", "fulfilled", "ready_for_delivery"].includes(i.fulfillment_status)
-    );
-
-    await supabase
-      .from("sales")
-      .update({ has_backorder: hasBackorder } as any)
-      .eq("id", saleId);
-  },
-
-  /**
-   * Release allocations for a sale item (used on cancel).
-   * Returns the total qty that was allocated (to restore to stock if needed).
-   */
-  async releaseAllocations(saleItemId: string, dealerId: string): Promise<number> {
-    const { data: allocations, error } = await supabase
-      .from("backorder_allocations")
-      .select("id, allocated_qty")
-      .eq("sale_item_id", saleItemId)
-      .eq("dealer_id", dealerId);
-
-    if (error || !allocations) return 0;
-
-    const totalAllocated = allocations.reduce(
-      (sum, a) => sum + Number(a.allocated_qty),
-      0
-    );
-
-    if (allocations.length > 0) {
-      const ids = allocations.map((a) => a.id);
-      await supabase.from("backorder_allocations").delete().in("id", ids);
-    }
-
-    return totalAllocated;
-  },
-
-  /**
-   * Get fulfillment summary for a sale's items.
-   */
   async getSaleFulfillmentSummary(saleId: string) {
-    const { data: items, error } = await supabase
-      .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, products(name, sku, unit_type)")
-      .eq("sale_id", saleId);
-
-    if (error) throw new Error(error.message);
-    return items ?? [];
+    return vpsGet<any[]>(`/api/backorders/sale/${encodeURIComponent(saleId)}`);
   },
 
-  /**
-   * Get backorder summary for dashboard/reports.
-   */
   async getBackorderSummary(dealerId: string) {
-    const { data, error } = await supabase
-      .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, sale_rate, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name))")
-      .eq("dealer_id", dealerId)
-      .gt("backorder_qty", 0)
-      .order("created_at", { ascending: true });
-
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    return vpsGet<any[]>(`/api/backorders/summary?dealerId=${encodeURIComponent(dealerId)}`);
   },
 
-  /**
-   * Get pending fulfillment items (allocated but not delivered).
-   */
   async getPendingFulfillment(dealerId: string) {
-    const { data, error } = await supabase
-      .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name))")
-      .eq("dealer_id", dealerId)
-      .in("fulfillment_status", ["pending", "partially_allocated", "ready_for_delivery", "partially_delivered"])
-      .order("created_at", { ascending: true });
-
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    return vpsGet<any[]>(`/api/backorders/pending?dealerId=${encodeURIComponent(dealerId)}`);
   },
 
-  /**
-   * Get shortage demand report: products with pending backorder demand.
-   */
   async getShortageDemandReport(dealerId: string) {
-    const { data, error } = await supabase
-      .from("sale_items")
-      .select("product_id, backorder_qty, allocated_qty, products(name, sku, unit_type, brand)")
-      .eq("dealer_id", dealerId)
-      .gt("backorder_qty", 0);
-
-    if (error) throw new Error(error.message);
-
-    // Aggregate by product
-    const productMap = new Map<string, { name: string; sku: string; unit_type: string; brand: string; totalShortage: number; totalAllocated: number; pendingCount: number }>();
-    for (const item of data ?? []) {
-      const pid = item.product_id;
-      const existing = productMap.get(pid);
-      const product = item.products as any;
-      if (existing) {
-        existing.totalShortage += Number(item.backorder_qty);
-        existing.totalAllocated += Number(item.allocated_qty);
-        existing.pendingCount++;
-      } else {
-        productMap.set(pid, {
-          name: product?.name ?? "Unknown",
-          sku: product?.sku ?? "",
-          unit_type: product?.unit_type ?? "piece",
-          brand: product?.brand ?? "—",
-          totalShortage: Number(item.backorder_qty),
-          totalAllocated: Number(item.allocated_qty),
-          pendingCount: 1,
-        });
-      }
-    }
-
-    return Array.from(productMap.entries()).map(([id, v]) => ({
-      product_id: id,
-      ...v,
-      unfulfilledQty: v.totalShortage - v.totalAllocated,
-    })).sort((a, b) => b.unfulfilledQty - a.unfulfilledQty);
+    return vpsGet<any[]>(
+      `/api/backorders/shortage-demand?dealerId=${encodeURIComponent(dealerId)}`,
+    );
   },
 
-  /**
-   * Get items currently ready for delivery (allocated in full, not yet delivered).
-   * Ordered by oldest sale first via the parent sales.sale_date.
-   */
   async getReadyForDelivery(dealerId: string) {
-    const { data, error } = await supabase
-      .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name, phone))")
-      .eq("dealer_id", dealerId)
-      .eq("fulfillment_status", "ready_for_delivery");
-    if (error) throw new Error(error.message);
-    const rows = data ?? [];
-    // Sort by parent sale_date ASC (oldest waiting first).
-    return rows.sort((a: any, b: any) => {
-      const da = a.sales?.sale_date ?? "";
-      const db = b.sales?.sale_date ?? "";
-      return da < db ? -1 : da > db ? 1 : 0;
-    });
+    return vpsGet<any[]>(
+      `/api/backorders/ready-for-delivery?dealerId=${encodeURIComponent(dealerId)}`,
+    );
   },
 
-  /**
-   * Get items currently partially delivered (some delivered, more pending).
-   */
   async getPartiallyDelivered(dealerId: string) {
-    const { data, error } = await supabase
-      .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, products(name, sku, unit_type), sales(invoice_number, sale_date, customer_id, customers(name, phone))")
-      .eq("dealer_id", dealerId)
-      .eq("fulfillment_status", "partially_delivered");
-    if (error) throw new Error(error.message);
-    const rows = data ?? [];
-    return rows.sort((a: any, b: any) => {
-      const da = a.sales?.sale_date ?? "";
-      const db = b.sales?.sale_date ?? "";
-      return da < db ? -1 : da > db ? 1 : 0;
-    });
+    return vpsGet<any[]>(
+      `/api/backorders/partially-delivered?dealerId=${encodeURIComponent(dealerId)}`,
+    );
   },
 
-  /**
-   * Get the single oldest pending fulfillment line for the "Oldest Pending" widget.
-   * Uses parent sales.sale_date as the waiting reference.
-   */
   async getOldestPending(dealerId: string) {
-    const { data, error } = await supabase
-      .from("sale_items")
-      .select("id, product_id, quantity, backorder_qty, allocated_qty, fulfillment_status, sale_id, products(name, sku), sales(invoice_number, sale_date, customers(name))")
-      .eq("dealer_id", dealerId)
-      .in("fulfillment_status", ["pending", "partially_allocated", "partially_delivered"]);
-    if (error) return null;
-    const rows = data ?? [];
-    if (rows.length === 0) return null;
-    // Pick the row whose parent sale has the earliest sale_date.
-    return rows.reduce((oldest: any, current: any) => {
-      const co = oldest?.sales?.sale_date ?? "9999-12-31";
-      const cc = current?.sales?.sale_date ?? "9999-12-31";
-      return cc < co ? current : oldest;
-    }, rows[0]);
+    try {
+      return await vpsGet<any | null>(
+        `/api/backorders/oldest-pending?dealerId=${encodeURIComponent(dealerId)}`,
+      );
+    } catch {
+      return null;
+    }
   },
 
-  /**
-   * Get dashboard stats for backorder/fulfillment widgets.
-   */
   async getDashboardStats(dealerId: string) {
-    const { data, error } = await supabase
-      .from("sale_items")
-      .select("fulfillment_status, backorder_qty, allocated_qty, product_id, sale_id, sales(sale_date)")
-      .eq("dealer_id", dealerId)
-      .neq("fulfillment_status", "in_stock")
-      .neq("fulfillment_status", "fulfilled")
-      .neq("fulfillment_status", "cancelled");
-
-    if (error) {
+    try {
+      return await vpsGet<{
+        totalBackorders: number;
+        pendingFulfillment: number;
+        readyForDelivery: number;
+        partiallyDelivered: number;
+        oldestPendingDate: string | null;
+      }>(`/api/backorders/dashboard-stats?dealerId=${encodeURIComponent(dealerId)}`);
+    } catch {
       return {
         totalBackorders: 0,
         pendingFulfillment: 0,
@@ -376,26 +125,5 @@ export const backorderAllocationService = {
         oldestPendingDate: null as string | null,
       };
     }
-
-    const items = (data ?? []) as any[];
-    const totalBackorders = items.filter((i) => Number(i.backorder_qty) > 0).length;
-    const pendingFulfillment = items.filter((i) =>
-      ["pending", "partially_allocated", "partially_delivered"].includes(i.fulfillment_status),
-    ).length;
-    const readyForDelivery = items.filter((i) => i.fulfillment_status === "ready_for_delivery").length;
-    const partiallyDelivered = items.filter((i) => i.fulfillment_status === "partially_delivered").length;
-
-    // Oldest pending sale_date for the "Oldest Pending" widget.
-    const pendingItems = items.filter((i) =>
-      ["pending", "partially_allocated", "partially_delivered"].includes(i.fulfillment_status),
-    );
-    const oldestPendingDate = pendingItems.reduce((oldest: string | null, i: any) => {
-      const d: string | undefined = i?.sales?.sale_date;
-      if (!d) return oldest;
-      if (!oldest) return d;
-      return d < oldest ? d : oldest;
-    }, null as string | null);
-
-    return { totalBackorders, pendingFulfillment, readyForDelivery, partiallyDelivered, oldestPendingDate };
   },
 };
