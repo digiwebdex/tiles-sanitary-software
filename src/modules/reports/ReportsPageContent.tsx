@@ -24,7 +24,7 @@ import {
   type InventoryAgingRow,
   REPORT_PAGE_SIZE,
 } from "@/services/reportService";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { exportToExcel } from "@/lib/exportUtils";
@@ -520,28 +520,11 @@ function DailySalesCalendar({ dealerId }: { dealerId: string }) {
   const { data: salesData, isLoading } = useQuery({
     queryKey: ["report-daily-sales-calendar", dealerId, year, month],
     queryFn: async () => {
-      const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
-      const lastDay = new Date(year, month + 1, 0).getDate();
-      const endDate = `${year}-${String(month + 1).padStart(2, "0")}-${lastDay}`;
-
-      const { data, error } = await supabase
-        .from("sales")
-        .select("sale_date, total_amount, discount, paid_amount, due_amount")
-        .eq("dealer_id", dealerId)
-        .gte("sale_date", startDate)
-        .lte("sale_date", endDate);
-
-      if (error) throw new Error(error.message);
-
-      // Aggregate by day
-      const dayMap: Record<number, { discount: number; total: number }> = {};
-      for (const row of data ?? []) {
-        const day = new Date(row.sale_date).getDate();
-        if (!dayMap[day]) dayMap[day] = { discount: 0, total: 0 };
-        dayMap[day].discount += Number(row.discount);
-        dayMap[day].total += Number(row.total_amount);
-      }
-      return dayMap;
+      const params = new URLSearchParams({ dealerId, year: String(year), month: String(month + 1) });
+      const res = await vpsAuthedFetch(`/api/reports/page/daily-sales-calendar?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.dayMap ?? {}) as Record<number, { discount: number; total: number }>;
     },
   });
 
@@ -790,42 +773,16 @@ function DetailedSalesReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-detailed-sales", dealerId, page, search],
     queryFn: async () => {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      let query = supabase
-        .from("sales")
-        .select("id, created_at, invoice_number, sale_date, total_amount, paid_amount, due_amount, sale_status, customer_id, customers(name)", { count: "exact" })
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      if (search?.trim()) {
-        query = query.or(`invoice_number.ilike.%${search.trim()}%,customers.name.ilike.%${search.trim()}%`);
-      }
-
-      const { data: sales, error, count } = await query;
-      if (error) throw new Error(error.message);
-
-      // Fetch sale_items with product info for these sales
-      const saleIds = (sales ?? []).map((s: any) => s.id);
-      let itemsMap: Record<string, { name: string; qty: number }[]> = {};
-      if (saleIds.length > 0) {
-        const { data: items } = await supabase
-          .from("sale_items")
-          .select("sale_id, quantity, products(name, size, unit_type, category)")
-          .in("sale_id", saleIds);
-
-        for (const item of items ?? []) {
-          const sid = (item as any).sale_id;
-          if (!itemsMap[sid]) itemsMap[sid] = [];
-          const p = (item as any).products;
-          const label = p ? `${p.category === "tiles" ? (p.name?.includes("Wall") ? "Wall Tiles" : (p.name?.includes("Floor") ? "Floor Tiles" : p.name)) : p.name}${p.size ? ` (Size: ${p.size})` : ""} (${p.unit_type === "box_sft" ? "Box" : "Pcs"})` : "Product";
-          itemsMap[sid].push({ name: label, qty: Number((item as any).quantity) });
-        }
-      }
-
-      return { sales: sales ?? [], total: count ?? 0, itemsMap };
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const res = await vpsAuthedFetch(`/api/reports/page/detailed-sales?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return {
+        sales: body.sales ?? [],
+        total: body.total ?? 0,
+        itemsMap: (body.itemsMap ?? {}) as Record<string, { name: string; qty: number }[]>,
+      };
     },
   });
 
@@ -917,23 +874,11 @@ function SalesReport({ dealerId }: { dealerId: string }) {
   const { data: salesData, isLoading } = useQuery({
     queryKey: ["report-monthly-sales-grid", dealerId, year],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sales")
-        .select("sale_date, total_amount, discount")
-        .eq("dealer_id", dealerId)
-        .gte("sale_date", `${year}-01-01`)
-        .lte("sale_date", `${year}-12-31`);
-
-      if (error) throw new Error(error.message);
-
-      const monthMap: Record<number, { discount: number; total: number }> = {};
-      for (const row of data ?? []) {
-        const m = new Date(row.sale_date).getMonth();
-        if (!monthMap[m]) monthMap[m] = { discount: 0, total: 0 };
-        monthMap[m].discount += Number(row.discount);
-        monthMap[m].total += Number(row.total_amount);
-      }
-      return monthMap;
+      const params = new URLSearchParams({ dealerId, year: String(year) });
+      const res = await vpsAuthedFetch(`/api/reports/page/monthly-sales-grid?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.monthMap ?? {}) as Record<number, { discount: number; total: number }>;
     },
   });
 
@@ -1015,44 +960,16 @@ function RetailerSalesReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-customers-v2", dealerId, page, search],
     queryFn: async () => {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      let query = supabase
-        .from("customers")
-        .select("id, name, phone, email, opening_balance", { count: "exact" })
-        .eq("dealer_id", dealerId)
-        .order("name")
-        .range(from, to);
-
-      if (search?.trim()) {
-        query = query.or(`name.ilike.%${search.trim()}%,phone.ilike.%${search.trim()}%`);
-      }
-
-      const { data: customers, error, count } = await query;
-      if (error) throw new Error(error.message);
-
-      // Fetch sales aggregates for these customers
-      const customerIds = (customers ?? []).map((c: any) => c.id);
-      let salesMap: Record<string, { count: number; totalAmount: number; paidAmount: number }> = {};
-
-      if (customerIds.length > 0) {
-        const { data: sales } = await supabase
-          .from("sales")
-          .select("customer_id, total_amount, paid_amount")
-          .eq("dealer_id", dealerId)
-          .in("customer_id", customerIds);
-
-        for (const s of sales ?? []) {
-          const cid = (s as any).customer_id;
-          if (!salesMap[cid]) salesMap[cid] = { count: 0, totalAmount: 0, paidAmount: 0 };
-          salesMap[cid].count += 1;
-          salesMap[cid].totalAmount += Number((s as any).total_amount);
-          salesMap[cid].paidAmount += Number((s as any).paid_amount);
-        }
-      }
-
-      return { customers: customers ?? [], total: count ?? 0, salesMap };
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const res = await vpsAuthedFetch(`/api/reports/page/customers-report?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return {
+        customers: body.customers ?? [],
+        total: body.total ?? 0,
+        salesMap: (body.salesMap ?? {}) as Record<string, { count: number; totalAmount: number; paidAmount: number }>,
+      };
     },
   });
 
@@ -1132,13 +1049,17 @@ function ProductHistoryReport({ dealerId }: { dealerId: string }) {
   const { data: products } = useQuery({
     queryKey: ["products-list", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, name, sku")
-        .eq("dealer_id", dealerId)
-        .eq("active", true)
-        .order("name");
-      return data ?? [];
+      const params = new URLSearchParams({
+        dealerId,
+        pageSize: "200",
+        orderBy: "name",
+        orderDir: "asc",
+        "f.active": "true",
+      });
+      const res = await vpsAuthedFetch(`/api/products?${params.toString()}`);
+      if (!res.ok) return [] as { id: string; name: string; sku: string }[];
+      const body = await res.json();
+      return ((body.rows ?? []) as any[]).map((p) => ({ id: p.id, name: p.name, sku: p.sku }));
     },
   });
 
@@ -1300,49 +1221,18 @@ function MonthlySummaryReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-monthly-summary", dealerId, year],
     queryFn: async () => {
-      const yearStart = `${year}-01-01`;
-      const yearEnd = `${year}-12-31`;
-
-      const [salesRes, paymentsRes] = await Promise.all([
-        supabase
-          .from("sales")
-          .select("sale_date, total_amount, paid_amount, due_amount, total_sft")
-          .eq("dealer_id", dealerId)
-          .gte("sale_date", yearStart)
-          .lte("sale_date", yearEnd),
-        supabase
-          .from("customer_ledger")
-          .select("entry_date, amount, type")
-          .eq("dealer_id", dealerId)
-          .in("type", ["payment", "receipt"])
-          .gte("entry_date", yearStart)
-          .lte("entry_date", yearEnd),
-      ]);
-
-      const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const buckets = MONTHS.map((m) => ({
-        month: m,
-        totalSales: 0,
-        totalCollection: 0,
-        totalDue: 0,
-        totalSft: 0,
-        paymentReceived: 0,
-      }));
-
-      for (const r of salesRes.data ?? []) {
-        const m = new Date(r.sale_date).getMonth();
-        buckets[m].totalSales += Number(r.total_amount);
-        buckets[m].totalCollection += Number(r.paid_amount);
-        buckets[m].totalDue += Number(r.due_amount);
-        buckets[m].totalSft += Number(r.total_sft);
-      }
-
-      for (const r of paymentsRes.data ?? []) {
-        const m = new Date(r.entry_date).getMonth();
-        buckets[m].paymentReceived += Math.abs(Number(r.amount));
-      }
-
-      return buckets;
+      const params = new URLSearchParams({ dealerId, year: String(year) });
+      const res = await vpsAuthedFetch(`/api/reports/page/monthly-summary?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        month: string;
+        totalSales: number;
+        totalCollection: number;
+        totalDue: number;
+        totalSft: number;
+        paymentReceived: number;
+      }>;
     },
   });
 
@@ -1648,58 +1538,17 @@ function PurchasesReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-purchases-v2", dealerId, page, search],
     queryFn: async () => {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      let query = supabase
-        .from("purchases")
-        .select("id, created_at, invoice_number, purchase_date, total_amount, supplier_id, suppliers(name)", { count: "exact" })
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      if (search?.trim()) {
-        query = query.or(`invoice_number.ilike.%${search.trim()}%,suppliers.name.ilike.%${search.trim()}%`);
-      }
-
-      const { data: purchases, error, count } = await query;
-      if (error) throw new Error(error.message);
-
-      // Fetch purchase_items with product info
-      const purchaseIds = (purchases ?? []).map((p: any) => p.id);
-      let itemsMap: Record<string, { name: string; qty: number }[]> = {};
-      if (purchaseIds.length > 0) {
-        const { data: items } = await supabase
-          .from("purchase_items")
-          .select("purchase_id, quantity, products(name, size, unit_type, category)")
-          .in("purchase_id", purchaseIds);
-
-        for (const item of items ?? []) {
-          const pid = (item as any).purchase_id;
-          if (!itemsMap[pid]) itemsMap[pid] = [];
-          const p = (item as any).products;
-          const label = p ? `${p.name}${p.size ? ` (Size: ${p.size})` : ""} (${p.unit_type === "box_sft" ? "Box" : "Pcs"})` : "Product";
-          itemsMap[pid].push({ name: label, qty: Number((item as any).quantity) });
-        }
-      }
-
-      // Fetch supplier_ledger payments for these purchases
-      let paidMap: Record<string, number> = {};
-      if (purchaseIds.length > 0) {
-        const { data: ledger } = await supabase
-          .from("supplier_ledger")
-          .select("purchase_id, amount, type")
-          .in("purchase_id", purchaseIds)
-          .in("type", ["payment"]);
-
-        for (const entry of ledger ?? []) {
-          const pid = (entry as any).purchase_id;
-          if (!paidMap[pid]) paidMap[pid] = 0;
-          paidMap[pid] += Number((entry as any).amount);
-        }
-      }
-
-      return { purchases: purchases ?? [], total: count ?? 0, itemsMap, paidMap };
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const res = await vpsAuthedFetch(`/api/reports/page/purchases?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return {
+        purchases: body.purchases ?? [],
+        total: body.total ?? 0,
+        itemsMap: (body.itemsMap ?? {}) as Record<string, { name: string; qty: number }[]>,
+        paidMap: (body.paidMap ?? {}) as Record<string, number>,
+      };
     },
   });
 
@@ -1790,58 +1639,24 @@ function PaymentsReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-payments-v2", dealerId, page, search],
     queryFn: async () => {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      // Fetch customer_ledger entries (sale payments, receipts, refunds)
-      let clQuery = supabase
-        .from("customer_ledger")
-        .select("id, created_at, entry_date, type, amount, description, sale_id, sales_return_id, customer_id", { count: "exact" })
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      if (search?.trim()) {
-        clQuery = clQuery.ilike("description", `%${search.trim()}%`);
-      }
-
-      const { data: ledgerRows, error, count } = await clQuery;
-      if (error) throw new Error(error.message);
-
-      // Gather sale_ids to fetch invoice_numbers
-      const saleIds = (ledgerRows ?? []).map((r: any) => r.sale_id).filter(Boolean);
-      let saleMap: Record<string, string> = {};
-      if (saleIds.length > 0) {
-        const { data: sales } = await supabase
-          .from("sales")
-          .select("id, invoice_number, payment_mode")
-          .in("id", saleIds);
-        for (const s of sales ?? []) {
-          saleMap[s.id] = s.invoice_number ?? "";
-        }
-      }
-
-      // Build payment reference from description or type
-      const rows = (ledgerRows ?? []).map((r: any) => {
-        const isReturn = r.type === "refund" || r.sales_return_id;
-        const saleRef = r.sale_id ? (saleMap[r.sale_id] || r.sale_id.substring(0, 12)) : "";
-        const payRef = r.description || r.type;
-        const paidBy = "Cash"; // default
-        const entryType = r.type === "receipt" || r.type === "payment" ? "Received" : r.type === "refund" ? "Return Paid" : r.type === "sale" ? "Received" : r.type;
-
-        return {
-          id: r.id,
-          created_at: r.created_at,
-          paymentRef: isReturn ? "Return Paid" : (payRef ?? "—"),
-          saleRef: saleRef ? `SALE${saleRef}` : "—",
-          purchaseRef: "",
-          paidBy,
-          amount: Number(r.amount),
-          type: entryType,
-        };
-      });
-
-      return { rows, total: count ?? 0 };
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const res = await vpsAuthedFetch(`/api/reports/page/payments?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return {
+        rows: (body.rows ?? []) as Array<{
+          id: string;
+          created_at: string;
+          paymentRef: string;
+          saleRef: string;
+          purchaseRef: string;
+          paidBy: string;
+          amount: number;
+          type: string;
+        }>,
+        total: body.total ?? 0,
+      };
     },
   });
 
@@ -1912,60 +1727,23 @@ function DueAgingReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-due-aging", dealerId],
     queryFn: async () => {
-      // Get all customers
-      const { data: customers, error: cErr } = await supabase
-        .from("customers")
-        .select("id, name, phone, type")
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("name");
-      if (cErr) throw new Error(cErr.message);
-
-      // Get all unpaid sales
-      const { data: sales, error: sErr } = await supabase
-        .from("sales")
-        .select("id, customer_id, sale_date, due_amount, total_amount, invoice_number")
-        .eq("dealer_id", dealerId)
-        .gt("due_amount", 0);
-      if (sErr) throw new Error(sErr.message);
-
-      const today = new Date();
-      const msPerDay = 86_400_000;
-
-      // Build per-customer aging
-      const customerMap = new Map<string, {
-        name: string; phone: string | null; type: string;
-        current: number; d30: number; d60: number; d90: number; d90plus: number;
-        total: number; invoices: { id: string; invoice_number: string | null; sale_date: string; due_amount: number; days: number }[];
-      }>();
-
-      for (const c of customers ?? []) {
-        customerMap.set(c.id, { name: c.name, phone: c.phone, type: c.type, current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0, total: 0, invoices: [] });
-      }
-
-      for (const s of sales ?? []) {
-        const cust = customerMap.get(s.customer_id);
-        if (!cust) continue;
-        const due = Number(s.due_amount);
-        const days = Math.max(0, Math.floor((today.getTime() - new Date(s.sale_date).getTime()) / msPerDay));
-
-        if (days <= 0) cust.current += due;
-        else if (days <= 30) cust.d30 += due;
-        else if (days <= 60) cust.d60 += due;
-        else if (days <= 90) cust.d90 += due;
-        else cust.d90plus += due;
-
-        cust.total += due;
-        cust.invoices.push({ id: s.id, invoice_number: s.invoice_number, sale_date: s.sale_date, due_amount: due, days });
-      }
-
-      // Filter out customers with zero due
-      const results = Array.from(customerMap.entries())
-        .filter(([, v]) => v.total > 0)
-        .map(([id, v]) => ({ id, ...v, invoices: v.invoices.sort((a, b) => b.days - a.days) }))
-        .sort((a, b) => b.total - a.total);
-
-      return results;
+      const params = new URLSearchParams({ dealerId });
+      const res = await vpsAuthedFetch(`/api/reports/page/due-aging?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        id: string;
+        name: string;
+        phone: string | null;
+        type: string;
+        current: number;
+        d30: number;
+        d60: number;
+        d90: number;
+        d90plus: number;
+        total: number;
+        invoices: { id: string; invoice_number: string | null; sale_date: string; due_amount: number; days: number }[];
+      }>;
     },
   });
 
@@ -2083,97 +1861,25 @@ function ProfitAnalysisReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-profit-analysis", dealerId],
     queryFn: async () => {
-      // Get all products
-      const { data: products, error: pErr } = await supabase
-        .from("products")
-        .select("id, sku, name, brand, category, unit_type")
-        .eq("dealer_id", dealerId)
-        .eq("active", true);
-      if (pErr) throw new Error(pErr.message);
-
-      // Get all sale items with cost info
-      const { data: saleItems, error: siErr } = await supabase
-        .from("sale_items")
-        .select("product_id, quantity, sale_rate, total, total_sft")
-        .eq("dealer_id", dealerId);
-      if (siErr) throw new Error(siErr.message);
-
-      // Get stock for avg cost
-      const { data: stocks, error: stErr } = await supabase
-        .from("stock")
-        .select("product_id, average_cost_per_unit")
-        .eq("dealer_id", dealerId);
-      if (stErr) throw new Error(stErr.message);
-
-      // Get purchase items for weighted avg cost (more accurate)
-      const { data: purchaseItems, error: piErr } = await supabase
-        .from("purchase_items")
-        .select("product_id, quantity, landed_cost")
-        .eq("dealer_id", dealerId);
-      if (piErr) throw new Error(piErr.message);
-
-      const costMap = new Map<string, number>();
-      const costQtyMap = new Map<string, { totalCost: number; totalQty: number }>();
-
-      // Build weighted avg cost from purchase items
-      for (const pi of purchaseItems ?? []) {
-        const cur = costQtyMap.get(pi.product_id) ?? { totalCost: 0, totalQty: 0 };
-        const qty = Number(pi.quantity) || 0;
-        const cost = Number(pi.landed_cost) || 0;
-        cur.totalCost += cost * qty;
-        cur.totalQty += qty;
-        costQtyMap.set(pi.product_id, cur);
-      }
-
-      for (const [pid, val] of costQtyMap) {
-        costMap.set(pid, val.totalQty > 0 ? val.totalCost / val.totalQty : 0);
-      }
-
-      // Fallback to stock avg cost
-      for (const s of stocks ?? []) {
-        if (!costMap.has(s.product_id)) {
-          costMap.set(s.product_id, Number(s.average_cost_per_unit) || 0);
-        }
-      }
-
-      // Aggregate sales per product
-      const salesAgg = new Map<string, { qtySold: number; revenue: number; totalSft: number }>();
-      for (const si of saleItems ?? []) {
-        const cur = salesAgg.get(si.product_id) ?? { qtySold: 0, revenue: 0, totalSft: 0 };
-        cur.qtySold += Number(si.quantity) || 0;
-        cur.revenue += Number(si.total) || 0;
-        cur.totalSft += Number(si.total_sft) || 0;
-        salesAgg.set(si.product_id, cur);
-      }
-
-      const rows = (products ?? [])
-        .map((p) => {
-          const sales = salesAgg.get(p.id) ?? { qtySold: 0, revenue: 0, totalSft: 0 };
-          const avgCost = costMap.get(p.id) ?? 0;
-          const cogs = sales.qtySold * avgCost;
-          const profit = sales.revenue - cogs;
-          const marginPct = sales.revenue > 0 ? (profit / sales.revenue) * 100 : 0;
-          const avgSaleRate = sales.qtySold > 0 ? sales.revenue / sales.qtySold : 0;
-
-          return {
-            id: p.id,
-            sku: p.sku,
-            name: p.name,
-            brand: p.brand ?? "—",
-            category: p.category,
-            qtySold: Math.round(sales.qtySold * 100) / 100,
-            totalSft: Math.round(sales.totalSft * 100) / 100,
-            avgCost: Math.round(avgCost * 100) / 100,
-            avgSaleRate: Math.round(avgSaleRate * 100) / 100,
-            revenue: Math.round(sales.revenue * 100) / 100,
-            cogs: Math.round(cogs * 100) / 100,
-            profit: Math.round(profit * 100) / 100,
-            marginPct: Math.round(marginPct * 10) / 10,
-          };
-        })
-        .filter((r) => r.qtySold > 0); // only show products that have been sold
-
-      return rows;
+      const params = new URLSearchParams({ dealerId });
+      const res = await vpsAuthedFetch(`/api/reports/page/profit-analysis?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        id: string;
+        sku: string;
+        name: string;
+        brand: string;
+        category: string;
+        qtySold: number;
+        totalSft: number;
+        avgCost: number;
+        avgSaleRate: number;
+        revenue: number;
+        cogs: number;
+        profit: number;
+        marginPct: number;
+      }>;
     },
     enabled: isDealerAdmin,
   });

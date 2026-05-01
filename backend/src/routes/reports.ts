@@ -1935,4 +1935,562 @@ router.get('/approvals/user-stats', async (req, res) => {
   }
 });
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 3U-10 — ReportsPageContent inline reports
+// All financial / dealer_admin gated.
+// ════════════════════════════════════════════════════════════════════════════
+
+const toNum = (v: any) => Number(v ?? 0) || 0;
+
+// ─── A. Daily Sales Calendar ─────────────────────────────────────────────
+// GET /api/reports/page/daily-sales-calendar?dealerId=&year=&month= (month: 1-12)
+router.get('/page/daily-sales-calendar', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  const year = parseInt((req.query.year as string) || '', 10);
+  const month = parseInt((req.query.month as string) || '', 10); // 1-12
+  if (!year || !month || month < 1 || month > 12) {
+    res.status(400).json({ error: 'year and month (1-12) required' });
+    return;
+  }
+
+  try {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const rows = await db('sales')
+      .where({ dealer_id: dealerId })
+      .whereBetween('sale_date', [startDate, endDate])
+      .select('sale_date', 'total_amount', 'discount', 'paid_amount', 'due_amount');
+
+    const dayMap: Record<number, { discount: number; total: number }> = {};
+    for (const r of rows as any[]) {
+      const day = new Date(r.sale_date).getDate();
+      if (!dayMap[day]) dayMap[day] = { discount: 0, total: 0 };
+      dayMap[day].discount += toNum(r.discount);
+      dayMap[day].total += toNum(r.total_amount);
+    }
+    res.json({ dayMap });
+  } catch (err: any) {
+    console.error('[reports.page.daily-sales-calendar]', err.message);
+    res.status(500).json({ error: 'Failed to load daily sales calendar' });
+  }
+});
+
+// ─── B. Detailed Sales Report (paged) ────────────────────────────────────
+// GET /api/reports/page/detailed-sales?dealerId=&page=&search=
+router.get('/page/detailed-sales', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+  const search = ((req.query.search as string) || '').trim();
+
+  try {
+    let q = db('sales as s')
+      .leftJoin('customers as c', 'c.id', 's.customer_id')
+      .where('s.dealer_id', dealerId);
+
+    if (search) {
+      q = q.andWhere(function () {
+        this.whereILike('s.invoice_number', `%${search}%`)
+          .orWhereILike('c.name', `%${search}%`);
+      });
+    }
+
+    const [{ count }] = await q
+      .clone()
+      .clearSelect()
+      .clearOrder()
+      .count<{ count: string }[]>('s.id as count');
+
+    const sales = await q
+      .clone()
+      .orderBy('s.created_at', 'desc')
+      .offset((page - 1) * PAGE_SIZE)
+      .limit(PAGE_SIZE)
+      .select(
+        's.id', 's.created_at', 's.invoice_number', 's.sale_date',
+        's.total_amount', 's.paid_amount', 's.due_amount',
+        's.sale_status', 's.customer_id',
+        'c.name as customer_name',
+      );
+
+    const saleIds = (sales as any[]).map((s) => s.id);
+    const itemsMap: Record<string, { name: string; qty: number }[]> = {};
+    if (saleIds.length > 0) {
+      const items = await db('sale_items as si')
+        .leftJoin('products as p', 'p.id', 'si.product_id')
+        .whereIn('si.sale_id', saleIds)
+        .select(
+          'si.sale_id', 'si.quantity',
+          'p.name as p_name', 'p.size as p_size',
+          'p.unit_type as p_unit_type', 'p.category as p_category',
+        );
+      for (const it of items as any[]) {
+        const sid = it.sale_id;
+        if (!itemsMap[sid]) itemsMap[sid] = [];
+        const baseName = it.p_category === 'tiles'
+          ? (it.p_name?.includes('Wall') ? 'Wall Tiles' : (it.p_name?.includes('Floor') ? 'Floor Tiles' : it.p_name))
+          : it.p_name;
+        const label = it.p_name
+          ? `${baseName}${it.p_size ? ` (Size: ${it.p_size})` : ''} (${it.p_unit_type === 'box_sft' ? 'Box' : 'Pcs'})`
+          : 'Product';
+        itemsMap[sid].push({ name: label, qty: toNum(it.quantity) });
+      }
+    }
+
+    // Reshape sales to mimic legacy supabase nested customers field
+    const rows = (sales as any[]).map((s) => ({
+      ...s,
+      customers: s.customer_name ? { name: s.customer_name } : null,
+    }));
+
+    res.json({ sales: rows, total: Number(count ?? 0), itemsMap });
+  } catch (err: any) {
+    console.error('[reports.page.detailed-sales]', err.message);
+    res.status(500).json({ error: 'Failed to load detailed sales report' });
+  }
+});
+
+// ─── C. Monthly Sales Grid ───────────────────────────────────────────────
+// GET /api/reports/page/monthly-sales-grid?dealerId=&year=
+router.get('/page/monthly-sales-grid', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  const year = parseInt((req.query.year as string) || '', 10);
+  if (!year) { res.status(400).json({ error: 'year required' }); return; }
+
+  try {
+    const rows = await db('sales')
+      .where({ dealer_id: dealerId })
+      .whereBetween('sale_date', [`${year}-01-01`, `${year}-12-31`])
+      .select('sale_date', 'total_amount', 'discount');
+
+    const monthMap: Record<number, { discount: number; total: number }> = {};
+    for (const r of rows as any[]) {
+      const m = new Date(r.sale_date).getMonth();
+      if (!monthMap[m]) monthMap[m] = { discount: 0, total: 0 };
+      monthMap[m].discount += toNum(r.discount);
+      monthMap[m].total += toNum(r.total_amount);
+    }
+    res.json({ monthMap });
+  } catch (err: any) {
+    console.error('[reports.page.monthly-sales-grid]', err.message);
+    res.status(500).json({ error: 'Failed to load monthly sales grid' });
+  }
+});
+
+// ─── D. Customers Report (paged) ─────────────────────────────────────────
+// GET /api/reports/page/customers-report?dealerId=&page=&search=
+router.get('/page/customers-report', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+  const search = ((req.query.search as string) || '').trim();
+
+  try {
+    let q = db('customers').where({ dealer_id: dealerId });
+    if (search) {
+      q = q.andWhere(function () {
+        this.whereILike('name', `%${search}%`)
+          .orWhereILike('phone', `%${search}%`);
+      });
+    }
+
+    const [{ count }] = await q
+      .clone()
+      .clearSelect()
+      .clearOrder()
+      .count<{ count: string }[]>('id as count');
+
+    const customers = await q
+      .clone()
+      .orderBy('name', 'asc')
+      .offset((page - 1) * PAGE_SIZE)
+      .limit(PAGE_SIZE)
+      .select('id', 'name', 'phone', 'email', 'opening_balance');
+
+    const customerIds = (customers as any[]).map((c) => c.id);
+    const salesMap: Record<string, { count: number; totalAmount: number; paidAmount: number }> = {};
+    if (customerIds.length > 0) {
+      const sales = await db('sales')
+        .where({ dealer_id: dealerId })
+        .whereIn('customer_id', customerIds)
+        .select('customer_id', 'total_amount', 'paid_amount');
+      for (const s of sales as any[]) {
+        const cid = s.customer_id;
+        if (!salesMap[cid]) salesMap[cid] = { count: 0, totalAmount: 0, paidAmount: 0 };
+        salesMap[cid].count += 1;
+        salesMap[cid].totalAmount += toNum(s.total_amount);
+        salesMap[cid].paidAmount += toNum(s.paid_amount);
+      }
+    }
+
+    res.json({ customers, total: Number(count ?? 0), salesMap });
+  } catch (err: any) {
+    console.error('[reports.page.customers-report]', err.message);
+    res.status(500).json({ error: 'Failed to load customers report' });
+  }
+});
+
+// ─── E. Monthly Summary (Sales + Collection + Due + SFT) ─────────────────
+// GET /api/reports/page/monthly-summary?dealerId=&year=
+router.get('/page/monthly-summary', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  const year = parseInt((req.query.year as string) || '', 10);
+  if (!year) { res.status(400).json({ error: 'year required' }); return; }
+
+  try {
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+
+    const [salesRows, paymentRows] = await Promise.all([
+      db('sales')
+        .where({ dealer_id: dealerId })
+        .whereBetween('sale_date', [yearStart, yearEnd])
+        .select('sale_date', 'total_amount', 'paid_amount', 'due_amount', 'total_sft'),
+      db('customer_ledger')
+        .where({ dealer_id: dealerId })
+        .whereIn('type', ['payment', 'receipt'])
+        .whereBetween('entry_date', [yearStart, yearEnd])
+        .select('entry_date', 'amount', 'type'),
+    ]);
+
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const buckets = MONTHS.map((m) => ({
+      month: m, totalSales: 0, totalCollection: 0, totalDue: 0, totalSft: 0, paymentReceived: 0,
+    }));
+
+    for (const r of salesRows as any[]) {
+      const m = new Date(r.sale_date).getMonth();
+      buckets[m].totalSales += toNum(r.total_amount);
+      buckets[m].totalCollection += toNum(r.paid_amount);
+      buckets[m].totalDue += toNum(r.due_amount);
+      buckets[m].totalSft += toNum(r.total_sft);
+    }
+    for (const r of paymentRows as any[]) {
+      const m = new Date(r.entry_date).getMonth();
+      buckets[m].paymentReceived += Math.abs(toNum(r.amount));
+    }
+    res.json({ rows: buckets });
+  } catch (err: any) {
+    console.error('[reports.page.monthly-summary]', err.message);
+    res.status(500).json({ error: 'Failed to load monthly summary' });
+  }
+});
+
+// ─── F. Purchases Report (paged) ─────────────────────────────────────────
+// GET /api/reports/page/purchases?dealerId=&page=&search=
+router.get('/page/purchases', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+  const search = ((req.query.search as string) || '').trim();
+
+  try {
+    let q = db('purchases as pu')
+      .leftJoin('suppliers as su', 'su.id', 'pu.supplier_id')
+      .where('pu.dealer_id', dealerId);
+
+    if (search) {
+      q = q.andWhere(function () {
+        this.whereILike('pu.invoice_number', `%${search}%`)
+          .orWhereILike('su.name', `%${search}%`);
+      });
+    }
+
+    const [{ count }] = await q
+      .clone()
+      .clearSelect()
+      .clearOrder()
+      .count<{ count: string }[]>('pu.id as count');
+
+    const purchases = await q
+      .clone()
+      .orderBy('pu.created_at', 'desc')
+      .offset((page - 1) * PAGE_SIZE)
+      .limit(PAGE_SIZE)
+      .select(
+        'pu.id', 'pu.created_at', 'pu.invoice_number', 'pu.purchase_date',
+        'pu.total_amount', 'pu.supplier_id',
+        'su.name as supplier_name',
+      );
+
+    const purchaseIds = (purchases as any[]).map((p) => p.id);
+    const itemsMap: Record<string, { name: string; qty: number }[]> = {};
+    const paidMap: Record<string, number> = {};
+
+    if (purchaseIds.length > 0) {
+      const items = await db('purchase_items as pi')
+        .leftJoin('products as p', 'p.id', 'pi.product_id')
+        .whereIn('pi.purchase_id', purchaseIds)
+        .select(
+          'pi.purchase_id', 'pi.quantity',
+          'p.name as p_name', 'p.size as p_size',
+          'p.unit_type as p_unit_type',
+        );
+      for (const it of items as any[]) {
+        const pid = it.purchase_id;
+        if (!itemsMap[pid]) itemsMap[pid] = [];
+        const label = it.p_name
+          ? `${it.p_name}${it.p_size ? ` (Size: ${it.p_size})` : ''} (${it.p_unit_type === 'box_sft' ? 'Box' : 'Pcs'})`
+          : 'Product';
+        itemsMap[pid].push({ name: label, qty: toNum(it.quantity) });
+      }
+
+      const ledger = await db('supplier_ledger')
+        .whereIn('purchase_id', purchaseIds)
+        .where('type', 'payment')
+        .select('purchase_id', 'amount');
+      for (const e of ledger as any[]) {
+        const pid = e.purchase_id;
+        if (!paidMap[pid]) paidMap[pid] = 0;
+        paidMap[pid] += toNum(e.amount);
+      }
+    }
+
+    const rows = (purchases as any[]).map((p) => ({
+      ...p,
+      suppliers: p.supplier_name ? { name: p.supplier_name } : null,
+    }));
+
+    res.json({ purchases: rows, total: Number(count ?? 0), itemsMap, paidMap });
+  } catch (err: any) {
+    console.error('[reports.page.purchases]', err.message);
+    res.status(500).json({ error: 'Failed to load purchases report' });
+  }
+});
+
+// ─── G. Payments Report (paged) ──────────────────────────────────────────
+// GET /api/reports/page/payments?dealerId=&page=&search=
+router.get('/page/payments', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+  const search = ((req.query.search as string) || '').trim();
+
+  try {
+    let q = db('customer_ledger').where({ dealer_id: dealerId });
+    if (search) q = q.andWhereILike('description', `%${search}%`);
+
+    const [{ count }] = await q
+      .clone()
+      .clearSelect()
+      .clearOrder()
+      .count<{ count: string }[]>('id as count');
+
+    const ledgerRows = await q
+      .clone()
+      .orderBy('created_at', 'desc')
+      .offset((page - 1) * PAGE_SIZE)
+      .limit(PAGE_SIZE)
+      .select(
+        'id', 'created_at', 'entry_date', 'type', 'amount',
+        'description', 'sale_id', 'sales_return_id', 'customer_id',
+      );
+
+    const saleIds = (ledgerRows as any[]).map((r) => r.sale_id).filter(Boolean);
+    const saleMap: Record<string, string> = {};
+    if (saleIds.length > 0) {
+      const sales = await db('sales')
+        .where({ dealer_id: dealerId })
+        .whereIn('id', saleIds)
+        .select('id', 'invoice_number');
+      for (const s of sales as any[]) {
+        saleMap[s.id] = s.invoice_number ?? '';
+      }
+    }
+
+    const rows = (ledgerRows as any[]).map((r) => {
+      const isReturn = r.type === 'refund' || r.sales_return_id;
+      const saleRef = r.sale_id ? (saleMap[r.sale_id] || String(r.sale_id).substring(0, 12)) : '';
+      const payRef = r.description || r.type;
+      const entryType =
+        r.type === 'receipt' || r.type === 'payment' ? 'Received' :
+        r.type === 'refund' ? 'Return Paid' :
+        r.type === 'sale' ? 'Received' : r.type;
+
+      return {
+        id: r.id,
+        created_at: r.created_at,
+        paymentRef: isReturn ? 'Return Paid' : (payRef ?? '—'),
+        saleRef: saleRef ? `SALE${saleRef}` : '—',
+        purchaseRef: '',
+        paidBy: 'Cash',
+        amount: toNum(r.amount),
+        type: entryType,
+      };
+    });
+
+    res.json({ rows, total: Number(count ?? 0) });
+  } catch (err: any) {
+    console.error('[reports.page.payments]', err.message);
+    res.status(500).json({ error: 'Failed to load payments report' });
+  }
+});
+
+// ─── H. Due Aging Report ─────────────────────────────────────────────────
+// GET /api/reports/page/due-aging?dealerId=
+router.get('/page/due-aging', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  try {
+    const [customers, sales] = await Promise.all([
+      db('customers')
+        .where({ dealer_id: dealerId, status: 'active' })
+        .orderBy('name', 'asc')
+        .select('id', 'name', 'phone', 'type'),
+      db('sales')
+        .where({ dealer_id: dealerId })
+        .andWhere('due_amount', '>', 0)
+        .select('id', 'customer_id', 'sale_date', 'due_amount', 'total_amount', 'invoice_number'),
+    ]);
+
+    const today = new Date();
+    const msPerDay = 86_400_000;
+
+    const customerMap = new Map<string, any>();
+    for (const c of customers as any[]) {
+      customerMap.set(c.id, {
+        id: c.id, name: c.name, phone: c.phone, type: c.type,
+        current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0, total: 0, invoices: [],
+      });
+    }
+    for (const s of sales as any[]) {
+      const cust = customerMap.get(s.customer_id);
+      if (!cust) continue;
+      const due = toNum(s.due_amount);
+      const days = Math.max(0, Math.floor((today.getTime() - new Date(s.sale_date).getTime()) / msPerDay));
+      if (days <= 0) cust.current += due;
+      else if (days <= 30) cust.d30 += due;
+      else if (days <= 60) cust.d60 += due;
+      else if (days <= 90) cust.d90 += due;
+      else cust.d90plus += due;
+      cust.total += due;
+      cust.invoices.push({
+        id: s.id,
+        invoice_number: s.invoice_number,
+        sale_date: typeof s.sale_date === 'string' ? s.sale_date : new Date(s.sale_date).toISOString().split('T')[0],
+        due_amount: due,
+        days,
+      });
+    }
+
+    const rows = Array.from(customerMap.values())
+      .filter((v) => v.total > 0)
+      .map((v) => ({ ...v, invoices: v.invoices.sort((a: any, b: any) => b.days - a.days) }))
+      .sort((a, b) => b.total - a.total);
+
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.page.due-aging]', err.message);
+    res.status(500).json({ error: 'Failed to load due aging report' });
+  }
+});
+
+// ─── I. Profit Analysis per Product ──────────────────────────────────────
+// GET /api/reports/page/profit-analysis?dealerId=
+router.get('/page/profit-analysis', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+
+  try {
+    const [products, saleItems, stocks, purchaseItems] = await Promise.all([
+      db('products')
+        .where({ dealer_id: dealerId, active: true })
+        .select('id', 'sku', 'name', 'brand', 'category', 'unit_type'),
+      db('sale_items')
+        .where({ dealer_id: dealerId })
+        .select('product_id', 'quantity', 'sale_rate', 'total', 'total_sft'),
+      db('stock')
+        .where({ dealer_id: dealerId })
+        .select('product_id', 'average_cost_per_unit'),
+      db('purchase_items')
+        .where({ dealer_id: dealerId })
+        .select('product_id', 'quantity', 'landed_cost'),
+    ]);
+
+    const costMap = new Map<string, number>();
+    const costQtyMap = new Map<string, { totalCost: number; totalQty: number }>();
+
+    for (const pi of purchaseItems as any[]) {
+      const cur = costQtyMap.get(pi.product_id) ?? { totalCost: 0, totalQty: 0 };
+      const qty = toNum(pi.quantity);
+      const cost = toNum(pi.landed_cost);
+      cur.totalCost += cost * qty;
+      cur.totalQty += qty;
+      costQtyMap.set(pi.product_id, cur);
+    }
+    for (const [pid, val] of costQtyMap) {
+      costMap.set(pid, val.totalQty > 0 ? val.totalCost / val.totalQty : 0);
+    }
+    for (const s of stocks as any[]) {
+      if (!costMap.has(s.product_id)) {
+        costMap.set(s.product_id, toNum(s.average_cost_per_unit));
+      }
+    }
+
+    const salesAgg = new Map<string, { qtySold: number; revenue: number; totalSft: number }>();
+    for (const si of saleItems as any[]) {
+      const cur = salesAgg.get(si.product_id) ?? { qtySold: 0, revenue: 0, totalSft: 0 };
+      cur.qtySold += toNum(si.quantity);
+      cur.revenue += toNum(si.total);
+      cur.totalSft += toNum(si.total_sft);
+      salesAgg.set(si.product_id, cur);
+    }
+
+    const rows = (products as any[])
+      .map((p) => {
+        const sales = salesAgg.get(p.id) ?? { qtySold: 0, revenue: 0, totalSft: 0 };
+        const avgCost = costMap.get(p.id) ?? 0;
+        const cogs = sales.qtySold * avgCost;
+        const profit = sales.revenue - cogs;
+        const marginPct = sales.revenue > 0 ? (profit / sales.revenue) * 100 : 0;
+        const avgSaleRate = sales.qtySold > 0 ? sales.revenue / sales.qtySold : 0;
+        return {
+          id: p.id,
+          sku: p.sku,
+          name: p.name,
+          brand: p.brand ?? '—',
+          category: p.category,
+          qtySold: round2(sales.qtySold),
+          totalSft: round2(sales.totalSft),
+          avgCost: round2(avgCost),
+          avgSaleRate: round2(avgSaleRate),
+          revenue: round2(sales.revenue),
+          cogs: round2(cogs),
+          profit: round2(profit),
+          marginPct: Math.round(marginPct * 10) / 10,
+        };
+      })
+      .filter((r) => r.qtySold > 0);
+
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.page.profit-analysis]', err.message);
+    res.status(500).json({ error: 'Failed to load profit analysis' });
+  }
+});
+
 export default router;
+
