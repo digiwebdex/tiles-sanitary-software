@@ -189,14 +189,11 @@ export function ExpiredQuotationsReport({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-quotations-expired", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("quotations")
-        .select("*, customers(name)")
-        .eq("dealer_id", dealerId)
-        .eq("status", "expired")
-        .order("valid_until", { ascending: false })
-        .limit(500);
-      return data ?? [];
+      const params = new URLSearchParams({ dealerId });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/expired?${params.toString()}`);
+      if (!res.ok) throw new Error(`expired quotations failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
   });
 
@@ -237,25 +234,11 @@ export function SalesmanQuotationPerformance({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-quotation-salesman", dealerId, from, to],
     queryFn: async () => {
-      const { data: quotes } = await supabase
-        .from("quotations")
-        .select("created_by, status, total_amount")
-        .eq("dealer_id", dealerId)
-        .gte("quote_date", from)
-        .lte("quote_date", to);
-      const { data: profs } = await supabase
-        .from("profiles").select("id, name").eq("dealer_id", dealerId);
-      const nameMap = new Map((profs ?? []).map((p) => [p.id, p.name]));
-      const agg = new Map<string, { name: string; quotes: number; converted: number; value: number; convertedValue: number }>();
-      for (const q of quotes ?? []) {
-        const key = q.created_by ?? "unknown";
-        const cur = agg.get(key) ?? { name: nameMap.get(key as string) ?? "Unknown", quotes: 0, converted: 0, value: 0, convertedValue: 0 };
-        cur.quotes++;
-        cur.value += Number(q.total_amount);
-        if (q.status === "converted") { cur.converted++; cur.convertedValue += Number(q.total_amount); }
-        agg.set(key, cur);
-      }
-      return Array.from(agg.values()).sort((a, b) => b.value - a.value);
+      const params = new URLSearchParams({ dealerId, from, to });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/salesman?${params.toString()}`);
+      if (!res.ok) throw new Error(`salesman quotation perf failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as { name: string; quotes: number; converted: number; value: number; convertedValue: number }[];
     },
   });
 
