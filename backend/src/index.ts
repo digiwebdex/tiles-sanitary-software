@@ -52,6 +52,9 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'https://www.sanitileserp.com',
   'https://app.sanitileserp.com',
   'https://portal.sanitileserp.com',
+  'https://a944558b-6da4-4037-9510-b636b7c4dafa.lovableproject.com',
+  'https://id-preview--a944558b-6da4-4037-9510-b636b7c4dafa.lovable.app',
+  'https://tiles-sanitary-software.lovable.app',
 ];
 
 const allowedOrigins = Array.from(new Set([
