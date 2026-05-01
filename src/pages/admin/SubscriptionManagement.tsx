@@ -22,7 +22,7 @@ import { recordSubscriptionPayment } from "@/services/subscriptionPaymentService
 import { Plus, CalendarPlus, Play, Pause, RefreshCw, Banknote, AlertCircle, CheckCircle2 } from "lucide-react";
 import { differenceInDays, parseISO, format, addMonths, addYears } from "date-fns";
 import { checkYearlyDiscountEligibility } from "@/services/subscriptionPaymentService";
-import { env } from "@/lib/env";
+
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 interface SubRow {
