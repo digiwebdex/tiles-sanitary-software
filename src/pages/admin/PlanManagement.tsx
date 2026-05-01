@@ -16,7 +16,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Mail, MessageSquare, Clock, Users, Check, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { env } from "@/lib/env";
+
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
