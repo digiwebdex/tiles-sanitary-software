@@ -835,4 +835,27 @@ router.patch('/:id/delivery-status', async (req: Request, res: Response) => {
   }
 });
 
+// ── PATCH /api/challans/:id/show-price ─────────────────────────────────────
+// Toggles whether the challan PDF/print view shows item prices to the
+// recipient. dealer_admin only.
+router.patch('/:id/show-price', async (req: Request, res: Response) => {
+  if (!requireAdmin(req, res)) return;
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const show = req.body?.show_price === true;
+  try {
+    const updated = await db('challans')
+      .where({ id: req.params.id, dealer_id: dealerId })
+      .update({ show_price: show });
+    if (updated === 0) {
+      res.status(404).json({ error: 'Challan not found' });
+      return;
+    }
+    res.json({ ok: true, show_price: show });
+  } catch (err: any) {
+    console.error('[challans.showPrice]', err.message);
+    res.status(500).json({ error: 'Failed to update show_price' });
+  }
+});
+
 export default router;
