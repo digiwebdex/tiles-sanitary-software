@@ -50,69 +50,8 @@ export interface CreateSaleInput {
   site_id?: string | null;
 }
 
-/**
- * Check stock availability for sale items and return shortage info.
- * Read-only helper used by SaleForm UI; queries Supabase directly because
- * stock + product reads are still on Supabase.
- */
-export async function checkStockAvailability(
-  dealerId: string,
-  items: SaleItemInput[]
-): Promise<{
-  hasShortage: boolean;
-  backorderEnabled: boolean;
-  itemDetails: Array<{
-    product_id: string;
-    product_name: string;
-    unit_type: string;
-    requested: number;
-    available: number;
-    shortage: number;
-  }>;
-}> {
-  const { data: dealer } = await supabase
-    .from("dealers")
-    .select("allow_backorder")
-    .eq("id", dealerId)
-    .single();
-  const backorderEnabled = (dealer as any)?.allow_backorder === true;
-
-  const productIds = items.map(i => i.product_id);
-  const [productsRes, stockRes] = await Promise.all([
-    supabase.from("products").select("id, name, unit_type").in("id", productIds),
-    supabase.from("stock").select("product_id, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty").eq("dealer_id", dealerId).in("product_id", productIds),
-  ]);
-
-  const productMap = new Map((productsRes.data ?? []).map(p => [p.id, p]));
-  const stockMap = new Map((stockRes.data ?? []).map(s => [s.product_id, s]));
-
-  let hasShortage = false;
-  const itemDetails = items.map(item => {
-    const product = productMap.get(item.product_id);
-    const stock = stockMap.get(item.product_id);
-    const unitType = product?.unit_type ?? "piece";
-    const total = unitType === "box_sft"
-      ? Number(stock?.box_qty ?? 0)
-      : Number(stock?.piece_qty ?? 0);
-    const reserved = unitType === "box_sft"
-      ? Number((stock as any)?.reserved_box_qty ?? 0)
-      : Number((stock as any)?.reserved_piece_qty ?? 0);
-    const available = total - reserved;
-    const shortage = Math.max(0, item.quantity - available);
-    if (shortage > 0) hasShortage = true;
-
-    return {
-      product_id: item.product_id,
-      product_name: product?.name ?? "Unknown",
-      unit_type: unitType,
-      requested: item.quantity,
-      available,
-      shortage,
-    };
-  });
-
-  return { hasShortage, backorderEnabled, itemDetails };
-}
+// Phase 3U-26: checkStockAvailability removed (zero callers; backorder
+// validation is now performed atomically inside POST /api/sales).
 
 /**
  * Preview batch allocation for sale items (used by UI for mixed-shade warning).
