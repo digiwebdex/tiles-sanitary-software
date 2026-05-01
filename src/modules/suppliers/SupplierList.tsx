@@ -18,7 +18,7 @@ import Pagination from "@/components/Pagination";
 import { toast } from "sonner";
 import { Plus, Search, Eye, Pencil, Copy, ToggleLeft, ToggleRight, ShoppingCart, BookOpen, Download, Upload } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+// supabase import removed — Phase 3U-2 (duplicate handler now uses supplierService.create)
 import { usePermissions } from "@/hooks/usePermissions";
 import { exportToExcel, commonColumns } from "@/lib/exportUtils";
 
@@ -55,12 +55,16 @@ const SupplierList = () => {
 
   const handleDuplicate = async (s: any) => {
     try {
-      const { id, created_at, ...rest } = s;
-      await supabase.from("suppliers").insert({
-        ...rest,
+      await supplierService.create(dealerId, {
         name: `${s.name} (Copy)`,
+        contact_person: s.contact_person ?? "",
+        phone: s.phone ?? "",
+        email: s.email ?? "",
+        address: s.address ?? "",
+        gstin: s.gstin ?? "",
         opening_balance: 0,
-      });
+        status: s.status,
+      } as any);
       queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       toast.success("Supplier duplicated");
     } catch (e: any) {

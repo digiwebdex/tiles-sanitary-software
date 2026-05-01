@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import {
   Plus, Search, AlertTriangle, Printer, Download, Upload, Lock,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import BarcodePrintDialog from "./BarcodePrintDialog";
 import ProductDetailDialog from "./ProductDetailDialog";
 import BrokenStockDialog from "./BrokenStockDialog";
@@ -89,23 +89,21 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     queryKey: ["products-summary", dealerId],
     enabled: !!dealerId,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, cost_price, reorder_level, unit_type")
-        .eq("dealer_id", dealerId);
-      return data ?? [];
+      const res = await vpsAuthedFetch(`/api/products/summary-rows?dealerId=${dealerId}`);
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return (body.rows ?? []) as any[];
     },
   });
 
   const { data: stockData } = useQuery({
     queryKey: ["products-stock-map", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("stock")
-        .select("product_id, box_qty, sft_qty, piece_qty, reserved_box_qty, reserved_piece_qty")
-        .eq("dealer_id", dealerId);
+      const res = await vpsAuthedFetch(`/api/products/stock-map?dealerId=${dealerId}`);
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
       const map = new Map<string, { total: number; box: number; sft: number; piece: number; reservedBox: number; reservedPiece: number }>();
-      for (const s of data ?? []) {
+      for (const s of (body.rows ?? []) as any[]) {
         const box = Number(s.box_qty) || 0;
         const sft = Number(s.sft_qty) || 0;
         const piece = Number(s.piece_qty) || 0;
@@ -121,14 +119,11 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const { data: costData } = useQuery({
     queryKey: ["products-cost-map", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("stock")
-        .select("product_id, average_cost_per_unit")
-        .eq("dealer_id", dealerId);
+      const res = await vpsAuthedFetch(`/api/products/cost-map?dealerId=${dealerId}`);
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
       const map = new Map<string, number>();
-      for (const s of data ?? []) {
-        map.set(s.product_id, Number(s.average_cost_per_unit) || 0);
-      }
+      for (const [k, v] of Object.entries(body.rows ?? {})) map.set(k, Number(v) || 0);
       return map;
     },
     enabled: !!dealerId && permissions.canViewCostPrice,
@@ -137,17 +132,11 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const { data: lastCostData } = useQuery({
     queryKey: ["products-last-cost-map", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("purchase_items")
-        .select("product_id, landed_cost, purchase_id, purchases!inner(purchase_date)")
-        .eq("dealer_id", dealerId)
-        .order("purchases(purchase_date)", { ascending: false });
+      const res = await vpsAuthedFetch(`/api/products/last-cost-map?dealerId=${dealerId}`);
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
       const map = new Map<string, number>();
-      for (const item of data ?? []) {
-        if (!map.has(item.product_id)) {
-          map.set(item.product_id, Number(item.landed_cost) || 0);
-        }
-      }
+      for (const [k, v] of Object.entries(body.rows ?? {})) map.set(k, Number(v) || 0);
       return map;
     },
     enabled: !!dealerId && permissions.canViewCostPrice,
@@ -156,16 +145,10 @@ const ProductList = ({ dealerId }: ProductListProps) => {
   const { data: txProducts } = useQuery({
     queryKey: ["products-tx-check", dealerId],
     queryFn: async () => {
-      const [salesRes, purchasesRes, returnsRes] = await Promise.all([
-        supabase.from("sale_items").select("product_id").eq("dealer_id", dealerId),
-        supabase.from("purchase_items").select("product_id").eq("dealer_id", dealerId),
-        supabase.from("sales_returns").select("product_id").eq("dealer_id", dealerId),
-      ]);
-      const ids = new Set<string>();
-      for (const s of salesRes.data ?? []) ids.add(s.product_id);
-      for (const p of purchasesRes.data ?? []) ids.add(p.product_id);
-      for (const r of returnsRes.data ?? []) ids.add(r.product_id);
-      return ids;
+      const res = await vpsAuthedFetch(`/api/products/tx-check?dealerId=${dealerId}`);
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return new Set<string>((body.ids ?? []) as string[]);
     },
     enabled: !!dealerId,
   });

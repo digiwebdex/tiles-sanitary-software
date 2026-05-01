@@ -21,7 +21,7 @@ import Pagination from "@/components/Pagination";
 import { toast } from "sonner";
 import { Plus, Search, Eye, Pencil, Copy, ToggleLeft, ToggleRight, BookOpen, ShoppingCart, CreditCard, Download, Upload } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { CreditStatusBadge } from "@/components/CreditStatusBadge";
 import { usePermissions } from "@/hooks/usePermissions";
 import { exportToExcel } from "@/lib/exportUtils";
@@ -78,33 +78,13 @@ const CustomerList = () => {
     queryKey: ["customer-due-balances", dealerId, customers.map((c) => c.id)],
     queryFn: async () => {
       if (!customers.length) return {};
-      const ids = customers.map((c) => c.id);
-      const [ledgerRes, salesRes] = await Promise.all([
-        supabase.from("customer_ledger").select("customer_id, amount, type").eq("dealer_id", dealerId).in("customer_id", ids),
-        supabase.from("sales").select("customer_id, sale_date, due_amount").eq("dealer_id", dealerId).in("customer_id", ids).gt("due_amount", 0).order("sale_date", { ascending: true }),
-      ]);
-      if (ledgerRes.error) throw new Error(ledgerRes.error.message);
-
-      const sums: Record<string, { due: number; daysOverdue: number }> = {};
-      for (const row of ledgerRes.data ?? []) {
-        const amt = Number(row.amount);
-        if (!sums[row.customer_id]) sums[row.customer_id] = { due: 0, daysOverdue: 0 };
-        if (row.type === "sale") sums[row.customer_id].due += amt;
-        else if (row.type === "payment" || row.type === "refund") sums[row.customer_id].due -= amt;
-        else if (row.type === "adjustment") sums[row.customer_id].due += amt;
-      }
-
-      const today = new Date();
-      const oldestMap = new Map<string, string>();
-      for (const s of salesRes.data ?? []) {
-        if (!oldestMap.has(s.customer_id)) oldestMap.set(s.customer_id, s.sale_date);
-      }
-      for (const [cid, date] of oldestMap) {
-        if (sums[cid]) {
-          sums[cid].daysOverdue = Math.max(0, Math.floor((today.getTime() - new Date(date).getTime()) / 86400000));
-        }
-      }
-      return sums;
+      const ids = customers.map((c) => c.id).join(",");
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/customer-due-balances?dealerId=${dealerId}&ids=${encodeURIComponent(ids)}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return (body.rows ?? {}) as Record<string, { due: number; daysOverdue: number }>;
     },
     enabled: customers.length > 0,
   });
@@ -123,12 +103,19 @@ const CustomerList = () => {
 
   const handleDuplicate = async (c: any) => {
     try {
-      const { id, created_at, ...rest } = c;
-      await supabase.from("customers").insert({
-        ...rest,
+      await customerService.create(dealerId, {
         name: `${c.name} (Copy)`,
+        type: c.type,
+        phone: c.phone ?? "",
+        email: c.email ?? "",
+        address: c.address ?? "",
+        reference_name: c.reference_name ?? "",
         opening_balance: 0,
-      });
+        status: c.status,
+        credit_limit: c.credit_limit ?? 0,
+        max_overdue_days: c.max_overdue_days ?? 0,
+        price_tier_id: c.price_tier_id ?? null,
+      } as any);
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Customer duplicated");
     } catch (e: any) {

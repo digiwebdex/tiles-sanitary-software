@@ -194,6 +194,106 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/products/cost-map ─────────────────────────────────────────────
+// dealer_admin only — salesman blocked from cost data
+router.get('/cost-map', requireRole('dealer_admin'), async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const rows = await db('stock')
+      .where({ dealer_id: dealerId })
+      .select('product_id', 'average_cost_per_unit');
+    const map: Record<string, number> = {};
+    for (const s of rows as any[]) map[s.product_id] = Number(s.average_cost_per_unit) || 0;
+    res.json({ rows: map });
+  } catch (err: any) {
+    console.error('[products/cost-map]', err.message);
+    res.status(500).json({ error: 'Failed to load cost map' });
+  }
+});
+
+// ── GET /api/products/last-cost-map ───────────────────────────────────────
+// dealer_admin only — most-recent landed_cost per product
+router.get('/last-cost-map', requireRole('dealer_admin'), async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const rows = await db.raw(
+      `
+      SELECT pi.product_id, pi.landed_cost
+      FROM purchase_items pi
+      JOIN purchases p ON p.id = pi.purchase_id
+      WHERE pi.dealer_id = ?
+      ORDER BY p.purchase_date DESC, p.created_at DESC
+      `,
+      [dealerId],
+    );
+    const map: Record<string, number> = {};
+    for (const r of (rows.rows ?? []) as any[]) {
+      if (!(r.product_id in map)) map[r.product_id] = Number(r.landed_cost) || 0;
+    }
+    res.json({ rows: map });
+  } catch (err: any) {
+    console.error('[products/last-cost-map]', err.message);
+    res.status(500).json({ error: 'Failed to load last-cost map' });
+  }
+});
+
+// ── GET /api/products/tx-check ────────────────────────────────────────────
+// Returns set of product ids that appear in any sale_items / purchase_items / sales_returns
+router.get('/tx-check', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const [sales, purchases, returns] = await Promise.all([
+      db('sale_items').where({ dealer_id: dealerId }).distinct('product_id'),
+      db('purchase_items').where({ dealer_id: dealerId }).distinct('product_id'),
+      db('sales_returns').where({ dealer_id: dealerId }).distinct('product_id'),
+    ]);
+    const ids = new Set<string>();
+    for (const r of [...sales, ...purchases, ...returns] as any[]) {
+      if (r.product_id) ids.add(r.product_id);
+    }
+    res.json({ ids: Array.from(ids) });
+  } catch (err: any) {
+    console.error('[products/tx-check]', err.message);
+    res.status(500).json({ error: 'Failed to load tx-check' });
+  }
+});
+
+// ── GET /api/products/summary-rows ────────────────────────────────────────
+// Lightweight per-product summary fields for dashboard math (no cost for salesman)
+router.get('/summary-rows', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const cols = hasRole(req, 'dealer_admin') || hasRole(req, 'super_admin')
+      ? ['id', 'cost_price', 'reorder_level', 'unit_type']
+      : ['id', 'reorder_level', 'unit_type'];
+    const rows = await db('products').where({ dealer_id: dealerId }).select(cols);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[products/summary-rows]', err.message);
+    res.status(500).json({ error: 'Failed to load product summary' });
+  }
+});
+
+// ── GET /api/products/stock-map ───────────────────────────────────────────
+// Returns dealer-wide stock per product, including reservation counters
+router.get('/stock-map', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const rows = await db('stock')
+      .where({ dealer_id: dealerId })
+      .select('product_id', 'box_qty', 'sft_qty', 'piece_qty', 'reserved_box_qty', 'reserved_piece_qty');
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[products/stock-map]', err.message);
+    res.status(500).json({ error: 'Failed to load stock map' });
+  }
+});
+
 // ── GET /api/products/:id ──────────────────────────────────────────────────
 router.get('/:id', async (req: Request, res: Response) => {
   try {
