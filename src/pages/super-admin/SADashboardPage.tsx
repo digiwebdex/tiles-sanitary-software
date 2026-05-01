@@ -54,27 +54,10 @@ const SADashboardPage = () => {
   const { data, isLoading } = useQuery({
     queryKey: ["sa-dashboard-full"],
     queryFn: async () => {
-      let dealers: any[] = [];
-      let subs: any[] = [];
-      let payments: any[] = [];
-
-      if (env.AUTH_BACKEND === "vps") {
-        const body = await vpsJson<{ dealers: any[]; subscriptions: any[]; payments: any[] }>("/api/subscriptions/dashboard");
-        dealers = body.dealers ?? [];
-        subs = body.subscriptions ?? [];
-        payments = body.payments ?? [];
-      } else {
-        const [dealersRes, subsRes, paymentsRes] = await Promise.all([
-          supabase.from("dealers").select("id, status"),
-          supabase.from("subscriptions").select("id, status, start_date, end_date, plan_id, dealer_id, subscription_plans!subscriptions_plan_id_fkey(monthly_price, yearly_price)"),
-          supabase.from("subscription_payments").select("id, amount, payment_date, payment_status"),
-        ]);
-        if (dealersRes.error) throw new Error(dealersRes.error.message);
-        if (subsRes.error) throw new Error(subsRes.error.message);
-        dealers = dealersRes.data ?? [];
-        subs = dealersRes.data ? (subsRes.data ?? []) : [];
-        payments = paymentsRes.data ?? [];
-      }
+      const body = await vpsJson<{ dealers: any[]; subscriptions: any[]; payments: any[] }>("/api/subscriptions/dashboard");
+      const dealers: any[] = body.dealers ?? [];
+      const subs: any[] = body.subscriptions ?? [];
+      const payments: any[] = body.payments ?? [];
 
       const totalDealers = dealers.length;
       const latestSubs = Array.from(
