@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import CreateDeliveryDialog from "@/modules/deliveries/CreateDeliveryDialog";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 import SaleActionDropdown from "./SaleActionDropdown";
@@ -84,34 +84,25 @@ const SaleList = ({ dealerId }: SaleListProps) => {
     enabled: !!dealerId,
   });
 
-  const { data: deliveryMap } = useQuery({
-    queryKey: ["sales-delivery-check", dealerId],
+  // Phase 3U-30b: single VPS call returns both delivered sale ids and
+  // challan delivery statuses (replaces 2 separate Supabase reads).
+  const { data: deliveryFlags } = useQuery({
+    queryKey: ["sales-delivery-flags", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("deliveries")
-        .select("sale_id")
-        .eq("dealer_id", dealerId);
-      const set = new Set<string>();
-      for (const d of data ?? []) if (d.sale_id) set.add(d.sale_id);
-      return set;
+      const res = await vpsAuthedFetch(
+        `/api/sales/delivery-flags?dealerId=${dealerId}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      const deliveredSet = new Set<string>(body?.deliveredSaleIds ?? []);
+      const challanMap = new Map<string, string>(
+        Object.entries((body?.challanDeliveryStatuses ?? {}) as Record<string, string>),
+      );
+      return { deliveredSet, challanMap };
     },
     enabled: !!dealerId,
   });
-
-  const { data: challanDeliveryMap } = useQuery({
-    queryKey: ["sales-challan-delivery-status", dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("challans")
-        .select("sale_id, delivery_status")
-        .eq("dealer_id", dealerId)
-        .neq("status", "cancelled");
-      const map = new Map<string, string>();
-      for (const c of data ?? []) map.set(c.sale_id, (c as any).delivery_status ?? "pending");
-      return map;
-    },
-    enabled: !!dealerId,
-  });
+  const deliveryMap = deliveryFlags?.deliveredSet;
+  const challanDeliveryMap = deliveryFlags?.challanMap;
 
   const deleteMutation = useMutation({
     mutationFn: async (sale: any) => {
@@ -176,13 +167,8 @@ const SaleList = ({ dealerId }: SaleListProps) => {
     queryKey: ["sale-for-delivery", deliverySale?.id],
     queryFn: async () => {
       if (!deliverySale?.id) return null;
-      const { data: sData, error } = await supabase
-        .from("sales")
-        .select("*, sale_items(*, products(name, sku, unit_type, per_box_sft)), customers(name, phone, address)")
-        .eq("id", deliverySale.id)
-        .single();
-      if (error) throw new Error(error.message);
-      return sData;
+      // Phase 3U-30b: VPS GET /api/sales/:id (returns sale + items + customers).
+      return salesService.getById(deliverySale.id);
     },
     enabled: !!deliverySale?.id,
   });
