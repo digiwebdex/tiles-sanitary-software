@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import DealerUsersOverview from "@/pages/admin/DealerUsersOverview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,17 +15,13 @@ const SASystemPage = () => {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["sa-system-stats"],
     queryFn: async () => {
-      const [profilesRes, salesRes, dealersRes, subsRes] = await Promise.all([
-        supabase.from("profiles").select("id", { count: "exact", head: true }),
-        supabase.from("sales").select("id", { count: "exact", head: true }),
-        supabase.from("dealers").select("id", { count: "exact", head: true }),
-        supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "active"),
-      ]);
-      return {
-        totalUsers: profilesRes.count ?? 0,
-        totalSales: salesRes.count ?? 0,
-        totalDealers: dealersRes.count ?? 0,
-        activeSubs: subsRes.count ?? 0,
+      const res = await vpsAuthedFetch("/api/admin/system-stats");
+      if (!res.ok) throw new Error(`Failed to load system stats (${res.status})`);
+      return (await res.json()) as {
+        totalUsers: number;
+        totalSales: number;
+        totalDealers: number;
+        activeSubs: number;
       };
     },
     refetchInterval: 60_000,
