@@ -1,10 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
-import { logAudit } from "@/services/auditService";
 import { assertDealerId } from "@/lib/tenancy";
-import { env } from "@/lib/env";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
-
-const USE_VPS = env.AUTH_BACKEND === "vps";
 
 async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await vpsAuthedFetch(path, init);
@@ -36,15 +32,6 @@ export interface CreateDeliveryInput {
 }
 
 const PAGE_SIZE = 25;
-
-async function generateDeliveryNo(dealerId: string): Promise<string> {
-  const { count } = await supabase
-    .from("deliveries")
-    .select("id", { count: "exact", head: true })
-    .eq("dealer_id", dealerId);
-  const seq = (count ?? 0) + 1;
-  return `DL-${String(seq).padStart(5, "0")}`;
-}
 
 export const deliveryService = {
   async list(
