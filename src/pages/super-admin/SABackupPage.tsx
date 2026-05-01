@@ -68,26 +68,16 @@ const SABackupPage = () => {
   const { data: backups, isLoading: backupsLoading, refetch: refetchBackups } = useQuery({
     queryKey: ["sa-backups"],
     queryFn: async () => {
-      if (isVps) {
-        const r = await vpsJson<{ backups: any[] }>("/api/backups");
-        return r.backups || [];
-      }
-      const { data, error } = await supabase.from("backup_logs").select("*").order("created_at", { ascending: false }).limit(200);
-      if (error) throw error;
-      return data || [];
+      const r = await vpsJson<{ backups: any[] }>("/api/backups");
+      return r.backups || [];
     },
   });
 
   const { data: restores, isLoading: restoresLoading, refetch: refetchRestores } = useQuery({
     queryKey: ["sa-restores"],
     queryFn: async () => {
-      if (isVps) {
-        const r = await vpsJson<{ restores: any[] }>("/api/backups/restores");
-        return r.restores || [];
-      }
-      const { data, error } = await supabase.from("restore_logs").select("*").order("created_at", { ascending: false }).limit(100);
-      if (error) throw error;
-      return data || [];
+      const r = await vpsJson<{ restores: any[] }>("/api/backups/restores");
+      return r.restores || [];
     },
   });
 
