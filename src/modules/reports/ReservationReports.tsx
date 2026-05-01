@@ -19,19 +19,10 @@ export function ReservedStockReport({ dealerId }: { dealerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-reserved-stock", dealerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          id, reserved_qty, fulfilled_qty, released_qty, status, expires_at, reason, created_at,
-          products:product_id (name, sku, unit_type, default_sale_rate),
-          customers:customer_id (name),
-          product_batches:batch_id (batch_no, shade_code, caliber)
-        `)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("created_at", { ascending: false });
-      if (error) throw new Error(error.message);
-      return data ?? [];
+      const res = await vpsAuthedFetch(`/api/reports/reservations-active?dealerId=${dealerId}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as any[];
     },
   });
 
@@ -129,18 +120,12 @@ export function FreeVsReservedReport({ dealerId }: { dealerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-free-vs-reserved", dealerId],
     queryFn: async () => {
-      const [productsRes, stockRes] = await Promise.all([
-        supabase.from("products").select("id, name, sku, unit_type").eq("dealer_id", dealerId).eq("active", true).order("sku"),
-        supabase.from("stock").select("product_id, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty").eq("dealer_id", dealerId),
-      ]);
-      const stockMap = new Map((stockRes.data ?? []).map((s) => [s.product_id, s]));
-      return (productsRes.data ?? []).map((p) => {
-        const s = stockMap.get(p.id);
-        const total = p.unit_type === "box_sft" ? Number(s?.box_qty ?? 0) : Number(s?.piece_qty ?? 0);
-        const reserved = p.unit_type === "box_sft" ? Number(s?.reserved_box_qty ?? 0) : Number(s?.reserved_piece_qty ?? 0);
-        const free = total - reserved;
-        return { name: p.name, sku: p.sku, unitType: p.unit_type, total, reserved, free };
-      }).filter((r) => r.total > 0 || r.reserved > 0);
+      const res = await vpsAuthedFetch(`/api/reports/free-vs-reserved?dealerId=${dealerId}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        name: string; sku: string; unitType: string; total: number; reserved: number; free: number;
+      }>;
     },
   });
 
