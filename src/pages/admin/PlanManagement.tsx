@@ -56,18 +56,10 @@ const PlanManagement = () => {
   const [form, setForm] = useState<PlanForm>(emptyForm);
 
   const { data: plans = [], isLoading } = useQuery({
-    queryKey: ["admin-subscription-plans", env.AUTH_BACKEND],
+    queryKey: ["admin-subscription-plans"],
     queryFn: async () => {
-      if (env.AUTH_BACKEND === "vps") {
-        const body = await vpsJson<{ plans: any[] }>("/api/plans");
-        return body.plans ?? [];
-      }
-      const { data, error } = await supabase
-        .from("subscription_plans")
-        .select("*")
-        .order("monthly_price", { ascending: true });
-      if (error) throw new Error(error.message);
-      return data;
+      const body = await vpsJson<{ plans: any[] }>("/api/plans");
+      return body.plans ?? [];
     },
   });
 
@@ -84,20 +76,10 @@ const PlanManagement = () => {
         daily_summary_enabled: form.daily_summary_enabled,
         is_active: form.is_active,
       };
-      if (env.AUTH_BACKEND === "vps") {
-        if (editId) {
-          await vpsJson(`/api/plans/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
-        } else {
-          await vpsJson(`/api/plans`, { method: "POST", body: JSON.stringify(payload) });
-        }
-        return;
-      }
       if (editId) {
-        const { error } = await supabase.from("subscription_plans").update(payload).eq("id", editId);
-        if (error) throw new Error(error.message);
+        await vpsJson(`/api/plans/${editId}`, { method: "PATCH", body: JSON.stringify(payload) });
       } else {
-        const { error } = await supabase.from("subscription_plans").insert(payload);
-        if (error) throw new Error(error.message);
+        await vpsJson(`/api/plans`, { method: "POST", body: JSON.stringify(payload) });
       }
     },
     onSuccess: () => {
