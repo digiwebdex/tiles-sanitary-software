@@ -126,38 +126,15 @@ export function SupplierOutstandingReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-supplier-outstanding", dealerId],
     queryFn: async () => {
-      const [ledgerRes, suppRes] = await Promise.all([
-        supabase.from("supplier_ledger").select("supplier_id, amount, type").eq("dealer_id", dealerId),
-        supabase.from("suppliers").select("id, name, phone, status").eq("dealer_id", dealerId),
-      ]);
-
-      const suppMap = new Map((suppRes.data ?? []).map(s => [s.id, s]));
-      const balances: Record<string, { debit: number; credit: number; paymentCount: number }> = {};
-
-      for (const e of ledgerRes.data ?? []) {
-        const sid = e.supplier_id;
-        if (!balances[sid]) balances[sid] = { debit: 0, credit: 0, paymentCount: 0 };
-        const amt = Number(e.amount);
-        if (amt >= 0) balances[sid].debit += amt;
-        else balances[sid].credit += Math.abs(amt);
-        if (e.type === "payment") balances[sid].paymentCount += 1;
-      }
-
-      return Object.entries(balances)
-        .map(([sid, b]) => {
-          const s = suppMap.get(sid);
-          return {
-            supplierId: sid,
-            name: s?.name ?? "—",
-            phone: s?.phone ?? "—",
-            totalPurchase: Math.round(b.debit * 100) / 100,
-            totalPaid: Math.round(b.credit * 100) / 100,
-            outstanding: Math.round((b.debit - b.credit) * 100) / 100,
-            payments: b.paymentCount,
-          };
-        })
-        .filter(r => r.outstanding > 0)
-        .sort((a, b) => b.outstanding - a.outstanding);
+      const res = await vpsAuthedFetch(
+        `/api/reports/supplier-outstanding?dealerId=${dealerId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        supplierId: string; name: string; phone: string; totalPurchase: number;
+        totalPaid: number; outstanding: number; payments: number;
+      }>;
     },
   });
 
