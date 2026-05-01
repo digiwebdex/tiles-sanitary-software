@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -64,15 +64,15 @@ export function CreatePurchaseDraftDialog({
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Phase 3U-30: VPS GET /api/suppliers (alphabetical).
   const { data: suppliers = [] } = useQuery({
     queryKey: ["draft-suppliers", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("suppliers")
-        .select("id, name")
-        .eq("dealer_id", dealerId)
-        .order("name");
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/suppliers?dealerId=${dealerId}&pageSize=500&orderBy=name&orderDir=asc`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      return ((body as any)?.rows ?? []) as { id: string; name: string }[];
     },
     enabled: !!dealerId && open,
   });
