@@ -1,4 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
 import { assertDealerId } from "@/lib/tenancy";
 import { rateLimits } from "@/lib/rateLimit";
 import { notificationService } from "@/services/notificationService";
@@ -13,6 +12,35 @@ async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new Error(msg);
   }
   return body as T;
+}
+
+/** Fetch a single product row via VPS (preview helper). */
+async function fetchProductRow(
+  dealerId: string,
+  productId: string,
+): Promise<{ id: string; name: string; unit_type: "box_sft" | "piece" } | null> {
+  try {
+    const params = new URLSearchParams({ dealerId });
+    const res = await vpsAuthedFetch(`/api/products/${productId}?${params.toString()}`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => ({} as any));
+    const row = (body as any)?.row;
+    return row ? { id: row.id, name: row.name, unit_type: row.unit_type } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch many products in parallel via VPS GET-by-id calls. */
+async function fetchProductsByIds(
+  dealerId: string,
+  ids: string[],
+): Promise<Map<string, { id: string; name: string; unit_type: "box_sft" | "piece" }>> {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  const results = await Promise.all(unique.map((id) => fetchProductRow(dealerId, id)));
+  const map = new Map<string, { id: string; name: string; unit_type: "box_sft" | "piece" }>();
+  for (const r of results) if (r) map.set(r.id, r);
+  return map;
 }
 
 export interface SaleItemInput {
@@ -69,11 +97,7 @@ export async function previewBatchAllocation(
   }>;
 }> {
   const productIds = items.map(i => i.product_id);
-  const { data: products } = await supabase
-    .from("products")
-    .select("id, name, unit_type")
-    .in("id", productIds);
-  const productMap = new Map((products ?? []).map(p => [p.id, p]));
+  const productMap = await fetchProductsByIds(dealerId, productIds);
 
   let globalMixedShade = false;
   let globalMixedCaliber = false;
@@ -166,18 +190,23 @@ export const salesService = {
     // Fire-and-forget notification
     void (async () => {
       try {
-        const { data: customer } = await supabase
-          .from("customers")
-          .select("name, phone")
-          .eq("id", sale.customer_id)
-          .single();
+        // Customer (VPS)
+        let customer: { name: string; phone: string | null } | null = null;
+        try {
+          const cParams = new URLSearchParams({ dealerId: input.dealer_id });
+          const cRes = await vpsAuthedFetch(
+            `/api/customers/${sale.customer_id}?${cParams.toString()}`,
+          );
+          if (cRes.ok) {
+            const cBody = await cRes.json().catch(() => ({} as any));
+            const row = (cBody as any)?.row;
+            if (row) customer = { name: row.name, phone: row.phone ?? null };
+          }
+        } catch { /* swallow */ }
 
+        // Products (VPS, parallel by id)
         const productIds = input.items.map((i) => i.product_id);
-        const { data: products } = await supabase
-          .from("products")
-          .select("id, name, unit_type")
-          .in("id", productIds);
-        const prodMap = new Map((products ?? []).map((p) => [p.id, p]));
+        const prodMap = await fetchProductsByIds(input.dealer_id, productIds);
 
         const itemDetails = input.items.map((item) => {
           const prod = prodMap.get(item.product_id);
@@ -190,11 +219,15 @@ export const salesService = {
           };
         });
 
-        const { data: dealer } = await supabase
-          .from("dealers")
-          .select("name")
-          .eq("id", input.dealer_id)
-          .single();
+        // Dealer (VPS)
+        let dealerName = "";
+        try {
+          const dRes = await vpsAuthedFetch(`/api/dealers/${input.dealer_id}`);
+          if (dRes.ok) {
+            const dBody = await dRes.json().catch(() => ({} as any));
+            dealerName = (dBody as any)?.dealer?.name ?? "";
+          }
+        } catch { /* swallow */ }
 
         notificationService.notifySaleCreated(input.dealer_id, {
           invoice_number: sale.invoice_number,
@@ -206,7 +239,7 @@ export const salesService = {
           sale_date: sale.sale_date,
           sale_id: sale.id,
           items: itemDetails,
-          dealer_name: dealer?.name ?? "",
+          dealer_name: dealerName,
         });
       } catch {
         // Swallow

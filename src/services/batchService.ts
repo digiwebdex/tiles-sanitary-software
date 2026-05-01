@@ -1,21 +1,18 @@
 /**
- * Batch Service — VPS-era reduced surface (Phase 3U-26).
+ * Batch Service — VPS-only (Phase 3U-27).
  *
- * Mutation wrappers removed (now performed atomically inside VPS routes):
- *   - findOrCreateBatch        → handled by POST /api/purchases (Phase 3K)
- *   - executeSaleAllocation    → handled by POST /api/sales (Phase 3L) via
- *                                allocate_sale_batches RPC server-side
- *   - restoreBatchAllocations  → handled by PUT/DELETE /api/sales/:id (3M)
- *                                via restore_sale_batches RPC server-side
+ * All mutation paths run inside VPS routes:
+ *   - findOrCreateBatch        → POST /api/purchases (3K)
+ *   - executeSaleAllocation    → POST /api/sales (3L) → allocate_sale_batches
+ *   - restoreBatchAllocations  → PUT/DELETE /api/sales/:id (3M) → restore_sale_batches
  *   - deductStockUnbatched     → handled inside VPS sale create / adjust
  *
- * Read-only helpers retained:
- *   - planFIFOAllocation: client-side preview used by SaleForm to surface
- *     mixed shade/caliber warnings before submitting. Reads product_batches
- *     and stock_reservations under dealer-scoped RLS — safe.
- *   - getActiveBatches / getAllBatches: legacy listing helpers.
+ * Phase 3U-27: read helpers (getActiveBatches, getAllBatches,
+ * planFIFOAllocation reservation overlay) migrated from Supabase to VPS
+ * (/api/batches and /api/reservations/by-customer-product).
+ * Zero Supabase imports remain.
  */
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export interface BatchAllocation {
   batch_id: string;
@@ -35,10 +32,29 @@ export interface FIFOAllocationResult {
   calibers: string[];
 }
 
+interface BatchRow {
+  id: string;
+  batch_no: string;
+  shade_code: string | null;
+  caliber: string | null;
+  lot_no: string | null;
+  box_qty: number | string;
+  piece_qty: number | string;
+  reserved_box_qty?: number | string | null;
+  reserved_piece_qty?: number | string | null;
+  status?: string;
+}
+
+interface ReservationRow {
+  batch_id: string | null;
+  reserved_qty: number | string;
+  fulfilled_qty: number | string;
+  released_qty: number | string;
+}
+
 /**
  * Generate a collision-safe auto batch number.
  * Format: AUTO-YYYYMMDD-XXXXX (random 5-char alphanumeric suffix).
- * Kept exported for legacy form helpers; safe to call from anywhere.
  */
 function generateAutoBatchNo(): string {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -48,6 +64,47 @@ function generateAutoBatchNo(): string {
     suffix += chars[Math.floor(Math.random() * chars.length)];
   }
   return `AUTO-${date}-${suffix}`;
+}
+
+async function fetchBatches(
+  productId: string,
+  dealerId: string,
+  opts: { activeOnly: boolean },
+): Promise<BatchRow[]> {
+  const params = new URLSearchParams({
+    dealerId,
+    pageSize: "500",
+    "f.product_id": productId,
+    orderBy: "created_at",
+    orderDir: "asc",
+  });
+  if (opts.activeOnly) params.set("f.status", "active");
+  const res = await vpsAuthedFetch(`/api/batches?${params.toString()}`);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Failed to fetch batches (${res.status})`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+  return ((body as any)?.rows ?? []) as BatchRow[];
+}
+
+async function fetchCustomerReservations(
+  productId: string,
+  dealerId: string,
+  customerId: string,
+): Promise<ReservationRow[]> {
+  // /api/reservations/by-customer-product returns only active rows.
+  const params = new URLSearchParams({
+    dealerId,
+    customerId,
+    productId,
+  });
+  const res = await vpsAuthedFetch(
+    `/api/reservations/by-customer-product?${params.toString()}`,
+  );
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) return [];
+  return ((body as any)?.rows ?? []) as ReservationRow[];
 }
 
 export const batchService = {
@@ -80,19 +137,17 @@ export const batchService = {
       };
     }
 
-    let batchReservationMap = new Map<string, number>();
+    const batchReservationMap = new Map<string, number>();
     if (skipReservedForCustomer) {
-      const { data: reservations } = await supabase
-        .from("stock_reservations")
-        .select("batch_id, reserved_qty, fulfilled_qty, released_qty")
-        .eq("product_id", productId)
-        .eq("dealer_id", dealerId)
-        .eq("customer_id", skipReservedForCustomer)
-        .eq("status", "active");
-
-      for (const r of reservations ?? []) {
+      const reservations = await fetchCustomerReservations(
+        productId,
+        dealerId,
+        skipReservedForCustomer,
+      );
+      for (const r of reservations) {
         if (!r.batch_id) continue;
-        const remaining = Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
+        const remaining =
+          Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
         batchReservationMap.set(
           r.batch_id,
           (batchReservationMap.get(r.batch_id) ?? 0) + remaining,
@@ -113,8 +168,8 @@ export const batchService = {
         : Number(batch.piece_qty);
 
       const reservedQty = unitType === "box_sft"
-        ? Number((batch as any).reserved_box_qty ?? 0)
-        : Number((batch as any).reserved_piece_qty ?? 0);
+        ? Number(batch.reserved_box_qty ?? 0)
+        : Number(batch.reserved_piece_qty ?? 0);
 
       const customerReservedOnBatch = batchReservationMap.get(batch.id) ?? 0;
       const freeQty = totalQty - reservedQty + customerReservedOnBatch;
@@ -147,27 +202,10 @@ export const batchService = {
   },
 
   async getActiveBatches(productId: string, dealerId: string) {
-    const { data, error } = await supabase
-      .from("product_batches")
-      .select("*")
-      .eq("product_id", productId)
-      .eq("dealer_id", dealerId)
-      .eq("status", "active")
-      .order("created_at", { ascending: true });
-
-    if (error) throw new Error(`Failed to fetch batches: ${error.message}`);
-    return data ?? [];
+    return fetchBatches(productId, dealerId, { activeOnly: true });
   },
 
   async getAllBatches(productId: string, dealerId: string) {
-    const { data, error } = await supabase
-      .from("product_batches")
-      .select("*")
-      .eq("product_id", productId)
-      .eq("dealer_id", dealerId)
-      .order("created_at", { ascending: true });
-
-    if (error) throw new Error(`Failed to fetch batches: ${error.message}`);
-    return data ?? [];
+    return fetchBatches(productId, dealerId, { activeOnly: false });
   },
 };

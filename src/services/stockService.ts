@@ -1,25 +1,26 @@
 /**
- * Stock Service — VPS-only (Phase 3U-26).
+ * Stock Service — VPS-only (Phase 3U-27).
  *
- * All write paths now route to the VPS atomic adjustment endpoints
+ * All write paths route to VPS atomic adjustment endpoints
  * (POST /api/adjustments/{add|deduct|restore|broken}).
  *
- * Removed (dead code with zero callers in src/ as of 3U-26):
- *   - reserveStock / unreserveStock / deductReservedStock — these legacy
- *     helpers are superseded by VPS challan + delivery endpoints (Phase 3O)
- *     which perform reservation logic atomically server-side.
+ * Phase 3U-27: Final two read paths (getProduct, getAvailableQty) migrated
+ * from Supabase to VPS (/api/products/:id, /api/stock?f.product_id=…).
+ * Zero Supabase imports remain.
+ *
+ * Removed earlier (3U-26):
+ *   - reserveStock / unreserveStock / deductReservedStock — superseded by
+ *     VPS challan + delivery endpoints (Phase 3O), atomic server-side.
  *   - updateAverageCost — moved into the VPS purchase-create transaction
- *     (Phase 3K) and never invoked from the client.
- *   - applyStockChange / computeStockUpdate / getOrCreateStock — local
- *     fallback path for the old USE_VPS=false branch (no longer reachable
- *     because env.AUTH_BACKEND is forced to "vps" on every prod/preview host).
+ *     (Phase 3K).
+ *   - applyStockChange / computeStockUpdate / getOrCreateStock — old
+ *     USE_VPS=false fallback.
  *
  * Kept:
- *   - getAvailableQty: read-only helper used by sale form previews.
- *   - deductStockWithBackorder: legacy wrapper kept for any in-flight callers
- *     (none today, but preserved as a thin VPS shim until a follow-up audit).
+ *   - getAvailableQty: read-only helper for sale form previews.
+ *   - deductStockWithBackorder: legacy thin wrapper (preserved for any
+ *     in-flight callers; no current callers).
  */
-import { supabase } from "@/integrations/supabase/client";
 import { validateInput, stockAdjustmentServiceSchema } from "@/lib/validators";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
@@ -46,37 +47,42 @@ interface StockProduct {
 
 /**
  * Read product unit metadata (unit_type, per_box_sft) for client-side previews.
- * Read-only; safe to use on either backend.
+ * Phase 3U-27: now hits VPS GET /api/products/:id.
  */
-async function getProduct(productId: string): Promise<StockProduct> {
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, unit_type, per_box_sft")
-    .eq("id", productId)
-    .single();
-
-  if (error || !data) throw new Error(`Product not found: ${productId}`);
-  return data as StockProduct;
+async function getProduct(productId: string, dealerId: string): Promise<StockProduct> {
+  const params = new URLSearchParams({ dealerId });
+  const res = await vpsAuthedFetch(`/api/products/${productId}?${params.toString()}`);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) throw new Error(`Product not found: ${productId}`);
+  const row = (body as any)?.row;
+  if (!row) throw new Error(`Product not found: ${productId}`);
+  return {
+    id: row.id,
+    unit_type: row.unit_type,
+    per_box_sft: row.per_box_sft ?? null,
+  };
 }
 
 /**
  * Get currently available stock for a product (preview helper).
- * Reads aggregated stock row directly. Reservation overlay handled by
- * batchService.planFIFOAllocation when needed.
+ * Phase 3U-27: now hits VPS GET /api/stock?f.product_id=…
+ * Reservation overlay handled by batchService.planFIFOAllocation when needed.
  */
 async function getAvailableQty(productId: string, dealerId: string): Promise<number> {
-  const product = await getProduct(productId);
-  const { data } = await supabase
-    .from("stock")
-    .select("box_qty, piece_qty")
-    .eq("product_id", productId)
-    .eq("dealer_id", dealerId)
-    .maybeSingle();
-
-  if (!data) return 0;
+  const product = await getProduct(productId, dealerId);
+  const params = new URLSearchParams({
+    dealerId,
+    pageSize: "1",
+    "f.product_id": productId,
+  });
+  const res = await vpsAuthedFetch(`/api/stock?${params.toString()}`);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) return 0;
+  const row = (body as any)?.rows?.[0];
+  if (!row) return 0;
   return product.unit_type === "box_sft"
-    ? Number(data.box_qty ?? 0)
-    : Number(data.piece_qty ?? 0);
+    ? Number(row.box_qty ?? 0)
+    : Number(row.piece_qty ?? 0);
 }
 
 /**
