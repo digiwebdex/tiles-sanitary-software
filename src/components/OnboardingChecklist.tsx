@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -23,17 +23,16 @@ export default function OnboardingChecklist({ dealerId }: OnboardingChecklistPro
   const { data: counts } = useQuery({
     queryKey: ["onboarding-counts", dealerId],
     queryFn: async () => {
-      const [products, customers, suppliers, sales] = await Promise.all([
-        supabase.from("products").select("id", { count: "exact", head: true }).eq("dealer_id", dealerId),
-        supabase.from("customers").select("id", { count: "exact", head: true }).eq("dealer_id", dealerId),
-        supabase.from("suppliers").select("id", { count: "exact", head: true }).eq("dealer_id", dealerId),
-        supabase.from("sales").select("id", { count: "exact", head: true }).eq("dealer_id", dealerId),
-      ]);
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/onboarding-counts?dealerId=${dealerId}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
       return {
-        products: products.count ?? 0,
-        customers: customers.count ?? 0,
-        suppliers: suppliers.count ?? 0,
-        sales: sales.count ?? 0,
+        products: Number(body.products ?? 0),
+        customers: Number(body.customers ?? 0),
+        suppliers: Number(body.suppliers ?? 0),
+        sales: Number(body.sales ?? 0),
       };
     },
     enabled: !!dealerId && !dismissed,
