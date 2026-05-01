@@ -3,7 +3,6 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { saleSchema, type SaleFormValues } from "@/modules/sales/saleSchema";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { pricingTierService } from "@/services/pricingTierService";
 import RateSourceBadge from "@/components/RateSourceBadge";
@@ -35,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { previewBatchAllocation } from "@/services/salesService";
 import type { FIFOAllocationResult } from "@/services/batchService";
-import { getCustomerProductReservations, type Reservation } from "@/services/reservationService";
+import { getCustomerProductReservations, listReservations, type Reservation } from "@/services/reservationService";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -130,43 +129,61 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     name: "items",
   });
 
-  const { data: products = [] } = useQuery({
+  // Phase 3U-30b: VPS GET /api/products?f.active=true (active products only).
+  const { data: products = [] } = useQuery<
+    Array<{ id: string; name: string; sku: string; unit_type: string; per_box_sft: number | null; default_sale_rate: number | null }>
+  >({
     queryKey: ["products-active", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, name, sku, unit_type, per_box_sft, default_sale_rate")
-        .eq("dealer_id", dealerId)
-        .eq("active", true);
-      return data ?? [];
+      const params = new URLSearchParams({
+        dealerId,
+        pageSize: "10000",
+        "f.active": "true",
+      });
+      const res = await vpsAuthedFetch(`/api/products?${params.toString()}`);
+      const body = await res.json().catch(() => ({} as any));
+      const rows = (body as any)?.rows ?? [];
+      return rows.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        unit_type: p.unit_type,
+        per_box_sft: p.per_box_sft ?? null,
+        default_sale_rate: p.default_sale_rate ?? null,
+      }));
     },
     enabled: !!dealerId,
   });
 
-  // Fetch dealer settings for backorder mode
-  const { data: dealerSettings } = useQuery({
-    queryKey: ["dealer-backorder-setting", dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("dealers")
-        .select("allow_backorder")
-        .eq("id", dealerId)
-        .single();
-      return data;
-    },
-    enabled: !!dealerId,
-  });
-  const backorderEnabled = (dealerSettings as any)?.allow_backorder === true;
+  // Phase 3U-30b: backorder flag now sourced from useDealerInfo() (above).
+  const backorderEnabled = dealerInfo?.allow_backorder === true;
 
   // Fetch full stock data for shortage checks (includes reserved columns)
-  const { data: fullStockData = [] } = useQuery({
+  // Phase 3U-30b: VPS GET /api/stock (paginated, includes reserved columns).
+  const { data: fullStockData = [] } = useQuery<
+    Array<{
+      product_id: string;
+      average_cost_per_unit: number | null;
+      box_qty: number | null;
+      piece_qty: number | null;
+      reserved_box_qty: number | null;
+      reserved_piece_qty: number | null;
+    }>
+  >({
     queryKey: ["stock-full-for-sale", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("stock")
-        .select("product_id, average_cost_per_unit, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty")
-        .eq("dealer_id", dealerId);
-      return data ?? [];
+      const params = new URLSearchParams({ dealerId, pageSize: "10000" });
+      const res = await vpsAuthedFetch(`/api/stock?${params.toString()}`);
+      const body = await res.json().catch(() => ({} as any));
+      const rows = (body as any)?.rows ?? [];
+      return rows.map((s: any) => ({
+        product_id: s.product_id,
+        average_cost_per_unit: s.average_cost_per_unit ?? 0,
+        box_qty: s.box_qty ?? 0,
+        piece_qty: s.piece_qty ?? 0,
+        reserved_box_qty: s.reserved_box_qty ?? 0,
+        reserved_piece_qty: s.reserved_piece_qty ?? 0,
+      }));
     },
     enabled: !!dealerId,
   });
@@ -174,15 +191,27 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
   const fullStockMap = new Map(fullStockData.map((s) => [s.product_id, s]));
 
   // Fetch customers for overdue check + tier resolution
-  const { data: allCustomers = [] } = useQuery({
+  // Phase 3U-30b: VPS GET /api/customers?f.status=active.
+  const { data: allCustomers = [] } = useQuery<
+    Array<{ id: string; name: string; credit_limit: number; max_overdue_days: number; price_tier_id: string | null }>
+  >({
     queryKey: ["customers-for-sale-overdue", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("customers")
-        .select("id, name, credit_limit, max_overdue_days, price_tier_id")
-        .eq("dealer_id", dealerId)
-        .eq("status", "active");
-      return data ?? [];
+      const params = new URLSearchParams({
+        dealerId,
+        pageSize: "10000",
+        "f.status": "active",
+      });
+      const res = await vpsAuthedFetch(`/api/customers?${params.toString()}`);
+      const body = await res.json().catch(() => ({} as any));
+      const rows = (body as any)?.rows ?? [];
+      return rows.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        credit_limit: Number(c.credit_limit ?? 0),
+        max_overdue_days: Number(c.max_overdue_days ?? 0),
+        price_tier_id: c.price_tier_id ?? null,
+      }));
     },
     enabled: !!dealerId,
   });
@@ -191,7 +220,7 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
   const matchedCustomer = allCustomers.find(
     (c) => c.name.toLowerCase() === (watchCustomerName ?? "").toLowerCase().trim()
   );
-  const customerTierId = (matchedCustomer as { price_tier_id?: string | null } | undefined)?.price_tier_id ?? null;
+  const customerTierId = matchedCustomer?.price_tier_id ?? null;
 
   const { data: overdueInfo } = useQuery({
     queryKey: ["sale-overdue-check", matchedCustomer?.id],
@@ -214,23 +243,20 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     enabled: !!matchedCustomer,
   });
 
-  // Fetch active reservations for matched customer (all products)
-  const { data: customerReservations = [] } = useQuery({
+  // Fetch active reservations for matched customer (all products).
+  // Phase 3U-30b: VPS GET /api/reservations?customer_id=&status=active.
+  const { data: customerReservations = [] } = useQuery<Reservation[]>({
     queryKey: ["sale-customer-reservations", matchedCustomer?.id, dealerId],
     queryFn: async () => {
       if (!matchedCustomer) return [];
-      const { data, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          id, product_id, batch_id, reserved_qty, fulfilled_qty, released_qty, reason, expires_at,
-          product_batches:batch_id (batch_no, shade_code, caliber)
-        `)
-        .eq("customer_id", matchedCustomer.id)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("created_at", { ascending: true });
-      if (error) return [];
-      return data ?? [];
+      try {
+        return await listReservations(dealerId, {
+          status: "active",
+          customer_id: matchedCustomer.id,
+        });
+      } catch {
+        return [];
+      }
     },
     enabled: !!matchedCustomer && reservationsEnabled,
   });
