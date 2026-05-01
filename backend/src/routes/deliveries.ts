@@ -404,4 +404,351 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3U-24: Read endpoints (list, getById, batches, deliveredQty, stock)
+// All shape-compatible with the legacy Supabase deliveryService payloads so
+// the existing UI components (DeliveryList, DeliveryDetailDialog,
+// CreateDeliveryDialog, BackorderReports) work without changes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 25;
+
+/**
+ * GET /api/deliveries
+ *   ?page=1&statusFilter=pending|in_transit|delivered|cancelled|all
+ *   ?projectId=<uuid>&siteId=<uuid>
+ *
+ * Returns: { data: Delivery[], total: number }
+ * Each delivery row is enriched with:
+ *   challans:        { challan_no } | null
+ *   sales:           { invoice_number, customers: { name, phone, address } } | null
+ *   projects:        { id, project_name, project_code } | null
+ *   project_sites:   { id, site_name, address } | null
+ *   delivery_items:  Array<{ id, quantity, products: { name, unit_type } }>
+ */
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealer(req, res);
+    if (!dealerId) return;
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const statusFilter = (req.query.statusFilter as string) || 'all';
+    const projectId = (req.query.projectId as string) || null;
+    const siteId = (req.query.siteId as string) || null;
+    const offset = (page - 1) * PAGE_SIZE;
+
+    let base = db('deliveries').where({ dealer_id: dealerId });
+    if (statusFilter && statusFilter !== 'all') base = base.where({ status: statusFilter });
+    if (projectId) base = base.where({ project_id: projectId });
+    if (siteId) base = base.where({ site_id: siteId });
+
+    const [{ count }] = await base.clone().count<{ count: string }[]>('id as count');
+    const total = Number(count ?? 0);
+
+    const rows = await base
+      .clone()
+      .orderBy('delivery_date', 'desc')
+      .limit(PAGE_SIZE)
+      .offset(offset)
+      .select('*');
+
+    if (rows.length === 0) {
+      res.json({ data: [], total });
+      return;
+    }
+
+    const ids = rows.map((r: any) => r.id);
+    const challanIds = rows.map((r: any) => r.challan_id).filter(Boolean);
+    const saleIds = rows.map((r: any) => r.sale_id).filter(Boolean);
+    const projectIds = rows.map((r: any) => r.project_id).filter(Boolean);
+    const siteIds = rows.map((r: any) => r.site_id).filter(Boolean);
+
+    const [challans, sales, projects, sites, items] = await Promise.all([
+      challanIds.length
+        ? db('challans').whereIn('id', challanIds).select('id', 'challan_no')
+        : Promise.resolve([]),
+      saleIds.length
+        ? db('sales as s')
+            .leftJoin('customers as c', 's.customer_id', 'c.id')
+            .whereIn('s.id', saleIds)
+            .select(
+              's.id',
+              's.invoice_number',
+              'c.id as customer_id',
+              'c.name as customer_name',
+              'c.phone as customer_phone',
+              'c.address as customer_address',
+            )
+        : Promise.resolve([]),
+      projectIds.length
+        ? db('projects').whereIn('id', projectIds).select('id', 'project_name', 'project_code')
+        : Promise.resolve([]),
+      siteIds.length
+        ? db('project_sites').whereIn('id', siteIds).select('id', 'site_name', 'address')
+        : Promise.resolve([]),
+      db('delivery_items as di')
+        .leftJoin('products as p', 'di.product_id', 'p.id')
+        .whereIn('di.delivery_id', ids)
+        .select(
+          'di.id',
+          'di.delivery_id',
+          'di.quantity',
+          'p.name as product_name',
+          'p.unit_type as product_unit_type',
+        ),
+    ]);
+
+    const challanMap = new Map<string, any>(challans.map((c: any) => [c.id, c]));
+    const saleMap = new Map<string, any>(
+      sales.map((s: any) => [
+        s.id,
+        {
+          id: s.id,
+          invoice_number: s.invoice_number,
+          customers: s.customer_id
+            ? { name: s.customer_name, phone: s.customer_phone, address: s.customer_address }
+            : null,
+        },
+      ]),
+    );
+    const projectMap = new Map<string, any>(projects.map((p: any) => [p.id, p]));
+    const siteMap = new Map<string, any>(sites.map((s: any) => [s.id, s]));
+    const itemsByDelivery = new Map<string, any[]>();
+    for (const it of items as any[]) {
+      const arr = itemsByDelivery.get(it.delivery_id) ?? [];
+      arr.push({
+        id: it.id,
+        quantity: Number(it.quantity),
+        products: { name: it.product_name, unit_type: it.product_unit_type },
+      });
+      itemsByDelivery.set(it.delivery_id, arr);
+    }
+
+    const data = rows.map((r: any) => ({
+      ...r,
+      challans: r.challan_id ? challanMap.get(r.challan_id) ?? null : null,
+      sales: r.sale_id ? saleMap.get(r.sale_id) ?? null : null,
+      projects: r.project_id ? projectMap.get(r.project_id) ?? null : null,
+      project_sites: r.site_id ? siteMap.get(r.site_id) ?? null : null,
+      delivery_items: itemsByDelivery.get(r.id) ?? [],
+    }));
+
+    res.json({ data, total });
+  } catch (err: any) {
+    console.error('[deliveries.list] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to list deliveries' });
+  }
+});
+
+/**
+ * GET /api/deliveries/sale/:saleId/delivered-qty
+ *   → Record<sale_item_id, qty>
+ * MUST come before /:id to avoid path collision.
+ */
+router.get('/sale/:saleId/delivered-qty', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealer(req, res);
+    if (!dealerId) return;
+    const { saleId } = req.params;
+
+    const rows = await db('deliveries as d')
+      .innerJoin('delivery_items as di', 'di.delivery_id', 'd.id')
+      .where('d.dealer_id', dealerId)
+      .where('d.sale_id', saleId)
+      .select('di.sale_item_id', 'di.quantity');
+
+    const result: Record<string, number> = {};
+    for (const r of rows as any[]) {
+      result[r.sale_item_id] = (result[r.sale_item_id] || 0) + Number(r.quantity);
+    }
+    res.json(result);
+  } catch (err: any) {
+    console.error('[deliveries.deliveredQty] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to get delivered quantities' });
+  }
+});
+
+/**
+ * GET /api/deliveries/stock?productIds=id1,id2,...
+ *   → Record<product_id, { box_qty, piece_qty }>
+ * Used by CreateDeliveryDialog to gate over-delivery client-side.
+ */
+router.get('/stock', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealer(req, res);
+    if (!dealerId) return;
+    const raw = (req.query.productIds as string) || '';
+    const productIds = raw.split(',').map(s => s.trim()).filter(Boolean);
+    if (productIds.length === 0) {
+      res.json({});
+      return;
+    }
+    const rows = await db('stock')
+      .whereIn('product_id', productIds)
+      .where({ dealer_id: dealerId })
+      .select('product_id', 'box_qty', 'piece_qty');
+    const result: Record<string, { box_qty: number; piece_qty: number }> = {};
+    for (const r of rows as any[]) {
+      result[r.product_id] = { box_qty: Number(r.box_qty), piece_qty: Number(r.piece_qty) };
+    }
+    res.json(result);
+  } catch (err: any) {
+    console.error('[deliveries.stock] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to get stock' });
+  }
+});
+
+/**
+ * GET /api/deliveries/:id/batches
+ *   → Array<delivery_item_batches row + product_batches snapshot>
+ */
+router.get('/:id/batches', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealer(req, res);
+    if (!dealerId) return;
+    const { id } = req.params;
+
+    const rows = await db('delivery_item_batches as dib')
+      .innerJoin('delivery_items as di', 'di.id', 'dib.delivery_item_id')
+      .leftJoin('product_batches as pb', 'pb.id', 'dib.batch_id')
+      .where('di.delivery_id', id)
+      .where('dib.dealer_id', dealerId)
+      .select(
+        'dib.*',
+        'pb.batch_no as pb_batch_no',
+        'pb.shade_code as pb_shade_code',
+        'pb.caliber as pb_caliber',
+        'pb.lot_no as pb_lot_no',
+      );
+
+    const data = rows.map((r: any) => {
+      const { pb_batch_no, pb_shade_code, pb_caliber, pb_lot_no, ...rest } = r;
+      return {
+        ...rest,
+        product_batches: {
+          batch_no: pb_batch_no,
+          shade_code: pb_shade_code,
+          caliber: pb_caliber,
+          lot_no: pb_lot_no,
+        },
+      };
+    });
+    res.json(data);
+  } catch (err: any) {
+    console.error('[deliveries.batches] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to get delivery batches' });
+  }
+});
+
+/**
+ * GET /api/deliveries/:id
+ *   Full detail with sales, customers, items, products, projects, sites.
+ */
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealer(req, res);
+    if (!dealerId) return;
+    const { id } = req.params;
+
+    const delivery = await db('deliveries')
+      .where({ id, dealer_id: dealerId })
+      .first();
+    if (!delivery) {
+      res.status(404).json({ error: 'Delivery not found' });
+      return;
+    }
+
+    const [challan, saleRow, project, site, deliveryItems, saleItems] = await Promise.all([
+      delivery.challan_id
+        ? db('challans').where({ id: delivery.challan_id }).first('id', 'challan_no')
+        : Promise.resolve(null),
+      delivery.sale_id
+        ? db('sales as s')
+            .leftJoin('customers as c', 's.customer_id', 'c.id')
+            .where('s.id', delivery.sale_id)
+            .first(
+              's.id',
+              's.invoice_number',
+              'c.name as customer_name',
+              'c.phone as customer_phone',
+              'c.address as customer_address',
+            )
+        : Promise.resolve(null),
+      delivery.project_id
+        ? db('projects')
+            .where({ id: delivery.project_id })
+            .first('id', 'project_name', 'project_code')
+        : Promise.resolve(null),
+      delivery.site_id
+        ? db('project_sites')
+            .where({ id: delivery.site_id })
+            .first('id', 'site_name', 'address', 'contact_person', 'contact_phone')
+        : Promise.resolve(null),
+      db('delivery_items as di')
+        .leftJoin('products as p', 'di.product_id', 'p.id')
+        .where('di.delivery_id', id)
+        .select(
+          'di.*',
+          'p.name as product_name',
+          'p.sku as product_sku',
+          'p.unit_type as product_unit_type',
+          'p.per_box_sft as product_per_box_sft',
+        ),
+      delivery.sale_id
+        ? db('sale_items as si')
+            .leftJoin('products as p', 'si.product_id', 'p.id')
+            .where('si.sale_id', delivery.sale_id)
+            .select(
+              'si.*',
+              'p.name as product_name',
+              'p.sku as product_sku',
+              'p.unit_type as product_unit_type',
+              'p.per_box_sft as product_per_box_sft',
+            )
+        : Promise.resolve([]),
+    ]);
+
+    const mapItem = (it: any) => {
+      const { product_name, product_sku, product_unit_type, product_per_box_sft, ...rest } = it;
+      return {
+        ...rest,
+        products: {
+          name: product_name,
+          sku: product_sku,
+          unit_type: product_unit_type,
+          per_box_sft: product_per_box_sft,
+        },
+      };
+    };
+
+    const result = {
+      ...delivery,
+      challans: challan ?? null,
+      sales: saleRow
+        ? {
+            id: saleRow.id,
+            invoice_number: saleRow.invoice_number,
+            customers: saleRow.customer_name
+              ? {
+                  name: saleRow.customer_name,
+                  phone: saleRow.customer_phone,
+                  address: saleRow.customer_address,
+                }
+              : null,
+            sale_items: (saleItems as any[]).map(mapItem),
+          }
+        : null,
+      projects: project ?? null,
+      project_sites: site ?? null,
+      delivery_items: (deliveryItems as any[]).map(mapItem),
+    };
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('[deliveries.getById] error', err);
+    res.status(500).json({ error: err?.message || 'Failed to get delivery' });
+  }
+});
+
 export default router;
+
