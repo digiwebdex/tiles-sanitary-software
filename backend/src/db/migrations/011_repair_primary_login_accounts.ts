@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 const SUPER_ADMIN_EMAIL = 'bditengineer@gmail.com';
 const SUPER_ADMIN_PASSWORD = 'KeyaIq11151000@#';
 const DEALER_ADMIN_EMAIL = 'dealer@tileserp.com';
-const DEALER_ADMIN_PASSWORD = 'admin123456';
+const DEALER_ADMIN_PASSWORD = 'Dealer@12345';
 
 async function upsertUser(
   knex: Knex,
