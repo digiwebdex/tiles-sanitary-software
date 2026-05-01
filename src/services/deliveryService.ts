@@ -1,4 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
 import { assertDealerId } from "@/lib/tenancy";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
@@ -31,8 +30,6 @@ export interface CreateDeliveryInput {
   items?: DeliveryItemInput[];
 }
 
-const PAGE_SIZE = 25;
-
 export const deliveryService = {
   async list(
     dealerId: string,
@@ -40,30 +37,48 @@ export const deliveryService = {
     statusFilter?: string,
     opts: { projectId?: string | null; siteId?: string | null } = {},
   ) {
-    const from = (page - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
+    const params = new URLSearchParams({ dealerId, page: String(page) });
+    if (statusFilter) params.set("statusFilter", statusFilter);
+    if (opts.projectId) params.set("projectId", opts.projectId);
+    if (opts.siteId) params.set("siteId", opts.siteId);
+    const body = await vpsRequest<{ data: any[]; total: number }>(
+      `/api/deliveries?${params.toString()}`,
+    );
+    return { data: body.data ?? [], total: body.total ?? 0 };
+  },
 
-    let query = supabase
-      .from("deliveries")
-      .select("*, challans(challan_no), sales(invoice_number, customers(name, phone, address)), projects:projects(id, project_name, project_code), project_sites:project_sites(id, site_name, address), delivery_items(id, quantity, products(name, unit_type))", { count: "exact" })
-      .eq("dealer_id", dealerId)
-      .order("delivery_date", { ascending: false })
-      .range(from, to);
+  async getById(id: string, dealerId: string) {
+    const params = new URLSearchParams({ dealerId });
+    return await vpsRequest<any>(`/api/deliveries/${id}?${params.toString()}`);
+  },
 
-    if (statusFilter && statusFilter !== "all") {
-      query = query.eq("status", statusFilter);
-    }
-    if (opts.projectId) query = query.eq("project_id", opts.projectId);
-    if (opts.siteId) query = query.eq("site_id", opts.siteId);
+  async getDeliveryBatches(deliveryId: string, dealerId: string) {
+    const params = new URLSearchParams({ dealerId });
+    return await vpsRequest<any[]>(
+      `/api/deliveries/${deliveryId}/batches?${params.toString()}`,
+    );
+  },
 
-    const { data, error, count } = await query;
-    if (error) throw new Error(error.message);
-    return { data: data ?? [], total: count ?? 0 };
+  async getDeliveredQtyBySale(saleId: string, dealerId: string) {
+    const params = new URLSearchParams({ dealerId });
+    return await vpsRequest<Record<string, number>>(
+      `/api/deliveries/sale/${saleId}/delivered-qty?${params.toString()}`,
+    );
+  },
+
+  async getStockForProducts(productIds: string[], dealerId: string) {
+    if (productIds.length === 0) return {};
+    const params = new URLSearchParams({
+      dealerId,
+      productIds: productIds.join(","),
+    });
+    return await vpsRequest<Record<string, { box_qty: number; piece_qty: number }>>(
+      `/api/deliveries/stock?${params.toString()}`,
+    );
   },
 
   async create(input: CreateDeliveryInput) {
     await assertDealerId(input.dealer_id);
-
     return await vpsRequest<any>(`/api/deliveries`, {
       method: "POST",
       body: JSON.stringify({
@@ -87,84 +102,4 @@ export const deliveryService = {
       body: JSON.stringify({ status, dealer_id: dealerId }),
     });
   },
-
-  async getById(id: string, dealerId: string) {
-    const { data, error } = await supabase
-      .from("deliveries")
-      .select("*, challans(challan_no), delivery_items(*, products(name, sku, unit_type, per_box_sft)), sales(invoice_number, sale_items(*, products(name, sku, unit_type, per_box_sft)), customers(name, phone, address)), projects:projects(id, project_name, project_code), project_sites:project_sites(id, site_name, address, contact_person, contact_phone)")
-      .eq("id", id)
-      .eq("dealer_id", dealerId)
-      .single();
-    if (error) throw new Error(error.message);
-    return data;
-  },
-
-  /**
-   * Get batch breakdown for delivery items
-   */
-  async getDeliveryBatches(deliveryId: string, dealerId: string) {
-    const { data, error } = await supabase
-      .from("delivery_item_batches")
-      .select("*, product_batches(batch_no, shade_code, caliber, lot_no)")
-      .eq("dealer_id", dealerId);
-    if (error) throw new Error(error.message);
-
-    // Filter by delivery_item_ids belonging to this delivery
-    const { data: diIds } = await supabase
-      .from("delivery_items")
-      .select("id")
-      .eq("delivery_id", deliveryId)
-      .eq("dealer_id", dealerId);
-
-    const idSet = new Set((diIds ?? []).map(d => d.id));
-    return (data ?? []).filter((dib: any) => idSet.has(dib.delivery_item_id));
-  },
-
-  /**
-   * Get total delivered quantities per sale_item for a given sale
-   */
-  async getDeliveredQtyBySale(saleId: string, dealerId: string) {
-    const { data: deliveries, error: dErr } = await supabase
-      .from("deliveries")
-      .select("id")
-      .eq("sale_id", saleId)
-      .eq("dealer_id", dealerId);
-    if (dErr) throw new Error(dErr.message);
-    if (!deliveries || deliveries.length === 0) return {};
-
-    const deliveryIds = deliveries.map(d => d.id);
-
-    const { data: items, error: iErr } = await supabase
-      .from("delivery_items" as any)
-      .select("sale_item_id, quantity")
-      .in("delivery_id", deliveryIds);
-    if (iErr) throw new Error(iErr.message);
-
-    const result: Record<string, number> = {};
-    for (const item of (items as any[]) ?? []) {
-      const key = item.sale_item_id;
-      result[key] = (result[key] || 0) + Number(item.quantity);
-    }
-    return result;
-  },
-
-  /**
-   * Get available stock for products
-   */
-  async getStockForProducts(productIds: string[], dealerId: string) {
-    const { data, error } = await supabase
-      .from("stock")
-      .select("product_id, box_qty, piece_qty")
-      .in("product_id", productIds)
-      .eq("dealer_id", dealerId);
-    if (error) throw new Error(error.message);
-
-    const result: Record<string, { box_qty: number; piece_qty: number }> = {};
-    for (const s of data ?? []) {
-      result[s.product_id] = { box_qty: Number(s.box_qty), piece_qty: Number(s.piece_qty) };
-    }
-    return result;
-  },
-
 };
-
