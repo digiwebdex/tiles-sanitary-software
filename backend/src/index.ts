@@ -42,6 +42,7 @@ import adminStatsRoutes from './routes/adminStats';
 import importsRoutes from './routes/imports';
 import creditRoutes from './routes/credit';
 import pricingTiersRoutes from './routes/pricingTiers';
+import commissionsRoutes from './routes/commissions';
 import path from 'path';
 
 const app = express();
@@ -161,6 +162,7 @@ app.use('/api/admin', adminStatsRoutes);
 app.use('/api/imports', importsRoutes);
 app.use('/api/credit', creditRoutes);
 app.use('/api/pricing-tiers', pricingTiersRoutes);
+app.use('/api/commissions', commissionsRoutes);
 
 // Static file serving for uploaded product images, etc.
 app.use(
