@@ -226,7 +226,7 @@ router.post('/followups', async (req: Request, res: Response) => {
         customer_id,
         note: note.trim(),
         status: status || 'no_answer',
-        created_by: req.user?.id ?? null,
+        created_by: req.user?.userId ?? null,
         followup_date: todayStr,
       })
       .returning('*');

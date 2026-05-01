@@ -258,7 +258,7 @@ router.post('/', async (req: Request, res: Response) => {
         notes: trimOrNull(input.notes),
         start_date: input.start_date || null,
         expected_end_date: input.expected_end_date || null,
-        created_by: req.user?.id ?? null,
+        created_by: req.user?.userId ?? null,
       })
       .returning('*');
 
@@ -403,7 +403,7 @@ router.post('/:id/sites', async (req: Request, res: Response) => {
         contact_phone: trimOrNull(input.contact_phone),
         notes: trimOrNull(input.notes),
         status: input.status ?? 'active',
-        created_by: req.user?.id ?? null,
+        created_by: req.user?.userId ?? null,
       })
       .returning('*');
 
