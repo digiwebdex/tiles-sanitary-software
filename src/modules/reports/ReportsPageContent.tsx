@@ -960,44 +960,16 @@ function RetailerSalesReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-customers-v2", dealerId, page, search],
     queryFn: async () => {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      let query = supabase
-        .from("customers")
-        .select("id, name, phone, email, opening_balance", { count: "exact" })
-        .eq("dealer_id", dealerId)
-        .order("name")
-        .range(from, to);
-
-      if (search?.trim()) {
-        query = query.or(`name.ilike.%${search.trim()}%,phone.ilike.%${search.trim()}%`);
-      }
-
-      const { data: customers, error, count } = await query;
-      if (error) throw new Error(error.message);
-
-      // Fetch sales aggregates for these customers
-      const customerIds = (customers ?? []).map((c: any) => c.id);
-      let salesMap: Record<string, { count: number; totalAmount: number; paidAmount: number }> = {};
-
-      if (customerIds.length > 0) {
-        const { data: sales } = await supabase
-          .from("sales")
-          .select("customer_id, total_amount, paid_amount")
-          .eq("dealer_id", dealerId)
-          .in("customer_id", customerIds);
-
-        for (const s of sales ?? []) {
-          const cid = (s as any).customer_id;
-          if (!salesMap[cid]) salesMap[cid] = { count: 0, totalAmount: 0, paidAmount: 0 };
-          salesMap[cid].count += 1;
-          salesMap[cid].totalAmount += Number((s as any).total_amount);
-          salesMap[cid].paidAmount += Number((s as any).paid_amount);
-        }
-      }
-
-      return { customers: customers ?? [], total: count ?? 0, salesMap };
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const res = await vpsAuthedFetch(`/api/reports/page/customers-report?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return {
+        customers: body.customers ?? [],
+        total: body.total ?? 0,
+        salesMap: (body.salesMap ?? {}) as Record<string, { count: number; totalAmount: number; paidAmount: number }>,
+      };
     },
   });
 
