@@ -1,19 +1,21 @@
+/**
+ * Batch Service — VPS-era reduced surface (Phase 3U-26).
+ *
+ * Mutation wrappers removed (now performed atomically inside VPS routes):
+ *   - findOrCreateBatch        → handled by POST /api/purchases (Phase 3K)
+ *   - executeSaleAllocation    → handled by POST /api/sales (Phase 3L) via
+ *                                allocate_sale_batches RPC server-side
+ *   - restoreBatchAllocations  → handled by PUT/DELETE /api/sales/:id (3M)
+ *                                via restore_sale_batches RPC server-side
+ *   - deductStockUnbatched     → handled inside VPS sale create / adjust
+ *
+ * Read-only helpers retained:
+ *   - planFIFOAllocation: client-side preview used by SaleForm to surface
+ *     mixed shade/caliber warnings before submitting. Reads product_batches
+ *     and stock_reservations under dealer-scoped RLS — safe.
+ *   - getActiveBatches / getAllBatches: legacy listing helpers.
+ */
 import { supabase } from "@/integrations/supabase/client";
-
-export interface BatchInput {
-  dealer_id: string;
-  product_id: string;
-  batch_no: string;
-  lot_no?: string;
-  shade_code?: string;
-  caliber?: string;
-  notes?: string;
-}
-
-export interface BatchStockResult {
-  batch_id: string;
-  is_new: boolean;
-}
 
 export interface BatchAllocation {
   batch_id: string;
@@ -35,7 +37,8 @@ export interface FIFOAllocationResult {
 
 /**
  * Generate a collision-safe auto batch number.
- * Format: AUTO-YYYYMMDD-XXXXX (random 5-char alphanumeric suffix)
+ * Format: AUTO-YYYYMMDD-XXXXX (random 5-char alphanumeric suffix).
+ * Kept exported for legacy form helpers; safe to call from anywhere.
  */
 function generateAutoBatchNo(): string {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -47,134 +50,25 @@ function generateAutoBatchNo(): string {
   return `AUTO-${date}-${suffix}`;
 }
 
-/**
- * Find or create a product batch.
- * Merge rule: same product + batch_no + shade + caliber + lot + dealer → top-up existing batch.
- * Different shade/caliber/lot → new batch.
- *
- * NULL-SAFE MATCHING:
- * - null and empty string ("") are treated as equivalent for shade_code, caliber, lot_no
- * - This prevents duplicate batch rows for the same logical identity
- */
 export const batchService = {
   generateAutoBatchNo,
 
-  async findOrCreateBatch(
-    input: BatchInput,
-    quantity: number,
-    unitType: "box_sft" | "piece",
-    perBoxSft: number | null
-  ): Promise<BatchStockResult> {
-    const shade = input.shade_code?.trim() || null;
-    const caliber = input.caliber?.trim() || null;
-    const lotNo = input.lot_no?.trim() || null;
-    const batchNo = input.batch_no.trim();
-
-    // Build query with null-safe matching
-    let query = supabase
-      .from("product_batches")
-      .select("id, box_qty, piece_qty, sft_qty, status")
-      .eq("dealer_id", input.dealer_id)
-      .eq("product_id", input.product_id)
-      .eq("batch_no", batchNo);
-
-    // Null-safe: if value is null, match IS NULL; if value exists, match exact
-    if (shade !== null) {
-      query = query.eq("shade_code", shade);
-    } else {
-      query = query.is("shade_code", null);
-    }
-
-    if (caliber !== null) {
-      query = query.eq("caliber", caliber);
-    } else {
-      query = query.is("caliber", null);
-    }
-
-    if (lotNo !== null) {
-      query = query.eq("lot_no", lotNo);
-    } else {
-      query = query.is("lot_no", null);
-    }
-
-    const { data: existing } = await query.limit(1);
-
-    if (existing && existing.length > 0) {
-      // Top-up existing batch (reactivates if depleted)
-      const batch = existing[0];
-      const updates = this._calcBatchQtyAdd(batch, quantity, unitType, perBoxSft);
-
-      const { error } = await supabase
-        .from("product_batches")
-        .update(updates)
-        .eq("id", batch.id);
-
-      if (error) throw new Error(`Batch top-up failed: ${error.message}`);
-
-      return { batch_id: batch.id, is_new: false };
-    }
-
-    // Create new batch
-    const newBatchData: any = {
-      dealer_id: input.dealer_id,
-      product_id: input.product_id,
-      batch_no: batchNo,
-      lot_no: lotNo,
-      shade_code: shade,
-      caliber: caliber,
-      notes: input.notes?.trim() || null,
-      box_qty: 0,
-      piece_qty: 0,
-      sft_qty: 0,
-      status: "active",
-    };
-
-    if (unitType === "box_sft") {
-      newBatchData.box_qty = quantity;
-      newBatchData.sft_qty = quantity * (perBoxSft ?? 0);
-    } else {
-      newBatchData.piece_qty = quantity;
-    }
-
-    const { data: created, error: cErr } = await supabase
-      .from("product_batches")
-      .insert(newBatchData)
-      .select("id")
-      .single();
-
-    if (cErr) throw new Error(`Batch creation failed: ${cErr.message}`);
-
-    return { batch_id: created!.id, is_new: true };
-  },
-
   /**
-   * FIFO allocation: allocate requested qty from oldest active batches.
-   * Returns allocation plan without modifying data (preview only).
-   */
-  /**
-   * FIFO allocation: allocate requested qty from oldest active batches.
-   * Returns allocation plan without modifying data (preview only).
-   * 
-   * RESERVATION ENFORCEMENT:
-   * Free qty = batch total - batch reserved. Only free qty is available
-   * for FIFO allocation. Reserved stock is protected for the holding customer.
-   * 
-   * If skipReservedForCustomer is provided, that customer's reservations
-   * are excluded from the "reserved" deduction (they own those holds).
+   * FIFO allocation preview (read-only).
+   *
+   * Free qty = batch total – reserved (+ caller's own reservations if
+   * skipReservedForCustomer is set). Returns an allocation plan without
+   * mutating any data.
    */
   async planFIFOAllocation(
     productId: string,
     dealerId: string,
     requestedQty: number,
     unitType: "box_sft" | "piece",
-    skipReservedForCustomer?: string
+    skipReservedForCustomer?: string,
   ): Promise<FIFOAllocationResult> {
     const batches = await this.getActiveBatches(productId, dealerId);
 
-    // LEGACY STOCK RULE:
-    // If zero active batches exist for this product, return empty allocations.
-    // The caller (salesService) will fall back to aggregate-only stock deduction
-    // via deduct_stock_unbatched RPC. No batch records are created retroactively.
     if (batches.length === 0) {
       return {
         allocations: [],
@@ -186,8 +80,6 @@ export const batchService = {
       };
     }
 
-    // If we need to account for customer-specific reservation offsets,
-    // fetch active reservations for this product
     let batchReservationMap = new Map<string, number>();
     if (skipReservedForCustomer) {
       const { data: reservations } = await supabase
@@ -197,13 +89,13 @@ export const batchService = {
         .eq("dealer_id", dealerId)
         .eq("customer_id", skipReservedForCustomer)
         .eq("status", "active");
-      
+
       for (const r of reservations ?? []) {
         if (!r.batch_id) continue;
         const remaining = Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
         batchReservationMap.set(
           r.batch_id,
-          (batchReservationMap.get(r.batch_id) ?? 0) + remaining
+          (batchReservationMap.get(r.batch_id) ?? 0) + remaining,
         );
       }
     }
@@ -224,12 +116,8 @@ export const batchService = {
         ? Number((batch as any).reserved_box_qty ?? 0)
         : Number((batch as any).reserved_piece_qty ?? 0);
 
-      // Customer's own reservation on this batch — treat as available to them
       const customerReservedOnBatch = batchReservationMap.get(batch.id) ?? 0;
-
-      // Free qty = total - reserved + customer's own holds (they can use their own reserved stock)
       const freeQty = totalQty - reservedQty + customerReservedOnBatch;
-
       if (freeQty <= 0) continue;
 
       const allocateQty = Math.min(remaining, freeQty);
@@ -258,87 +146,6 @@ export const batchService = {
     };
   },
 
-  /**
-   * Execute batch allocation ATOMICALLY via server-side DB function.
-   * Transaction boundary: the allocate_sale_batches RPC.
-   * Inside: batch deduction (FOR UPDATE lock) → sale_item_batches insert → aggregate stock update → sale_item.allocated_qty update.
-   * On failure: entire transaction rolls back — no partial state.
-   */
-  async executeSaleAllocation(
-    saleItemId: string,
-    dealerId: string,
-    productId: string,
-    allocations: BatchAllocation[],
-    unitType: "box_sft" | "piece",
-    perBoxSft: number | null
-  ): Promise<void> {
-    if (allocations.length === 0) return;
-
-    const { error } = await supabase.rpc("allocate_sale_batches", {
-      _dealer_id: dealerId,
-      _sale_item_id: saleItemId,
-      _product_id: productId,
-      _unit_type: unitType,
-      _per_box_sft: perBoxSft ?? 0,
-      _allocations: allocations.map(a => ({
-        batch_id: a.batch_id,
-        allocated_qty: a.allocated_qty,
-      })),
-    });
-
-    if (error) throw new Error(`Atomic batch allocation failed: ${error.message}`);
-  },
-
-  /**
-   * Restore batch quantities ATOMICALLY via server-side DB function.
-   * Used for sale cancellation/edit reversal.
-   * Transaction: restore_sale_batches RPC.
-   * Inside: batch qty restore (FOR UPDATE lock) → delete sale_item_batches → aggregate stock restore.
-   * On failure: entire transaction rolls back.
-   */
-  async restoreBatchAllocations(
-    saleItemId: string,
-    productId: string,
-    dealerId: string,
-    unitType: "box_sft" | "piece",
-    perBoxSft: number | null
-  ): Promise<void> {
-    const { error } = await supabase.rpc("restore_sale_batches", {
-      _sale_item_id: saleItemId,
-      _product_id: productId,
-      _dealer_id: dealerId,
-      _unit_type: unitType,
-      _per_box_sft: perBoxSft ?? 0,
-    });
-
-    if (error) throw new Error(`Atomic batch restoration failed: ${error.message}`);
-  },
-
-  /**
-   * Deduct aggregate stock only (no batch involvement).
-   * Used for legacy/unbatched products.
-   */
-  async deductStockUnbatched(
-    productId: string,
-    dealerId: string,
-    quantity: number,
-    unitType: "box_sft" | "piece",
-    perBoxSft: number | null
-  ): Promise<void> {
-    const { error } = await supabase.rpc("deduct_stock_unbatched", {
-      _product_id: productId,
-      _dealer_id: dealerId,
-      _unit_type: unitType,
-      _per_box_sft: perBoxSft ?? 0,
-      _quantity: quantity,
-    });
-
-    if (error) throw new Error(`Unbatched stock deduction failed: ${error.message}`);
-  },
-
-  /**
-   * Get all active batches for a product, ordered oldest first (FIFO).
-   */
   async getActiveBatches(productId: string, dealerId: string) {
     const { data, error } = await supabase
       .from("product_batches")
@@ -352,9 +159,6 @@ export const batchService = {
     return data ?? [];
   },
 
-  /**
-   * Get all batches (including depleted) for a product.
-   */
   async getAllBatches(productId: string, dealerId: string) {
     const { data, error } = await supabase
       .from("product_batches")
@@ -365,25 +169,5 @@ export const batchService = {
 
     if (error) throw new Error(`Failed to fetch batches: ${error.message}`);
     return data ?? [];
-  },
-
-  _calcBatchQtyAdd(
-    current: { box_qty: number; piece_qty: number; sft_qty: number },
-    quantity: number,
-    unitType: "box_sft" | "piece",
-    perBoxSft: number | null
-  ) {
-    if (unitType === "box_sft") {
-      const newBox = Number(current.box_qty) + quantity;
-      return {
-        box_qty: newBox,
-        sft_qty: newBox * (perBoxSft ?? 0),
-        status: "active",
-      };
-    }
-    return {
-      piece_qty: Number(current.piece_qty) + quantity,
-      status: "active",
-    };
   },
 };
