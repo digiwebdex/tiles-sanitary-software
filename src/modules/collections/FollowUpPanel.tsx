@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
-import { useAuth } from "@/contexts/AuthContext";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,7 +38,6 @@ interface FollowUpPanelProps {
 }
 
 export default function FollowUpPanel({ open, onClose, customerId, customerName, dealerId }: FollowUpPanelProps) {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [note, setNote] = useState("");
   const [status, setStatus] = useState("no_answer");
