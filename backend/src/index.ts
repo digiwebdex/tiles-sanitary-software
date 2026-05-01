@@ -39,6 +39,7 @@ import adjustmentsRoutes from './routes/adjustments';
 import reservationsRoutes from './routes/reservations';
 import approvalsRoutes from './routes/approvals';
 import adminStatsRoutes from './routes/adminStats';
+import importsRoutes from './routes/imports';
 import path from 'path';
 
 const app = express();
@@ -155,6 +156,7 @@ app.use('/api/adjustments', adjustmentsRoutes);
 app.use('/api/reservations', reservationsRoutes);
 app.use('/api/approvals', approvalsRoutes);
 app.use('/api/admin', adminStatsRoutes);
+app.use('/api/imports', importsRoutes);
 
 // Static file serving for uploaded product images, etc.
 app.use(
