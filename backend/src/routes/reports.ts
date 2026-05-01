@@ -1047,4 +1047,209 @@ router.get('/sale-overdue-check', async (req, res) => {
   }
 });
 
+// ─── Reserved Stock report (full join) ────────────────────────────────────
+router.get('/reservations-active', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('stock_reservations as sr')
+      .leftJoin('products as p', 'p.id', 'sr.product_id')
+      .leftJoin('customers as c', 'c.id', 'sr.customer_id')
+      .leftJoin('product_batches as pb', 'pb.id', 'sr.batch_id')
+      .where({ 'sr.dealer_id': dealerId, 'sr.status': 'active' })
+      .orderBy('sr.created_at', 'desc')
+      .select(
+        'sr.id',
+        'sr.reserved_qty',
+        'sr.fulfilled_qty',
+        'sr.released_qty',
+        'sr.status',
+        'sr.expires_at',
+        'sr.reason',
+        'sr.created_at',
+        'p.name as product_name',
+        'p.sku as product_sku',
+        'p.unit_type as product_unit_type',
+        'p.default_sale_rate as product_default_sale_rate',
+        'c.id as customer_id',
+        'c.name as customer_name',
+        'pb.batch_no',
+        'pb.shade_code',
+        'pb.caliber',
+      );
+    res.json({
+      rows: (rows as any[]).map((r) => ({
+        id: r.id,
+        reserved_qty: r.reserved_qty,
+        fulfilled_qty: r.fulfilled_qty,
+        released_qty: r.released_qty,
+        status: r.status,
+        expires_at: r.expires_at,
+        reason: r.reason,
+        created_at: r.created_at,
+        products: {
+          name: r.product_name,
+          sku: r.product_sku,
+          unit_type: r.product_unit_type,
+          default_sale_rate: r.product_default_sale_rate,
+        },
+        customers: r.customer_id ? { id: r.customer_id, name: r.customer_name } : null,
+        product_batches: r.batch_no
+          ? { batch_no: r.batch_no, shade_code: r.shade_code, caliber: r.caliber }
+          : null,
+      })),
+    });
+  } catch (err: any) {
+    console.error('[reports.reservations-active]', err.message);
+    res.status(500).json({ error: 'Failed to load reservations' });
+  }
+});
+
+router.get('/reservations-expiring', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const days = Math.max(1, parseInt((req.query.days as string) || '7', 10));
+  const cutoff = new Date(Date.now() + days * 86400000).toISOString();
+  try {
+    const rows = await db('stock_reservations as sr')
+      .leftJoin('products as p', 'p.id', 'sr.product_id')
+      .leftJoin('customers as c', 'c.id', 'sr.customer_id')
+      .leftJoin('product_batches as pb', 'pb.id', 'sr.batch_id')
+      .where({ 'sr.dealer_id': dealerId, 'sr.status': 'active' })
+      .whereNotNull('sr.expires_at')
+      .andWhere('sr.expires_at', '<=', cutoff)
+      .orderBy('sr.expires_at', 'asc')
+      .select(
+        'sr.id',
+        'sr.reserved_qty',
+        'sr.fulfilled_qty',
+        'sr.released_qty',
+        'sr.expires_at',
+        'sr.reason',
+        'p.name as product_name',
+        'p.sku as product_sku',
+        'c.name as customer_name',
+        'pb.batch_no',
+        'pb.shade_code',
+      );
+    res.json({
+      rows: (rows as any[]).map((r) => ({
+        id: r.id,
+        reserved_qty: r.reserved_qty,
+        fulfilled_qty: r.fulfilled_qty,
+        released_qty: r.released_qty,
+        expires_at: r.expires_at,
+        reason: r.reason,
+        products: { name: r.product_name, sku: r.product_sku },
+        customers: { name: r.customer_name },
+        product_batches: r.batch_no
+          ? { batch_no: r.batch_no, shade_code: r.shade_code }
+          : null,
+      })),
+    });
+  } catch (err: any) {
+    console.error('[reports.reservations-expiring]', err.message);
+    res.status(500).json({ error: 'Failed to load expiring reservations' });
+  }
+});
+
+router.get('/reservations-by-customer', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('stock_reservations as sr')
+      .leftJoin('customers as c', 'c.id', 'sr.customer_id')
+      .leftJoin('products as p', 'p.id', 'sr.product_id')
+      .where({ 'sr.dealer_id': dealerId, 'sr.status': 'active' })
+      .select(
+        'sr.reserved_qty',
+        'sr.fulfilled_qty',
+        'sr.released_qty',
+        'c.id as customer_id',
+        'c.name as customer_name',
+        'p.default_sale_rate as product_default_sale_rate',
+      );
+    const custMap: Record<
+      string,
+      { name: string; holds: number; totalQty: number; totalValue: number }
+    > = {};
+    for (const r of rows as any[]) {
+      const cid = r.customer_id;
+      if (!cid) continue;
+      const remaining =
+        Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
+      const rate = Number(r.product_default_sale_rate ?? 0);
+      if (!custMap[cid]) {
+        custMap[cid] = { name: r.customer_name, holds: 0, totalQty: 0, totalValue: 0 };
+      }
+      custMap[cid].holds += 1;
+      custMap[cid].totalQty += remaining;
+      custMap[cid].totalValue += remaining * rate;
+    }
+    res.json({
+      rows: Object.values(custMap).sort((a, b) => b.totalValue - a.totalValue),
+    });
+  } catch (err: any) {
+    console.error('[reports.reservations-by-customer]', err.message);
+    res.status(500).json({ error: 'Failed to load customer reservations' });
+  }
+});
+
+router.get('/reservations-by-batch', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('stock_reservations as sr')
+      .leftJoin('products as p', 'p.id', 'sr.product_id')
+      .leftJoin('customers as c', 'c.id', 'sr.customer_id')
+      .leftJoin('product_batches as pb', 'pb.id', 'sr.batch_id')
+      .where({ 'sr.dealer_id': dealerId, 'sr.status': 'active' })
+      .whereNotNull('sr.batch_id')
+      .orderBy('sr.created_at', 'desc')
+      .select(
+        'sr.reserved_qty',
+        'sr.fulfilled_qty',
+        'sr.released_qty',
+        'p.name as product_name',
+        'p.sku as product_sku',
+        'p.unit_type as product_unit_type',
+        'c.name as customer_name',
+        'pb.id as batch_id',
+        'pb.batch_no',
+        'pb.shade_code',
+        'pb.caliber',
+        'pb.box_qty as batch_box_qty',
+        'pb.piece_qty as batch_piece_qty',
+        'pb.reserved_box_qty as batch_reserved_box_qty',
+        'pb.reserved_piece_qty as batch_reserved_piece_qty',
+      );
+    res.json({
+      rows: (rows as any[]).map((r) => ({
+        reserved_qty: r.reserved_qty,
+        fulfilled_qty: r.fulfilled_qty,
+        released_qty: r.released_qty,
+        products: {
+          name: r.product_name,
+          sku: r.product_sku,
+          unit_type: r.product_unit_type,
+        },
+        customers: { name: r.customer_name },
+        product_batches: {
+          id: r.batch_id,
+          batch_no: r.batch_no,
+          shade_code: r.shade_code,
+          caliber: r.caliber,
+          box_qty: r.batch_box_qty,
+          piece_qty: r.batch_piece_qty,
+          reserved_box_qty: r.batch_reserved_box_qty,
+          reserved_piece_qty: r.batch_reserved_piece_qty,
+        },
+      })),
+    });
+  } catch (err: any) {
+    console.error('[reports.reservations-by-batch]', err.message);
+    res.status(500).json({ error: 'Failed to load batch reservations' });
+  }
+});
+
 export default router;
