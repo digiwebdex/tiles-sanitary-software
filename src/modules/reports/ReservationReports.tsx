@@ -203,22 +203,12 @@ export function ExpiringReservationsReport({ dealerId }: { dealerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-expiring-reservations", dealerId, days],
     queryFn: async () => {
-      const cutoff = new Date(Date.now() + Number(days) * 86400000).toISOString();
-      const { data, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          id, reserved_qty, fulfilled_qty, released_qty, expires_at, reason,
-          products:product_id (name, sku),
-          customers:customer_id (name),
-          product_batches:batch_id (batch_no, shade_code)
-        `)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .not("expires_at", "is", null)
-        .lte("expires_at", cutoff)
-        .order("expires_at", { ascending: true });
-      if (error) throw new Error(error.message);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/reports/reservations-expiring?dealerId=${dealerId}&days=${Number(days)}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as any[];
     },
   });
 
