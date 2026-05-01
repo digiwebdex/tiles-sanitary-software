@@ -93,7 +93,7 @@ const CampaignGiftList = () => {
       await campaignGiftService.update(payOpen.id, {
         paid_amount: newPaid,
         payment_status: status,
-      });
+      }, dealerId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-gifts"] });
@@ -105,7 +105,7 @@ const CampaignGiftList = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => campaignGiftService.delete(id),
+    mutationFn: (id: string) => campaignGiftService.delete(id, dealerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-gifts"] });
       toast.success("Gift deleted");
