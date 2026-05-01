@@ -165,52 +165,51 @@ const DealerManagement = () => {
       if (!form.name.trim()) throw new Error("Dealer name is required");
 
       if (editId) {
-        const { error } = await supabase
-          .from("dealers")
-          .update({ name: form.name, phone: form.phone || null, address: form.address || null })
-          .eq("id", editId);
-        if (error) throw new Error(error.message);
+        const res = await vpsAuthedFetch(`/api/dealers/${editId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: form.name,
+            phone: form.phone || null,
+            address: form.address || null,
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || `Update failed (${res.status})`);
         return;
       }
 
-      // 1. Create dealer
-      const { data: newDealer, error: dealerErr } = await supabase
-        .from("dealers")
-        .insert({ name: form.name, phone: form.phone || null, address: form.address || null })
-        .select("id")
-        .single();
-      if (dealerErr) throw new Error(dealerErr.message);
+      // Atomic: create dealer + admin + subscription in one VPS call
+      const payload: any = {
+        name: form.name,
+        phone: form.phone || null,
+        address: form.address || null,
+      };
 
-      // 2. Create dealer_admin user
       if (createAdmin) {
         if (!adminForm.name.trim()) throw new Error("Admin name is required");
         if (!adminForm.email.trim()) throw new Error("Admin email is required");
         if (adminForm.password.length < 6) throw new Error("Password must be at least 6 characters");
-
-        const res = await supabase.functions.invoke("create-dealer-user", {
-          body: {
-            name: adminForm.name.trim(),
-            email: adminForm.email.trim().toLowerCase(),
-            password: adminForm.password,
-            dealer_id: newDealer.id,
-            role: "dealer_admin",
-          },
-        });
-        if (res.error) throw new Error(res.error.message || "Failed to create admin user");
-        if (res.data?.error) throw new Error(res.data.error);
+        payload.admin = {
+          name: adminForm.name.trim(),
+          email: adminForm.email.trim().toLowerCase(),
+          password: adminForm.password,
+        };
       }
 
-      // 3. Assign plan / create subscription
       if (assignPlan && subForm.plan_id) {
-        const { error: subErr } = await supabase.from("subscriptions").insert({
-          dealer_id: newDealer.id,
+        payload.subscription = {
           plan_id: subForm.plan_id,
           start_date: subForm.start_date || todayStr,
           end_date: subForm.end_date || null,
-          status: "active" as any,
-        });
-        if (subErr) throw new Error("Dealer created but subscription failed: " + subErr.message);
+        };
       }
+
+      const res = await vpsAuthedFetch("/api/dealers", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Create failed (${res.status})`);
     },
     onSuccess: () => {
       const parts = [];
@@ -236,17 +235,17 @@ const DealerManagement = () => {
       if (!addUserForm.email.trim()) throw new Error("Email is required");
       if (addUserForm.password.length < 6) throw new Error("Password must be at least 6 characters");
 
-      const res = await supabase.functions.invoke("create-dealer-user", {
-        body: {
+      const res = await vpsAuthedFetch(`/api/dealers/${addUserDealerId}/users`, {
+        method: "POST",
+        body: JSON.stringify({
           name: addUserForm.name.trim(),
           email: addUserForm.email.trim().toLowerCase(),
           password: addUserForm.password,
-          dealer_id: addUserDealerId,
           role: "dealer_admin",
-        },
+        }),
       });
-      if (res.error) throw new Error(res.error.message || "Failed to create user");
-      if (res.data?.error) throw new Error(res.data.error);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Add user failed (${res.status})`);
     },
     onSuccess: () => {
       toast({ title: "Dealer admin user created" });
@@ -261,11 +260,11 @@ const DealerManagement = () => {
 
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: string }) => {
-      const { error } = await supabase
-        .from("dealers")
-        .update({ status: newStatus } as any)
-        .eq("id", id);
-      if (error) throw new Error(error.message);
+      // VPS endpoints: /api/dealers/:id/suspend or /reactivate. Map 'suspended' -> suspend, others -> reactivate.
+      const action = newStatus === "suspended" ? "suspend" : "reactivate";
+      const res = await vpsAuthedFetch(`/api/dealers/${id}/${action}`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Status change failed (${res.status})`);
     },
     onSuccess: () => {
       toast({ title: "Dealer status updated" });
@@ -282,12 +281,13 @@ const DealerManagement = () => {
       if (deleteConfirmName.trim() !== deleteDealer.name.trim()) {
         throw new Error("Confirmation name does not match");
       }
-      const res = await supabase.functions.invoke("delete-dealer", {
-        body: { dealer_id: deleteDealer.id, confirm_name: deleteConfirmName.trim() },
-      });
-      if (res.error) throw new Error(res.error.message || "Failed to delete dealer");
-      if (res.data?.error) throw new Error(res.data.error);
-      return res.data;
+      const res = await vpsAuthedFetch(
+        `/api/dealers/${deleteDealer.id}?confirm=${encodeURIComponent(deleteConfirmName.trim())}`,
+        { method: "DELETE" }
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Delete failed (${res.status})`);
+      return { deleted_dealer: deleteDealer.name, deleted_auth_users: deleteDealer.userCount ?? 0 };
     },
     onSuccess: (data: any) => {
       toast({
