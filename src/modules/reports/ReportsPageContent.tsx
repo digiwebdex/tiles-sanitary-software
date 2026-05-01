@@ -24,7 +24,7 @@ import {
   type InventoryAgingRow,
   REPORT_PAGE_SIZE,
 } from "@/services/reportService";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { exportToExcel } from "@/lib/exportUtils";
