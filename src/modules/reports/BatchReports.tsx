@@ -135,63 +135,12 @@ export function MixedBatchSalesReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-mixed-batch-sales", dealerId],
     queryFn: async () => {
-      // Get all sale_item_batches with sale and product info
-      const { data: sibs, error } = await supabase
-        .from("sale_item_batches")
-        .select("sale_item_id, batch_id, allocated_qty, product_batches(batch_no, shade_code, caliber)")
-        .eq("dealer_id", dealerId);
-      if (error) throw new Error(error.message);
-
-      // Group by sale_item_id
-      const grouped: Record<string, any[]> = {};
-      for (const sib of (sibs ?? []) as any[]) {
-        const key = sib.sale_item_id;
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(sib);
-      }
-
-      // Find items with multiple batches that have different shade/caliber
-      const mixedSaleItemIds: string[] = [];
-      const mixedDetails: Record<string, { batches: any[]; mixedShade: boolean; mixedCaliber: boolean }> = {};
-
-      for (const [siId, batches] of Object.entries(grouped)) {
-        if (batches.length <= 1) continue;
-        const shades = new Set(batches.map((b: any) => b.product_batches?.shade_code).filter(Boolean));
-        const calibers = new Set(batches.map((b: any) => b.product_batches?.caliber).filter(Boolean));
-        const mixedShade = shades.size > 1;
-        const mixedCaliber = calibers.size > 1;
-        if (mixedShade || mixedCaliber) {
-          mixedSaleItemIds.push(siId);
-          mixedDetails[siId] = { batches, mixedShade, mixedCaliber };
-        }
-      }
-
-      if (mixedSaleItemIds.length === 0) return [];
-
-      // Get sale_items with sale info
-      const { data: saleItems } = await supabase
-        .from("sale_items")
-        .select("id, product_id, quantity, sale_id, products(name, sku), sales(invoice_number, sale_date, customers(name))")
-        .in("id", mixedSaleItemIds)
-        .eq("dealer_id", dealerId);
-
-      return (saleItems ?? []).map((si: any) => ({
-        saleItemId: si.id,
-        invoiceNo: si.sales?.invoice_number ?? "—",
-        saleDate: si.sales?.sale_date,
-        customer: si.sales?.customers?.name ?? "—",
-        product: si.products?.name ?? "—",
-        sku: si.products?.sku ?? "—",
-        quantity: Number(si.quantity),
-        mixedShade: mixedDetails[si.id]?.mixedShade ?? false,
-        mixedCaliber: mixedDetails[si.id]?.mixedCaliber ?? false,
-        batches: mixedDetails[si.id]?.batches.map((b: any) => ({
-          batch_no: b.product_batches?.batch_no,
-          shade: b.product_batches?.shade_code ?? "—",
-          caliber: b.product_batches?.caliber ?? "—",
-          qty: Number(b.allocated_qty),
-        })) ?? [],
-      }));
+      const res = await vpsAuthedFetch(
+        `/api/reports/batches/mixed-sales?dealerId=${encodeURIComponent(dealerId)}`,
+      );
+      if (!res.ok) throw new Error(`mixed-batch-sales failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
   });
 
@@ -287,35 +236,12 @@ export function AgingBatchReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-aging-batch", dealerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("product_batches")
-        .select("*, products(name, sku, unit_type)")
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("created_at", { ascending: true });
-      if (error) throw new Error(error.message);
-
-      const now = new Date();
-      return (data ?? []).map((r: any) => {
-        const days = Math.floor((now.getTime() - new Date(r.created_at).getTime()) / 86_400_000);
-        const isBox = r.products?.unit_type === "box_sft";
-        const qty = isBox ? Number(r.box_qty) : Number(r.piece_qty);
-        return {
-          id: r.id,
-          product: r.products?.name ?? "—",
-          sku: r.products?.sku ?? "—",
-          batch_no: r.batch_no,
-          shade: r.shade_code ?? "—",
-          caliber: r.caliber ?? "—",
-          qty,
-          unit: isBox ? "box" : "pc",
-          sft: isBox ? Number(r.sft_qty) : 0,
-          ageDays: days,
-          ageCategory: days > 180 ? "180+" : days > 90 ? "91-180" : days > 30 ? "31-90" : "0-30",
-          received: r.created_at?.slice(0, 10),
-        };
-      }).filter((r: any) => r.qty > 0)
-        .sort((a: any, b: any) => b.ageDays - a.ageDays);
+      const res = await vpsAuthedFetch(
+        `/api/reports/batches/aging?dealerId=${encodeURIComponent(dealerId)}`,
+      );
+      if (!res.ok) throw new Error(`batch aging failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
   });
 
@@ -398,71 +324,11 @@ export function BatchMovementReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-batch-movement", dealerId, search],
     queryFn: async () => {
-      // Get all batches with purchase and sale info
-      const { data: batches, error } = await supabase
-        .from("product_batches")
-        .select("*, products(name, sku, unit_type)")
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (error) throw new Error(error.message);
-
-      // Get sale allocations per batch
-      const { data: sibs } = await supabase
-        .from("sale_item_batches")
-        .select("batch_id, allocated_qty")
-        .eq("dealer_id", dealerId);
-
-      const saleMap: Record<string, number> = {};
-      for (const sib of (sibs ?? []) as any[]) {
-        saleMap[sib.batch_id] = (saleMap[sib.batch_id] || 0) + Number(sib.allocated_qty);
-      }
-
-      // Get delivery amounts per batch
-      const { data: dibs } = await supabase
-        .from("delivery_item_batches")
-        .select("batch_id, delivered_qty")
-        .eq("dealer_id", dealerId);
-
-      const deliveryMap: Record<string, number> = {};
-      for (const dib of (dibs ?? []) as any[]) {
-        deliveryMap[dib.batch_id] = (deliveryMap[dib.batch_id] || 0) + Number(dib.delivered_qty);
-      }
-
-      let rows = (batches ?? []).map((b: any) => {
-        const isBox = b.products?.unit_type === "box_sft";
-        const currentQty = isBox ? Number(b.box_qty) : Number(b.piece_qty);
-        const soldQty = saleMap[b.id] || 0;
-        const deliveredQty = deliveryMap[b.id] || 0;
-        // Purchased = current + sold (since sold was deducted from current)
-        const purchasedQty = currentQty + soldQty;
-
-        return {
-          id: b.id,
-          product: b.products?.name ?? "—",
-          sku: b.products?.sku ?? "—",
-          batch_no: b.batch_no,
-          shade: b.shade_code ?? "—",
-          caliber: b.caliber ?? "—",
-          unit: isBox ? "box" : "pc",
-          purchased: purchasedQty,
-          sold: soldQty,
-          delivered: deliveredQty,
-          current: currentQty,
-          status: b.status,
-        };
-      });
-
-      if (search) {
-        const s = search.toLowerCase();
-        rows = rows.filter(r =>
-          r.product.toLowerCase().includes(s) ||
-          r.sku.toLowerCase().includes(s) ||
-          r.batch_no.toLowerCase().includes(s)
-        );
-      }
-
-      return rows;
+      const params = new URLSearchParams({ dealerId, search });
+      const res = await vpsAuthedFetch(`/api/reports/batches/movement?${params.toString()}`);
+      if (!res.ok) throw new Error(`batch movement failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
   });
 
