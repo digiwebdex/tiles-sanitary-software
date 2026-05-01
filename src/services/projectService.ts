@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export type ProjectStatus = "active" | "on_hold" | "completed" | "cancelled";
 export type SiteStatus = "active" | "inactive";
@@ -60,187 +60,125 @@ export interface SiteInput {
   status?: SiteStatus;
 }
 
-const sb = supabase as any;
+async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+  return body as T;
+}
 
 export const projectService = {
-  /** Fetch next auto-generated project code (PRJ-NNNN). */
   async getNextProjectCode(dealerId: string): Promise<string> {
-    const { data, error } = await sb.rpc("get_next_project_code", { p_dealer_id: dealerId });
-    if (error) throw new Error(error.message);
-    return String(data);
+    const params = new URLSearchParams({ dealerId });
+    const body = await vpsRequest<{ code: string }>(
+      `/api/projects/next-code?${params.toString()}`,
+    );
+    return body.code;
   },
 
-  /** List all projects for the dealer (joined with customer name). */
   async list(
     dealerId: string,
     opts: { search?: string; status?: ProjectStatus | ""; customerId?: string } = {},
   ): Promise<ProjectWithStats[]> {
-    const { search = "", status = "", customerId } = opts;
-    let query = sb
-      .from("projects")
-      .select("*, customer:customers!projects_customer_id_fkey(id, name, phone)")
-      .eq("dealer_id", dealerId)
-      .order("created_at", { ascending: false });
-
-    if (status) query = query.eq("status", status);
-    if (customerId) query = query.eq("customer_id", customerId);
-    if (search.trim()) {
-      const s = search.trim();
-      query = query.or(`project_name.ilike.%${s}%,project_code.ilike.%${s}%`);
-    }
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return (data ?? []) as ProjectWithStats[];
+    const params = new URLSearchParams({ dealerId });
+    if (opts.search?.trim()) params.set("search", opts.search.trim());
+    if (opts.status) params.set("status", opts.status);
+    if (opts.customerId) params.set("customerId", opts.customerId);
+    return await vpsRequest<ProjectWithStats[]>(`/api/projects?${params.toString()}`);
   },
 
   async getById(id: string): Promise<Project> {
-    const { data, error } = await sb.from("projects").select("*").eq("id", id).single();
-    if (error) throw new Error(error.message);
-    return data as Project;
+    // dealerId is resolved from the JWT on the server.
+    return await vpsRequest<Project>(`/api/projects/${id}`);
   },
 
-  /** Lightweight list for pickers — only id, name, code, customer_id, status. */
   async listForPicker(
     dealerId: string,
     customerId?: string | null,
   ): Promise<Pick<Project, "id" | "project_name" | "project_code" | "customer_id" | "status">[]> {
-    let query = sb
-      .from("projects")
-      .select("id, project_name, project_code, customer_id, status")
-      .eq("dealer_id", dealerId)
-      .eq("status", "active")
-      .order("project_name", { ascending: true });
-    if (customerId) query = query.eq("customer_id", customerId);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return (data ?? []) as Pick<Project, "id" | "project_name" | "project_code" | "customer_id" | "status">[];
+    const params = new URLSearchParams({ dealerId });
+    if (customerId) params.set("customerId", customerId);
+    return await vpsRequest(`/api/projects/picker?${params.toString()}`);
   },
 
   async create(
     dealerId: string,
-    userId: string | null,
+    _userId: string | null,
     input: ProjectInput,
   ): Promise<Project> {
-    const code = (input.project_code ?? "").trim() || (await this.getNextProjectCode(dealerId));
-    const { data, error } = await sb
-      .from("projects")
-      .insert({
-        dealer_id: dealerId,
-        customer_id: input.customer_id,
-        project_name: input.project_name.trim(),
-        project_code: code,
-        status: input.status ?? "active",
-        notes: input.notes?.trim() || null,
-        start_date: input.start_date || null,
-        expected_end_date: input.expected_end_date || null,
-        created_by: userId,
-      })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return data as Project;
+    return await vpsRequest<Project>(`/api/projects`, {
+      method: "POST",
+      body: JSON.stringify({ dealer_id: dealerId, ...input }),
+    });
   },
 
   async update(id: string, dealerId: string, input: Partial<ProjectInput>): Promise<Project> {
-    const patch: Record<string, unknown> = {};
-    if (input.project_name !== undefined) patch.project_name = input.project_name.trim();
-    if (input.project_code !== undefined) patch.project_code = (input.project_code ?? "").trim();
-    if (input.customer_id !== undefined) patch.customer_id = input.customer_id;
-    if (input.status !== undefined) patch.status = input.status;
-    if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
-    if (input.start_date !== undefined) patch.start_date = input.start_date || null;
-    if (input.expected_end_date !== undefined) patch.expected_end_date = input.expected_end_date || null;
-
-    const { data, error } = await sb
-      .from("projects")
-      .update(patch)
-      .eq("id", id)
-      .eq("dealer_id", dealerId)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return data as Project;
+    return await vpsRequest<Project>(`/api/projects/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ dealer_id: dealerId, ...input }),
+    });
   },
 
   async remove(id: string, dealerId: string): Promise<void> {
-    const { error } = await sb.from("projects").delete().eq("id", id).eq("dealer_id", dealerId);
-    if (error) throw new Error(error.message);
+    const params = new URLSearchParams({ dealerId });
+    await vpsRequest<{ ok: boolean }>(`/api/projects/${id}?${params.toString()}`, {
+      method: "DELETE",
+    });
   },
 
   // ── Sites ───────────────────────────────────────────────────────
   async listSites(dealerId: string, projectId: string): Promise<ProjectSite[]> {
-    const { data, error } = await sb
-      .from("project_sites")
-      .select("*")
-      .eq("dealer_id", dealerId)
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []) as ProjectSite[];
+    const params = new URLSearchParams({ dealerId });
+    return await vpsRequest<ProjectSite[]>(
+      `/api/projects/${projectId}/sites?${params.toString()}`,
+    );
   },
 
   async listSitesForPicker(
     dealerId: string,
     projectId: string,
   ): Promise<Pick<ProjectSite, "id" | "site_name" | "address" | "status">[]> {
-    const { data, error } = await sb
-      .from("project_sites")
-      .select("id, site_name, address, status")
-      .eq("dealer_id", dealerId)
-      .eq("project_id", projectId)
-      .eq("status", "active")
-      .order("site_name", { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []) as Pick<ProjectSite, "id" | "site_name" | "address" | "status">[];
+    const params = new URLSearchParams({ dealerId });
+    return await vpsRequest(
+      `/api/projects/${projectId}/sites/picker?${params.toString()}`,
+    );
   },
 
-  async createSite(dealerId: string, userId: string | null, input: SiteInput): Promise<ProjectSite> {
-    const { data, error } = await sb
-      .from("project_sites")
-      .insert({
-        dealer_id: dealerId,
-        project_id: input.project_id,
-        customer_id: input.customer_id,
-        site_name: input.site_name.trim(),
-        address: input.address?.trim() || null,
-        contact_person: input.contact_person?.trim() || null,
-        contact_phone: input.contact_phone?.trim() || null,
-        notes: input.notes?.trim() || null,
-        status: input.status ?? "active",
-        created_by: userId,
-      })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return data as ProjectSite;
+  async createSite(
+    dealerId: string,
+    _userId: string | null,
+    input: SiteInput,
+  ): Promise<ProjectSite> {
+    return await vpsRequest<ProjectSite>(
+      `/api/projects/${input.project_id}/sites`,
+      {
+        method: "POST",
+        body: JSON.stringify({ dealer_id: dealerId, ...input }),
+      },
+    );
   },
 
-  async updateSite(id: string, dealerId: string, input: Partial<SiteInput>): Promise<ProjectSite> {
-    const patch: Record<string, unknown> = {};
-    if (input.site_name !== undefined) patch.site_name = input.site_name.trim();
-    if (input.address !== undefined) patch.address = input.address?.trim() || null;
-    if (input.contact_person !== undefined) patch.contact_person = input.contact_person?.trim() || null;
-    if (input.contact_phone !== undefined) patch.contact_phone = input.contact_phone?.trim() || null;
-    if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
-    if (input.status !== undefined) patch.status = input.status;
-
-    const { data, error } = await sb
-      .from("project_sites")
-      .update(patch)
-      .eq("id", id)
-      .eq("dealer_id", dealerId)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return data as ProjectSite;
+  async updateSite(
+    id: string,
+    dealerId: string,
+    input: Partial<SiteInput>,
+  ): Promise<ProjectSite> {
+    return await vpsRequest<ProjectSite>(`/api/projects/sites/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ dealer_id: dealerId, ...input }),
+    });
   },
 
   async removeSite(id: string, dealerId: string): Promise<void> {
-    const { error } = await sb.from("project_sites").delete().eq("id", id).eq("dealer_id", dealerId);
-    if (error) throw new Error(error.message);
+    const params = new URLSearchParams({ dealerId });
+    await vpsRequest<{ ok: boolean }>(`/api/projects/sites/${id}?${params.toString()}`, {
+      method: "DELETE",
+    });
   },
 
-  /** Lookup a single project + site by id (used by detail/document views). */
   async getProjectAndSite(
     dealerId: string,
     projectId: string | null,
@@ -249,26 +187,9 @@ export const projectService = {
     project: Pick<Project, "id" | "project_name" | "project_code"> | null;
     site: Pick<ProjectSite, "id" | "site_name" | "address" | "contact_person" | "contact_phone"> | null;
   }> {
-    let project: any = null;
-    let site: any = null;
-    if (projectId) {
-      const { data } = await sb
-        .from("projects")
-        .select("id, project_name, project_code")
-        .eq("id", projectId)
-        .eq("dealer_id", dealerId)
-        .maybeSingle();
-      project = data ?? null;
-    }
-    if (siteId) {
-      const { data } = await sb
-        .from("project_sites")
-        .select("id, site_name, address, contact_person, contact_phone")
-        .eq("id", siteId)
-        .eq("dealer_id", dealerId)
-        .maybeSingle();
-      site = data ?? null;
-    }
-    return { project, site };
+    const params = new URLSearchParams({ dealerId });
+    if (projectId) params.set("projectId", projectId);
+    if (siteId) params.set("siteId", siteId);
+    return await vpsRequest(`/api/projects/lookup?${params.toString()}`);
   },
 };
