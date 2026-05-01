@@ -1861,97 +1861,25 @@ function ProfitAnalysisReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-profit-analysis", dealerId],
     queryFn: async () => {
-      // Get all products
-      const { data: products, error: pErr } = await supabase
-        .from("products")
-        .select("id, sku, name, brand, category, unit_type")
-        .eq("dealer_id", dealerId)
-        .eq("active", true);
-      if (pErr) throw new Error(pErr.message);
-
-      // Get all sale items with cost info
-      const { data: saleItems, error: siErr } = await supabase
-        .from("sale_items")
-        .select("product_id, quantity, sale_rate, total, total_sft")
-        .eq("dealer_id", dealerId);
-      if (siErr) throw new Error(siErr.message);
-
-      // Get stock for avg cost
-      const { data: stocks, error: stErr } = await supabase
-        .from("stock")
-        .select("product_id, average_cost_per_unit")
-        .eq("dealer_id", dealerId);
-      if (stErr) throw new Error(stErr.message);
-
-      // Get purchase items for weighted avg cost (more accurate)
-      const { data: purchaseItems, error: piErr } = await supabase
-        .from("purchase_items")
-        .select("product_id, quantity, landed_cost")
-        .eq("dealer_id", dealerId);
-      if (piErr) throw new Error(piErr.message);
-
-      const costMap = new Map<string, number>();
-      const costQtyMap = new Map<string, { totalCost: number; totalQty: number }>();
-
-      // Build weighted avg cost from purchase items
-      for (const pi of purchaseItems ?? []) {
-        const cur = costQtyMap.get(pi.product_id) ?? { totalCost: 0, totalQty: 0 };
-        const qty = Number(pi.quantity) || 0;
-        const cost = Number(pi.landed_cost) || 0;
-        cur.totalCost += cost * qty;
-        cur.totalQty += qty;
-        costQtyMap.set(pi.product_id, cur);
-      }
-
-      for (const [pid, val] of costQtyMap) {
-        costMap.set(pid, val.totalQty > 0 ? val.totalCost / val.totalQty : 0);
-      }
-
-      // Fallback to stock avg cost
-      for (const s of stocks ?? []) {
-        if (!costMap.has(s.product_id)) {
-          costMap.set(s.product_id, Number(s.average_cost_per_unit) || 0);
-        }
-      }
-
-      // Aggregate sales per product
-      const salesAgg = new Map<string, { qtySold: number; revenue: number; totalSft: number }>();
-      for (const si of saleItems ?? []) {
-        const cur = salesAgg.get(si.product_id) ?? { qtySold: 0, revenue: 0, totalSft: 0 };
-        cur.qtySold += Number(si.quantity) || 0;
-        cur.revenue += Number(si.total) || 0;
-        cur.totalSft += Number(si.total_sft) || 0;
-        salesAgg.set(si.product_id, cur);
-      }
-
-      const rows = (products ?? [])
-        .map((p) => {
-          const sales = salesAgg.get(p.id) ?? { qtySold: 0, revenue: 0, totalSft: 0 };
-          const avgCost = costMap.get(p.id) ?? 0;
-          const cogs = sales.qtySold * avgCost;
-          const profit = sales.revenue - cogs;
-          const marginPct = sales.revenue > 0 ? (profit / sales.revenue) * 100 : 0;
-          const avgSaleRate = sales.qtySold > 0 ? sales.revenue / sales.qtySold : 0;
-
-          return {
-            id: p.id,
-            sku: p.sku,
-            name: p.name,
-            brand: p.brand ?? "—",
-            category: p.category,
-            qtySold: Math.round(sales.qtySold * 100) / 100,
-            totalSft: Math.round(sales.totalSft * 100) / 100,
-            avgCost: Math.round(avgCost * 100) / 100,
-            avgSaleRate: Math.round(avgSaleRate * 100) / 100,
-            revenue: Math.round(sales.revenue * 100) / 100,
-            cogs: Math.round(cogs * 100) / 100,
-            profit: Math.round(profit * 100) / 100,
-            marginPct: Math.round(marginPct * 10) / 10,
-          };
-        })
-        .filter((r) => r.qtySold > 0); // only show products that have been sold
-
-      return rows;
+      const params = new URLSearchParams({ dealerId });
+      const res = await vpsAuthedFetch(`/api/reports/page/profit-analysis?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        id: string;
+        sku: string;
+        name: string;
+        brand: string;
+        category: string;
+        qtySold: number;
+        totalSft: number;
+        avgCost: number;
+        avgSaleRate: number;
+        revenue: number;
+        cogs: number;
+        profit: number;
+        marginPct: number;
+      }>;
     },
     enabled: isDealerAdmin,
   });
