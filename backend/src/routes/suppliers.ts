@@ -378,7 +378,7 @@ router.patch('/:id/notes/:noteId', requireRole('dealer_admin'), async (req: Requ
     }
     const [row] = await db(NOTES_TABLE)
       .where({ id: req.params.noteId, dealer_id: dealerId })
-      .update({ note: parsed.data.note, updated_by: req.user?.userId ?? null, updated_at: db.fn.now() })
+      .update({ note: parsed.data.note, updated_by: req.user?.userId ?? null, updated_at: new Date() })
       .returning('*');
     await writeAudit(req, dealerId, 'update', req.params.noteId, { note: existing.note }, { note: parsed.data.note });
     res.json({ row });
