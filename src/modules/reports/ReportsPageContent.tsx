@@ -1049,13 +1049,17 @@ function ProductHistoryReport({ dealerId }: { dealerId: string }) {
   const { data: products } = useQuery({
     queryKey: ["products-list", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, name, sku")
-        .eq("dealer_id", dealerId)
-        .eq("active", true)
-        .order("name");
-      return data ?? [];
+      const params = new URLSearchParams({
+        dealerId,
+        pageSize: "200",
+        orderBy: "name",
+        orderDir: "asc",
+        "f.active": "true",
+      });
+      const res = await vpsAuthedFetch(`/api/products?${params.toString()}`);
+      if (!res.ok) return [] as { id: string; name: string; sku: string }[];
+      const body = await res.json();
+      return ((body.rows ?? []) as any[]).map((p) => ({ id: p.id, name: p.name, sku: p.sku }));
     },
   });
 
