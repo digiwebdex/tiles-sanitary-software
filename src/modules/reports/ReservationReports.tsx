@@ -8,7 +8,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { formatCurrency } from "@/lib/utils";
 import { exportToExcel } from "@/lib/exportUtils";
 import { Button } from "@/components/ui/button";
@@ -19,19 +19,10 @@ export function ReservedStockReport({ dealerId }: { dealerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-reserved-stock", dealerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          id, reserved_qty, fulfilled_qty, released_qty, status, expires_at, reason, created_at,
-          products:product_id (name, sku, unit_type, default_sale_rate),
-          customers:customer_id (name),
-          product_batches:batch_id (batch_no, shade_code, caliber)
-        `)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("created_at", { ascending: false });
-      if (error) throw new Error(error.message);
-      return data ?? [];
+      const res = await vpsAuthedFetch(`/api/reports/reservations-active?dealerId=${dealerId}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as any[];
     },
   });
 
@@ -129,18 +120,12 @@ export function FreeVsReservedReport({ dealerId }: { dealerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-free-vs-reserved", dealerId],
     queryFn: async () => {
-      const [productsRes, stockRes] = await Promise.all([
-        supabase.from("products").select("id, name, sku, unit_type").eq("dealer_id", dealerId).eq("active", true).order("sku"),
-        supabase.from("stock").select("product_id, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty").eq("dealer_id", dealerId),
-      ]);
-      const stockMap = new Map((stockRes.data ?? []).map((s) => [s.product_id, s]));
-      return (productsRes.data ?? []).map((p) => {
-        const s = stockMap.get(p.id);
-        const total = p.unit_type === "box_sft" ? Number(s?.box_qty ?? 0) : Number(s?.piece_qty ?? 0);
-        const reserved = p.unit_type === "box_sft" ? Number(s?.reserved_box_qty ?? 0) : Number(s?.reserved_piece_qty ?? 0);
-        const free = total - reserved;
-        return { name: p.name, sku: p.sku, unitType: p.unit_type, total, reserved, free };
-      }).filter((r) => r.total > 0 || r.reserved > 0);
+      const res = await vpsAuthedFetch(`/api/reports/free-vs-reserved?dealerId=${dealerId}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        name: string; sku: string; unitType: string; total: number; reserved: number; free: number;
+      }>;
     },
   });
 
@@ -218,22 +203,12 @@ export function ExpiringReservationsReport({ dealerId }: { dealerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-expiring-reservations", dealerId, days],
     queryFn: async () => {
-      const cutoff = new Date(Date.now() + Number(days) * 86400000).toISOString();
-      const { data, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          id, reserved_qty, fulfilled_qty, released_qty, expires_at, reason,
-          products:product_id (name, sku),
-          customers:customer_id (name),
-          product_batches:batch_id (batch_no, shade_code)
-        `)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .not("expires_at", "is", null)
-        .lte("expires_at", cutoff)
-        .order("expires_at", { ascending: true });
-      if (error) throw new Error(error.message);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/reports/reservations-expiring?dealerId=${dealerId}&days=${Number(days)}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as any[];
     },
   });
 
@@ -323,30 +298,14 @@ export function CustomerReservedStockReport({ dealerId }: { dealerId: string }) 
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-customer-reserved", dealerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          reserved_qty, fulfilled_qty, released_qty,
-          customers:customer_id (id, name),
-          products:product_id (default_sale_rate)
-        `)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active");
-      if (error) throw new Error(error.message);
-
-      const custMap: Record<string, { name: string; holds: number; totalQty: number; totalValue: number }> = {};
-      for (const r of data ?? []) {
-        const cust = (r as any).customers;
-        const cid = cust?.id;
-        if (!cid) continue;
-        const remaining = Number(r.reserved_qty) - Number(r.fulfilled_qty) - Number(r.released_qty);
-        const rate = Number((r as any).products?.default_sale_rate ?? 0);
-        if (!custMap[cid]) custMap[cid] = { name: cust.name, holds: 0, totalQty: 0, totalValue: 0 };
-        custMap[cid].holds += 1;
-        custMap[cid].totalQty += remaining;
-        custMap[cid].totalValue += remaining * rate;
-      }
-      return Object.values(custMap).sort((a, b) => b.totalValue - a.totalValue);
+      const res = await vpsAuthedFetch(
+        `/api/reports/reservations-by-customer?dealerId=${dealerId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        name: string; holds: number; totalQty: number; totalValue: number;
+      }>;
     },
   });
 
@@ -395,20 +354,12 @@ export function BatchReservedStockReport({ dealerId }: { dealerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-batch-reserved", dealerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          reserved_qty, fulfilled_qty, released_qty,
-          products:product_id (name, sku, unit_type),
-          customers:customer_id (name),
-          product_batches:batch_id (id, batch_no, shade_code, caliber, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty)
-        `)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .not("batch_id", "is", null)
-        .order("created_at", { ascending: false });
-      if (error) throw new Error(error.message);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/reports/reservations-by-batch?dealerId=${dealerId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as any[];
     },
   });
 

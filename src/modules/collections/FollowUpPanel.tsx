@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,7 +38,6 @@ interface FollowUpPanelProps {
 }
 
 export default function FollowUpPanel({ open, onClose, customerId, customerName, dealerId }: FollowUpPanelProps) {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [note, setNote] = useState("");
   const [status, setStatus] = useState("no_answer");
@@ -47,14 +46,12 @@ export default function FollowUpPanel({ open, onClose, customerId, customerName,
   const { data: followups = [], isLoading } = useQuery({
     queryKey: ["customer-followups", customerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("customer_followups")
-        .select("*")
-        .eq("customer_id", customerId)
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/collections/followups?dealerId=${dealerId}&customerId=${customerId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as any[];
     },
     enabled: open && !!customerId,
   });
@@ -62,15 +59,19 @@ export default function FollowUpPanel({ open, onClose, customerId, customerName,
   const addFollowup = useMutation({
     mutationFn: async () => {
       if (!note.trim()) throw new Error("Note is required");
-      const { error } = await supabase.from("customer_followups").insert({
-        dealer_id: dealerId,
-        customer_id: customerId,
-        note: note.trim(),
-        status,
-        created_by: user?.id ?? null,
-        followup_date: new Date().toISOString().split("T")[0],
+      const res = await vpsAuthedFetch(`/api/collections/followups?dealerId=${dealerId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_id: customerId,
+          note: note.trim(),
+          status,
+        }),
       });
-      if (error) throw error;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to add follow-up");
+      }
     },
     onSuccess: () => {
       toast.success("Follow-up added");

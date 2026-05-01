@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { sampleIssueService, type SampleRecipientType } from "@/services/displayStockService";
 
 interface Product {
@@ -43,16 +43,15 @@ export function IssueSampleDialog({ open, onOpenChange, dealerId, onSuccess }: P
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      supabase
-        .from("products")
-        .select("id, name, sku")
-        .eq("dealer_id", dealerId)
-        .eq("active", true)
-        .order("name"),
-      supabase.from("customers").select("id, name").eq("dealer_id", dealerId).order("name"),
+      vpsAuthedFetch(
+        `/api/products?dealerId=${dealerId}&pageSize=200&f.active=true&orderBy=name&orderDir=asc`,
+      ).then((r) => r.json()),
+      vpsAuthedFetch(
+        `/api/customers?dealerId=${dealerId}&pageSize=200&orderBy=name&orderDir=asc`,
+      ).then((r) => r.json()),
     ]).then(([p, c]) => {
-      setProducts((p.data ?? []) as Product[]);
-      setCustomers((c.data ?? []) as Customer[]);
+      setProducts((p.rows ?? []) as Product[]);
+      setCustomers((c.rows ?? []) as Customer[]);
     });
   }, [open, dealerId]);
 

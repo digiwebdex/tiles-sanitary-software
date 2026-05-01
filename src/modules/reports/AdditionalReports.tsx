@@ -11,6 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { formatCurrency } from "@/lib/utils";
 import { exportToExcel } from "@/lib/exportUtils";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -26,46 +27,14 @@ export function SalesBySalesmanReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-sales-by-salesman", dealerId, year, month],
     queryFn: async () => {
-      const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-      const lastDay = new Date(year, month, 0).getDate();
-      const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
-
-      const { data: sales, error } = await supabase
-        .from("sales")
-        .select("id, total_amount, paid_amount, due_amount, discount, created_by")
-        .eq("dealer_id", dealerId)
-        .gte("sale_date", startDate)
-        .lte("sale_date", endDate);
-      if (error) throw new Error(error.message);
-
-      // Get unique user IDs
-      const userIds = [...new Set((sales ?? []).map(s => s.created_by).filter(Boolean))];
-      let profileMap: Record<string, string> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, name")
-          .in("id", userIds as string[]);
-        for (const p of profiles ?? []) {
-          profileMap[p.id] = p.name;
-        }
-      }
-
-      // Aggregate by salesman
-      const map: Record<string, { name: string; count: number; total: number; paid: number; due: number; discount: number }> = {};
-      for (const s of sales ?? []) {
-        const uid = s.created_by ?? "unknown";
-        if (!map[uid]) {
-          map[uid] = { name: profileMap[uid] ?? "Unknown", count: 0, total: 0, paid: 0, due: 0, discount: 0 };
-        }
-        map[uid].count += 1;
-        map[uid].total += Number(s.total_amount);
-        map[uid].paid += Number(s.paid_amount);
-        map[uid].due += Number(s.due_amount);
-        map[uid].discount += Number(s.discount);
-      }
-
-      return Object.values(map).sort((a, b) => b.total - a.total);
+      const res = await vpsAuthedFetch(
+        `/api/reports/sales-by-salesman?dealerId=${dealerId}&year=${year}&month=${month}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        name: string; count: number; total: number; paid: number; due: number; discount: number;
+      }>;
     },
   });
 
@@ -157,38 +126,15 @@ export function SupplierOutstandingReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-supplier-outstanding", dealerId],
     queryFn: async () => {
-      const [ledgerRes, suppRes] = await Promise.all([
-        supabase.from("supplier_ledger").select("supplier_id, amount, type").eq("dealer_id", dealerId),
-        supabase.from("suppliers").select("id, name, phone, status").eq("dealer_id", dealerId),
-      ]);
-
-      const suppMap = new Map((suppRes.data ?? []).map(s => [s.id, s]));
-      const balances: Record<string, { debit: number; credit: number; paymentCount: number }> = {};
-
-      for (const e of ledgerRes.data ?? []) {
-        const sid = e.supplier_id;
-        if (!balances[sid]) balances[sid] = { debit: 0, credit: 0, paymentCount: 0 };
-        const amt = Number(e.amount);
-        if (amt >= 0) balances[sid].debit += amt;
-        else balances[sid].credit += Math.abs(amt);
-        if (e.type === "payment") balances[sid].paymentCount += 1;
-      }
-
-      return Object.entries(balances)
-        .map(([sid, b]) => {
-          const s = suppMap.get(sid);
-          return {
-            supplierId: sid,
-            name: s?.name ?? "—",
-            phone: s?.phone ?? "—",
-            totalPurchase: Math.round(b.debit * 100) / 100,
-            totalPaid: Math.round(b.credit * 100) / 100,
-            outstanding: Math.round((b.debit - b.credit) * 100) / 100,
-            payments: b.paymentCount,
-          };
-        })
-        .filter(r => r.outstanding > 0)
-        .sort((a, b) => b.outstanding - a.outstanding);
+      const res = await vpsAuthedFetch(
+        `/api/reports/supplier-outstanding?dealerId=${dealerId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        supplierId: string; name: string; phone: string; totalPurchase: number;
+        totalPaid: number; outstanding: number; payments: number;
+      }>;
     },
   });
 
