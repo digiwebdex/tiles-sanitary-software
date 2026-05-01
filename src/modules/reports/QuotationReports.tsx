@@ -287,24 +287,11 @@ export function TopQuotedProductsReport({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-top-quoted-products", dealerId, from, to],
     queryFn: async () => {
-      const { data: items } = await supabase
-        .from("quotation_items")
-        .select("product_name_snapshot, quantity, line_total, quotations!inner(dealer_id, quote_date, status)")
-        .eq("dealer_id", dealerId)
-        .gte("quotations.quote_date", from)
-        .lte("quotations.quote_date", to)
-        .neq("quotations.status", "draft")
-        .neq("quotations.status", "cancelled");
-      const agg = new Map<string, { name: string; qty: number; value: number; count: number }>();
-      for (const it of items ?? []) {
-        const key = it.product_name_snapshot;
-        const cur = agg.get(key) ?? { name: key, qty: 0, value: 0, count: 0 };
-        cur.qty += Number(it.quantity);
-        cur.value += Number(it.line_total);
-        cur.count++;
-        agg.set(key, cur);
-      }
-      return Array.from(agg.values()).sort((a, b) => b.value - a.value).slice(0, 25);
+      const params = new URLSearchParams({ dealerId, from, to });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/top-products?${params.toString()}`);
+      if (!res.ok) throw new Error(`top quoted products failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as { name: string; qty: number; value: number; count: number }[];
     },
   });
 
