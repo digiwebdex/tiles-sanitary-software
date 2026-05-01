@@ -34,17 +34,13 @@ export function QuotationListReport({ dealerId }: Props) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["report-quotations-list", dealerId, from, to, status],
     queryFn: async () => {
-      let q = supabase
-        .from("quotations")
-        .select("*, customers(name)")
-        .eq("dealer_id", dealerId)
-        .gte("quote_date", from)
-        .lte("quote_date", to)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (status !== "all") q = q.eq("status", status);
-      const { data } = await q;
-      return data ?? [];
+      const params = new URLSearchParams({
+        dealerId, from, to, status,
+      });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/list?${params.toString()}`);
+      if (!res.ok) throw new Error(`quotations list failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
   });
 
@@ -154,26 +150,14 @@ export function QuotationConversionReport({ dealerId }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-quotation-conversion", dealerId, from, to],
     queryFn: async () => {
-      const { data: rows } = await supabase
-        .from("quotations")
-        .select("id, status, total_amount, created_at, converted_at")
-        .eq("dealer_id", dealerId)
-        .gte("quote_date", from)
-        .lte("quote_date", to);
-      const all = rows ?? [];
-      const finalized = all.filter((r: any) => r.status !== "draft" && r.status !== "cancelled");
-      const converted = all.filter((r: any) => r.status === "converted");
-      const totalQuotedValue = finalized.reduce((s, r: any) => s + Number(r.total_amount), 0);
-      const convertedValue = converted.reduce((s, r: any) => s + Number(r.total_amount), 0);
-      const conversionPct = finalized.length > 0 ? (converted.length / finalized.length) * 100 : 0;
-      const avgDays = converted.length > 0
-        ? converted.reduce((s, r: any) => {
-            const c = new Date(r.created_at).getTime();
-            const cv = r.converted_at ? new Date(r.converted_at).getTime() : c;
-            return s + Math.max(0, (cv - c) / 86400000);
-          }, 0) / converted.length
-        : 0;
-      return { finalizedCount: finalized.length, convertedCount: converted.length, totalQuotedValue, convertedValue, conversionPct, avgDays };
+      const params = new URLSearchParams({ dealerId, from, to });
+      const res = await vpsAuthedFetch(`/api/reports/quotations/conversion?${params.toString()}`);
+      if (!res.ok) throw new Error(`quotation conversion failed: ${res.status}`);
+      return res.json() as Promise<{
+        finalizedCount: number; convertedCount: number;
+        totalQuotedValue: number; convertedValue: number;
+        conversionPct: number; avgDays: number;
+      }>;
     },
   });
 
