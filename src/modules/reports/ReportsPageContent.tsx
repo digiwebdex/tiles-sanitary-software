@@ -1221,49 +1221,18 @@ function MonthlySummaryReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-monthly-summary", dealerId, year],
     queryFn: async () => {
-      const yearStart = `${year}-01-01`;
-      const yearEnd = `${year}-12-31`;
-
-      const [salesRes, paymentsRes] = await Promise.all([
-        supabase
-          .from("sales")
-          .select("sale_date, total_amount, paid_amount, due_amount, total_sft")
-          .eq("dealer_id", dealerId)
-          .gte("sale_date", yearStart)
-          .lte("sale_date", yearEnd),
-        supabase
-          .from("customer_ledger")
-          .select("entry_date, amount, type")
-          .eq("dealer_id", dealerId)
-          .in("type", ["payment", "receipt"])
-          .gte("entry_date", yearStart)
-          .lte("entry_date", yearEnd),
-      ]);
-
-      const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const buckets = MONTHS.map((m) => ({
-        month: m,
-        totalSales: 0,
-        totalCollection: 0,
-        totalDue: 0,
-        totalSft: 0,
-        paymentReceived: 0,
-      }));
-
-      for (const r of salesRes.data ?? []) {
-        const m = new Date(r.sale_date).getMonth();
-        buckets[m].totalSales += Number(r.total_amount);
-        buckets[m].totalCollection += Number(r.paid_amount);
-        buckets[m].totalDue += Number(r.due_amount);
-        buckets[m].totalSft += Number(r.total_sft);
-      }
-
-      for (const r of paymentsRes.data ?? []) {
-        const m = new Date(r.entry_date).getMonth();
-        buckets[m].paymentReceived += Math.abs(Number(r.amount));
-      }
-
-      return buckets;
+      const params = new URLSearchParams({ dealerId, year: String(year) });
+      const res = await vpsAuthedFetch(`/api/reports/page/monthly-summary?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        month: string;
+        totalSales: number;
+        totalCollection: number;
+        totalDue: number;
+        totalSft: number;
+        paymentReceived: number;
+      }>;
     },
   });
 
