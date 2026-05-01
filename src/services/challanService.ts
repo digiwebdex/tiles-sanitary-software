@@ -122,4 +122,18 @@ export const challanService = {
       body: JSON.stringify({ dealer_id: dealerId, delivery_status: newStatus }),
     });
   },
+
+  /**
+   * Phase 3U-30: toggle the show_price flag on a challan (dealer_admin only,
+   * enforced backend-side). Used by the Challan page price-visibility switch.
+   */
+  async setShowPrice(challanId: string, showPrice: boolean) {
+    await vpsRequest<{ ok: boolean; show_price: boolean }>(
+      `/api/challans/${challanId}/show-price`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ show_price: showPrice }),
+      },
+    );
+  },
 };
