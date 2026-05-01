@@ -10,7 +10,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { formatCurrency } from "@/lib/utils";
 import { exportToExcel } from "@/lib/exportUtils";
@@ -203,29 +202,15 @@ export function PendingDeliveryReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-pending-delivery", dealerId],
     queryFn: async () => {
-      const { data: challans, error } = await supabase
-        .from("challans")
-        .select("id, challan_no, challan_date, delivery_status, transport_name, vehicle_no, driver_name, sale_id, sales(invoice_number, customers(name))")
-        .eq("dealer_id", dealerId)
-        .neq("delivery_status", "delivered")
-        .order("challan_date", { ascending: true });
-      if (error) throw new Error(error.message);
-
-      const today = new Date();
-      return (challans ?? []).map((c: any) => {
-        const days = Math.floor((today.getTime() - new Date(c.challan_date).getTime()) / 86_400_000);
-        return {
-          challanNo: c.challan_no,
-          challanDate: c.challan_date,
-          invoiceNo: c.sales?.invoice_number ?? "—",
-          customer: c.sales?.customers?.name ?? "—",
-          status: c.delivery_status,
-          transport: c.transport_name ?? "—",
-          vehicle: c.vehicle_no ?? "—",
-          daysPending: days,
-          isLate: days > 2,
-        };
-      });
+      const res = await vpsAuthedFetch(
+        `/api/reports/pending-deliveries?dealerId=${dealerId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        challanNo: string; challanDate: string; invoiceNo: string; customer: string;
+        status: string; transport: string; vehicle: string; daysPending: number; isLate: boolean;
+      }>;
     },
   });
 
@@ -316,30 +301,15 @@ export function DeliveryStatusReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-delivery-status", dealerId, statusFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("challans")
-        .select("id, challan_no, challan_date, delivery_status, transport_name, vehicle_no, driver_name, sales(invoice_number, customers(name))")
-        .eq("dealer_id", dealerId)
-        .order("challan_date", { ascending: false })
-        .limit(100);
-
-      if (statusFilter !== "all") {
-        query = query.eq("delivery_status", statusFilter);
-      }
-
-      const { data: challans, error } = await query;
-      if (error) throw new Error(error.message);
-
-      return (challans ?? []).map((c: any) => ({
-        challanNo: c.challan_no,
-        challanDate: c.challan_date,
-        invoiceNo: c.sales?.invoice_number ?? "—",
-        customer: c.sales?.customers?.name ?? "—",
-        status: c.delivery_status,
-        transport: c.transport_name ?? "—",
-        vehicle: c.vehicle_no ?? "—",
-        driver: c.driver_name ?? "—",
-      }));
+      const res = await vpsAuthedFetch(
+        `/api/reports/delivery-status?dealerId=${dealerId}&status=${encodeURIComponent(statusFilter)}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        challanNo: string; challanDate: string; invoiceNo: string; customer: string;
+        status: string; transport: string; vehicle: string; driver: string;
+      }>;
     },
   });
 
@@ -430,82 +400,31 @@ export function StockMovementReport({ dealerId }: { dealerId: string }) {
   const { data: products } = useQuery({
     queryKey: ["products-list-movement", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, name, sku")
-        .eq("dealer_id", dealerId)
-        .eq("active", true)
-        .order("name");
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/products?dealerId=${dealerId}&pageSize=200&f.active=true&orderBy=name&orderDir=asc`,
+      );
+      if (!res.ok) return [] as Array<{ id: string; name: string; sku: string }>;
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{ id: string; name: string; sku: string }>;
     },
   });
 
   const { data, isLoading } = useQuery({
     queryKey: ["report-stock-movement", dealerId, productId, page],
     queryFn: async () => {
-      if (!productId) return { rows: [], total: 0 };
-
-      const [purchaseRes, saleRes, returnRes] = await Promise.all([
-        supabase
-          .from("purchase_items")
-          .select("id, quantity, purchase_rate, total, purchases(purchase_date, invoice_number)")
-          .eq("dealer_id", dealerId)
-          .eq("product_id", productId),
-        supabase
-          .from("sale_items")
-          .select("id, quantity, sale_rate, total, sales(sale_date, invoice_number)")
-          .eq("dealer_id", dealerId)
-          .eq("product_id", productId),
-        supabase
-          .from("sales_returns")
-          .select("id, qty, refund_amount, return_date, is_broken, sales(invoice_number)")
-          .eq("dealer_id", dealerId)
-          .eq("product_id", productId),
-      ]);
-
-      type MovementRow = { id: string; date: string; type: string; reference: string; qtyIn: number; qtyOut: number; rate: number; total: number };
-      const movements: MovementRow[] = [];
-
-      for (const pi of purchaseRes.data ?? []) {
-        const p = (pi as any).purchases;
-        movements.push({
-          id: pi.id, date: p?.purchase_date ?? "", type: "Purchase",
-          reference: p?.invoice_number ?? "—",
-          qtyIn: Number(pi.quantity), qtyOut: 0,
-          rate: Number(pi.purchase_rate), total: Number(pi.total),
-        });
-      }
-      for (const si of saleRes.data ?? []) {
-        const s = (si as any).sales;
-        movements.push({
-          id: si.id, date: s?.sale_date ?? "", type: "Sale",
-          reference: s?.invoice_number ?? "—",
-          qtyIn: 0, qtyOut: Number(si.quantity),
-          rate: Number(si.sale_rate), total: Number(si.total),
-        });
-      }
-      for (const sr of returnRes.data ?? []) {
-        const s = (sr as any).sales;
-        movements.push({
-          id: sr.id, date: sr.return_date, type: sr.is_broken ? "Return (Broken)" : "Return",
-          reference: s?.invoice_number ?? "—",
-          qtyIn: sr.is_broken ? 0 : Number(sr.qty), qtyOut: sr.is_broken ? Number(sr.qty) : 0,
-          rate: 0, total: Number(sr.refund_amount),
-        });
-      }
-
-      movements.sort((a, b) => a.date.localeCompare(b.date));
-
-      // Calculate running balance
-      let balance = 0;
-      const withBalance = movements.map(m => {
-        balance += m.qtyIn - m.qtyOut;
-        return { ...m, balance };
-      });
-
-      const total = withBalance.length;
-      const paged = withBalance.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-      return { rows: paged, total, allRows: withBalance };
+      if (!productId) return { rows: [], total: 0, allRows: [] as any[] };
+      const res = await vpsAuthedFetch(
+        `/api/reports/stock-movement?dealerId=${dealerId}&productId=${productId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      const allRows = (body.rows ?? []) as Array<{
+        id: string; date: string; type: string; reference: string;
+        qtyIn: number; qtyOut: number; rate: number; total: number; balance: number;
+      }>;
+      const total = allRows.length;
+      const paged = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+      return { rows: paged, total, allRows };
     },
     enabled: !!productId,
   });

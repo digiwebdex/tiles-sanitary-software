@@ -1252,4 +1252,201 @@ router.get('/reservations-by-batch', async (req, res) => {
   }
 });
 
+// ─── Pending Deliveries (Phase 3U-5) ──────────────────────────────────────
+router.get('/pending-deliveries', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('challans as ch')
+      .leftJoin('sales as s', 's.id', 'ch.sale_id')
+      .leftJoin('customers as c', 'c.id', 's.customer_id')
+      .where({ 'ch.dealer_id': dealerId })
+      .andWhereNot('ch.delivery_status', 'delivered')
+      .orderBy('ch.challan_date', 'asc')
+      .select(
+        'ch.id',
+        'ch.challan_no',
+        'ch.challan_date',
+        'ch.delivery_status',
+        'ch.transport_name',
+        'ch.vehicle_no',
+        'ch.driver_name',
+        's.invoice_number as invoice_number',
+        'c.name as customer_name',
+      );
+    const today = Date.now();
+    res.json({
+      rows: (rows as any[]).map((r) => {
+        const days = Math.floor(
+          (today - new Date(r.challan_date).getTime()) / 86_400_000,
+        );
+        return {
+          challanNo: r.challan_no,
+          challanDate: r.challan_date,
+          invoiceNo: r.invoice_number ?? '—',
+          customer: r.customer_name ?? '—',
+          status: r.delivery_status,
+          transport: r.transport_name ?? '—',
+          vehicle: r.vehicle_no ?? '—',
+          daysPending: days,
+          isLate: days > 2,
+        };
+      }),
+    });
+  } catch (err: any) {
+    console.error('[reports.pending-deliveries]', err.message);
+    res.status(500).json({ error: 'Failed to load pending deliveries' });
+  }
+});
+
+// ─── Delivery Status (Phase 3U-5) ─────────────────────────────────────────
+router.get('/delivery-status', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const status = (req.query.status as string | undefined) || 'all';
+  try {
+    let q = db('challans as ch')
+      .leftJoin('sales as s', 's.id', 'ch.sale_id')
+      .leftJoin('customers as c', 'c.id', 's.customer_id')
+      .where({ 'ch.dealer_id': dealerId })
+      .orderBy('ch.challan_date', 'desc')
+      .limit(100)
+      .select(
+        'ch.id',
+        'ch.challan_no',
+        'ch.challan_date',
+        'ch.delivery_status',
+        'ch.transport_name',
+        'ch.vehicle_no',
+        'ch.driver_name',
+        's.invoice_number as invoice_number',
+        'c.name as customer_name',
+      );
+    if (status !== 'all') q = q.andWhere('ch.delivery_status', status);
+    const rows = await q;
+    res.json({
+      rows: (rows as any[]).map((r) => ({
+        challanNo: r.challan_no,
+        challanDate: r.challan_date,
+        invoiceNo: r.invoice_number ?? '—',
+        customer: r.customer_name ?? '—',
+        status: r.delivery_status,
+        transport: r.transport_name ?? '—',
+        vehicle: r.vehicle_no ?? '—',
+        driver: r.driver_name ?? '—',
+      })),
+    });
+  } catch (err: any) {
+    console.error('[reports.delivery-status]', err.message);
+    res.status(500).json({ error: 'Failed to load delivery status' });
+  }
+});
+
+// ─── Stock Movement (Phase 3U-5) ──────────────────────────────────────────
+router.get('/stock-movement', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+  const productId = (req.query.productId as string | undefined) || '';
+  if (!productId) {
+    res.status(400).json({ error: 'productId is required' });
+    return;
+  }
+  try {
+    const [purchaseItems, saleItems, returns] = await Promise.all([
+      db('purchase_items as pi')
+        .leftJoin('purchases as p', 'p.id', 'pi.purchase_id')
+        .where({ 'pi.dealer_id': dealerId, 'pi.product_id': productId })
+        .select(
+          'pi.id',
+          'pi.quantity',
+          'pi.purchase_rate',
+          'pi.total',
+          'p.purchase_date',
+          'p.invoice_number',
+        ),
+      db('sale_items as si')
+        .leftJoin('sales as s', 's.id', 'si.sale_id')
+        .where({ 'si.dealer_id': dealerId, 'si.product_id': productId })
+        .select(
+          'si.id',
+          'si.quantity',
+          'si.sale_rate',
+          'si.total',
+          's.sale_date',
+          's.invoice_number',
+        ),
+      db('sales_returns as sr')
+        .leftJoin('sales as s', 's.id', 'sr.sale_id')
+        .where({ 'sr.dealer_id': dealerId, 'sr.product_id': productId })
+        .select(
+          'sr.id',
+          'sr.qty',
+          'sr.refund_amount',
+          'sr.return_date',
+          'sr.is_broken',
+          's.invoice_number',
+        ),
+    ]);
+
+    type MovementRow = {
+      id: string;
+      date: string;
+      type: string;
+      reference: string;
+      qtyIn: number;
+      qtyOut: number;
+      rate: number;
+      total: number;
+    };
+    const movements: MovementRow[] = [];
+    for (const pi of purchaseItems as any[]) {
+      movements.push({
+        id: pi.id,
+        date: pi.purchase_date ?? '',
+        type: 'Purchase',
+        reference: pi.invoice_number ?? '—',
+        qtyIn: Number(pi.quantity),
+        qtyOut: 0,
+        rate: Number(pi.purchase_rate),
+        total: Number(pi.total),
+      });
+    }
+    for (const si of saleItems as any[]) {
+      movements.push({
+        id: si.id,
+        date: si.sale_date ?? '',
+        type: 'Sale',
+        reference: si.invoice_number ?? '—',
+        qtyIn: 0,
+        qtyOut: Number(si.quantity),
+        rate: Number(si.sale_rate),
+        total: Number(si.total),
+      });
+    }
+    for (const sr of returns as any[]) {
+      movements.push({
+        id: sr.id,
+        date: sr.return_date,
+        type: sr.is_broken ? 'Return (Broken)' : 'Return',
+        reference: sr.invoice_number ?? '—',
+        qtyIn: sr.is_broken ? 0 : Number(sr.qty),
+        qtyOut: sr.is_broken ? Number(sr.qty) : 0,
+        rate: 0,
+        total: Number(sr.refund_amount),
+      });
+    }
+    movements.sort((a, b) => a.date.localeCompare(b.date));
+    let balance = 0;
+    const withBalance = movements.map((m) => {
+      balance += m.qtyIn - m.qtyOut;
+      return { ...m, balance };
+    });
+    res.json({ rows: withBalance });
+  } catch (err: any) {
+    console.error('[reports.stock-movement]', err.message);
+    res.status(500).json({ error: 'Failed to load stock movement' });
+  }
+});
+
 export default router;
