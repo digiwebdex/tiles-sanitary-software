@@ -302,30 +302,15 @@ export function DeliveryStatusReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-delivery-status", dealerId, statusFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("challans")
-        .select("id, challan_no, challan_date, delivery_status, transport_name, vehicle_no, driver_name, sales(invoice_number, customers(name))")
-        .eq("dealer_id", dealerId)
-        .order("challan_date", { ascending: false })
-        .limit(100);
-
-      if (statusFilter !== "all") {
-        query = query.eq("delivery_status", statusFilter);
-      }
-
-      const { data: challans, error } = await query;
-      if (error) throw new Error(error.message);
-
-      return (challans ?? []).map((c: any) => ({
-        challanNo: c.challan_no,
-        challanDate: c.challan_date,
-        invoiceNo: c.sales?.invoice_number ?? "—",
-        customer: c.sales?.customers?.name ?? "—",
-        status: c.delivery_status,
-        transport: c.transport_name ?? "—",
-        vehicle: c.vehicle_no ?? "—",
-        driver: c.driver_name ?? "—",
-      }));
+      const res = await vpsAuthedFetch(
+        `/api/reports/delivery-status?dealerId=${dealerId}&status=${encodeURIComponent(statusFilter)}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        challanNo: string; challanDate: string; invoiceNo: string; customer: string;
+        status: string; transport: string; vehicle: string; driver: string;
+      }>;
     },
   });
 
