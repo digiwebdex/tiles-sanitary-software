@@ -279,4 +279,133 @@ router.delete('/:id', requireRole('dealer_admin'), async (req: Request, res: Res
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Supplier Notes (Phase 3U-11)
+// Internal owner/admin advisory notes — does NOT affect reliability score.
+// Endpoints:
+//   GET    /api/suppliers/:id/notes
+//   POST   /api/suppliers/:id/notes        body: { note }
+//   PATCH  /api/suppliers/:id/notes/:noteId body: { note }
+//   DELETE /api/suppliers/:id/notes/:noteId
+// ─────────────────────────────────────────────────────────────────────────
+
+const NOTES_TABLE = 'supplier_notes';
+
+const noteWriteSchema = z.object({
+  note: z.string().trim().min(1, 'Note cannot be empty').max(2000, 'Note must be under 2000 characters'),
+});
+
+async function writeAudit(req: Request, dealerId: string, action: string, recordId: string, oldData: any, newData: any) {
+  try {
+    const ip =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      req.socket.remoteAddress ||
+      null;
+    const ua = (req.headers['user-agent'] as string) || null;
+    await db('audit_logs').insert({
+      dealer_id: dealerId,
+      user_id: req.user?.userId ?? null,
+      action,
+      table_name: NOTES_TABLE,
+      record_id: recordId,
+      old_data: oldData,
+      new_data: newData,
+      ip_address: ip,
+      user_agent: ua,
+    });
+  } catch (e: any) {
+    console.warn('[supplier-notes:audit]', e.message);
+  }
+}
+
+// Owner/admin only — these are private internal notes.
+router.get('/:id/notes', requireRole('dealer_admin'), async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const rows = await db(NOTES_TABLE)
+      .where({ dealer_id: dealerId, supplier_id: req.params.id })
+      .orderBy('updated_at', 'desc');
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[supplier-notes/list]', err.message);
+    res.status(500).json({ error: 'Failed to load supplier notes' });
+  }
+});
+
+router.post('/:id/notes', requireRole('dealer_admin'), async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const parsed = noteWriteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid payload', issues: parsed.error.flatten() });
+      return;
+    }
+    const userId = req.user?.userId ?? null;
+    const [row] = await db(NOTES_TABLE)
+      .insert({
+        dealer_id: dealerId,
+        supplier_id: req.params.id,
+        note: parsed.data.note,
+        created_by: userId,
+        updated_by: userId,
+      })
+      .returning('*');
+    await writeAudit(req, dealerId, 'create', row.id, null, { supplier_id: req.params.id, note: parsed.data.note });
+    res.status(201).json({ row });
+  } catch (err: any) {
+    console.error('[supplier-notes/create]', err.message);
+    res.status(500).json({ error: 'Failed to create supplier note' });
+  }
+});
+
+router.patch('/:id/notes/:noteId', requireRole('dealer_admin'), async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const parsed = noteWriteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid payload', issues: parsed.error.flatten() });
+      return;
+    }
+    const existing = await db(NOTES_TABLE)
+      .where({ id: req.params.noteId, dealer_id: dealerId, supplier_id: req.params.id })
+      .first();
+    if (!existing) {
+      res.status(404).json({ error: 'Note not found' });
+      return;
+    }
+    const [row] = await db(NOTES_TABLE)
+      .where({ id: req.params.noteId, dealer_id: dealerId })
+      .update({ note: parsed.data.note, updated_by: req.user?.userId ?? null, updated_at: db.fn.now() })
+      .returning('*');
+    await writeAudit(req, dealerId, 'update', req.params.noteId, { note: existing.note }, { note: parsed.data.note });
+    res.json({ row });
+  } catch (err: any) {
+    console.error('[supplier-notes/update]', err.message);
+    res.status(500).json({ error: 'Failed to update supplier note' });
+  }
+});
+
+router.delete('/:id/notes/:noteId', requireRole('dealer_admin'), async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const existing = await db(NOTES_TABLE)
+      .where({ id: req.params.noteId, dealer_id: dealerId, supplier_id: req.params.id })
+      .first();
+    if (!existing) {
+      res.status(404).json({ error: 'Note not found' });
+      return;
+    }
+    await db(NOTES_TABLE).where({ id: req.params.noteId, dealer_id: dealerId }).delete();
+    await writeAudit(req, dealerId, 'delete', req.params.noteId, { note: existing.note, supplier_id: existing.supplier_id }, null);
+    res.status(204).end();
+  } catch (err: any) {
+    console.error('[supplier-notes/delete]', err.message);
+    res.status(500).json({ error: 'Failed to delete supplier note' });
+  }
+});
+
 export default router;
