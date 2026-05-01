@@ -81,7 +81,7 @@ router.get('/report', async (req: Request, res: Response) => {
       .sum({ amount_sum: 'amount' })
       .where({ dealer_id: dealerId })
       .whereIn('customer_id', customerIds)
-      .groupBy('customer_id', 'type');
+      .groupBy('customer_id', 'type') as Array<{ customer_id: string; type: string; amount_sum: any }>;
 
     const outstandingMap = new Map<string, number>();
     for (const row of ledgerRows) {
@@ -100,7 +100,7 @@ router.get('/report', async (req: Request, res: Response) => {
       .where({ dealer_id: dealerId })
       .whereIn('customer_id', customerIds)
       .where('due_amount', '>', 0)
-      .groupBy('customer_id');
+      .groupBy('customer_id') as Array<{ customer_id: string; oldest: any }>;
     const oldestMap = new Map<string, string>();
     for (const row of oldestRows) {
       if (row.oldest) oldestMap.set(row.customer_id, String(row.oldest).slice(0, 10));
