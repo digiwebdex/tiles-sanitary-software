@@ -1449,4 +1449,168 @@ router.get('/stock-movement', async (req, res) => {
   }
 });
 
+// ─── Quotation Reports (Phase 3U-6) ───────────────────────────────────────
+
+// GET /api/reports/quotations/list?dealerId=&from=&to=&status=
+router.get('/quotations/list', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const from = (req.query.from as string) || '';
+  const to = (req.query.to as string) || '';
+  const status = (req.query.status as string) || 'all';
+  try {
+    let q = db('quotations as q')
+      .leftJoin('customers as c', 'c.id', 'q.customer_id')
+      .where({ 'q.dealer_id': dealerId })
+      .orderBy('q.created_at', 'desc')
+      .limit(500)
+      .select('q.*', 'c.name as customer_name');
+    if (from) q = q.where('q.quote_date', '>=', from);
+    if (to) q = q.where('q.quote_date', '<=', to);
+    if (status !== 'all') q = q.where('q.status', status);
+    const rows = await q;
+    res.json({
+      rows: rows.map((r: any) => ({
+        ...r,
+        customers: r.customer_name ? { name: r.customer_name } : null,
+      })),
+    });
+  } catch (err: any) {
+    console.error('[reports.quotations.list]', err.message);
+    res.status(500).json({ error: 'Failed to load quotation list' });
+  }
+});
+
+// GET /api/reports/quotations/conversion?dealerId=&from=&to=
+router.get('/quotations/conversion', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+  const from = (req.query.from as string) || '';
+  const to = (req.query.to as string) || '';
+  try {
+    let q = db('quotations')
+      .where({ dealer_id: dealerId })
+      .select('id', 'status', 'total_amount', 'created_at', 'converted_at');
+    if (from) q = q.where('quote_date', '>=', from);
+    if (to) q = q.where('quote_date', '<=', to);
+    const rows = await q;
+    const finalized = rows.filter((r: any) => r.status !== 'draft' && r.status !== 'cancelled');
+    const converted = rows.filter((r: any) => r.status === 'converted');
+    const totalQuotedValue = finalized.reduce((s, r: any) => s + Number(r.total_amount), 0);
+    const convertedValue = converted.reduce((s, r: any) => s + Number(r.total_amount), 0);
+    const conversionPct = finalized.length > 0 ? (converted.length / finalized.length) * 100 : 0;
+    const avgDays = converted.length > 0
+      ? converted.reduce((s, r: any) => {
+          const c = new Date(r.created_at).getTime();
+          const cv = r.converted_at ? new Date(r.converted_at).getTime() : c;
+          return s + Math.max(0, (cv - c) / 86400000);
+        }, 0) / converted.length
+      : 0;
+    res.json({
+      finalizedCount: finalized.length,
+      convertedCount: converted.length,
+      totalQuotedValue: round2(totalQuotedValue),
+      convertedValue: round2(convertedValue),
+      conversionPct: round2(conversionPct),
+      avgDays: round2(avgDays),
+    });
+  } catch (err: any) {
+    console.error('[reports.quotations.conversion]', err.message);
+    res.status(500).json({ error: 'Failed to load quotation conversion' });
+  }
+});
+
+// GET /api/reports/quotations/expired?dealerId=
+router.get('/quotations/expired', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('quotations as q')
+      .leftJoin('customers as c', 'c.id', 'q.customer_id')
+      .where({ 'q.dealer_id': dealerId, 'q.status': 'expired' })
+      .orderBy('q.valid_until', 'desc')
+      .limit(500)
+      .select('q.*', 'c.name as customer_name');
+    res.json({
+      rows: rows.map((r: any) => ({
+        ...r,
+        customers: r.customer_name ? { name: r.customer_name } : null,
+      })),
+    });
+  } catch (err: any) {
+    console.error('[reports.quotations.expired]', err.message);
+    res.status(500).json({ error: 'Failed to load expired quotations' });
+  }
+});
+
+// GET /api/reports/quotations/salesman?dealerId=&from=&to=
+router.get('/quotations/salesman', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+  const from = (req.query.from as string) || '';
+  const to = (req.query.to as string) || '';
+  try {
+    let q = db('quotations')
+      .where({ dealer_id: dealerId })
+      .select('created_by', 'status', 'total_amount');
+    if (from) q = q.where('quote_date', '>=', from);
+    if (to) q = q.where('quote_date', '<=', to);
+    const quotes = await q;
+    const profs = await db('profiles').where({ dealer_id: dealerId }).select('id', 'name');
+    const nameMap = new Map(profs.map((p: any) => [p.id, p.name]));
+    const agg = new Map<string, { name: string; quotes: number; converted: number; value: number; convertedValue: number }>();
+    for (const it of quotes) {
+      const key = (it as any).created_by ?? 'unknown';
+      const cur = agg.get(key) ?? { name: nameMap.get(key) ?? 'Unknown', quotes: 0, converted: 0, value: 0, convertedValue: 0 };
+      cur.quotes++;
+      cur.value += Number((it as any).total_amount);
+      if ((it as any).status === 'converted') {
+        cur.converted++;
+        cur.convertedValue += Number((it as any).total_amount);
+      }
+      agg.set(key, cur);
+    }
+    const rows = Array.from(agg.values()).sort((a, b) => b.value - a.value);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.quotations.salesman]', err.message);
+    res.status(500).json({ error: 'Failed to load salesman quotation performance' });
+  }
+});
+
+// GET /api/reports/quotations/top-products?dealerId=&from=&to=
+router.get('/quotations/top-products', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+  const from = (req.query.from as string) || '';
+  const to = (req.query.to as string) || '';
+  try {
+    let q = db('quotation_items as qi')
+      .innerJoin('quotations as q', 'q.id', 'qi.quotation_id')
+      .where({ 'qi.dealer_id': dealerId })
+      .whereNotIn('q.status', ['draft', 'cancelled'])
+      .select('qi.product_name_snapshot', 'qi.quantity', 'qi.line_total');
+    if (from) q = q.where('q.quote_date', '>=', from);
+    if (to) q = q.where('q.quote_date', '<=', to);
+    const items = await q;
+    const agg = new Map<string, { name: string; qty: number; value: number; count: number }>();
+    for (const it of items) {
+      const key = (it as any).product_name_snapshot;
+      const cur = agg.get(key) ?? { name: key, qty: 0, value: 0, count: 0 };
+      cur.qty += Number((it as any).quantity);
+      cur.value += Number((it as any).line_total);
+      cur.count++;
+      agg.set(key, cur);
+    }
+    const rows = Array.from(agg.values()).sort((a, b) => b.value - a.value).slice(0, 25);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.quotations.top-products]', err.message);
+    res.status(500).json({ error: 'Failed to load top quoted products' });
+  }
+});
+
 export default router;
