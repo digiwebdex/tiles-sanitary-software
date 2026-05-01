@@ -178,4 +178,63 @@ router.get('/recent', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Customer Follow-ups (Phase 3U-4) ─────────────────────────────────────
+router.get('/followups', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const customerId = (req.query.customerId as string | undefined) || '';
+  if (!customerId) {
+    res.status(400).json({ error: 'customerId is required' });
+    return;
+  }
+  try {
+    const rows = await db('customer_followups')
+      .where({ customer_id: customerId, dealer_id: dealerId })
+      .orderBy('created_at', 'desc')
+      .select('*');
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[collections/followups.list]', err.message);
+    res.status(500).json({ error: 'Failed to load follow-ups' });
+  }
+});
+
+router.post('/followups', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const { customer_id, note, status } = (req.body ?? {}) as {
+    customer_id?: string;
+    note?: string;
+    status?: string;
+  };
+  if (!customer_id || !note?.trim()) {
+    res.status(400).json({ error: 'customer_id and note are required' });
+    return;
+  }
+  try {
+    const owner = await db('customers')
+      .where({ id: customer_id, dealer_id: dealerId })
+      .first();
+    if (!owner) {
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+    const todayStr = new Date().toISOString().split('T')[0];
+    const [row] = await db('customer_followups')
+      .insert({
+        dealer_id: dealerId,
+        customer_id,
+        note: note.trim(),
+        status: status || 'no_answer',
+        created_by: req.user?.id ?? null,
+        followup_date: todayStr,
+      })
+      .returning('*');
+    res.status(201).json({ row });
+  } catch (err: any) {
+    console.error('[collections/followups.create]', err.message);
+    res.status(500).json({ error: 'Failed to add follow-up' });
+  }
+});
+
 export default router;
