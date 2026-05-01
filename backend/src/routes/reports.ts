@@ -1613,4 +1613,326 @@ router.get('/quotations/top-products', async (req, res) => {
   }
 });
 
+// ─── Batch Reports (Phase 3U-8) ───────────────────────────────────────────
+
+// GET /api/reports/batches/stock?dealerId=&status=&search=
+router.get('/batches/stock', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const status = (req.query.status as string) || 'active';
+  const search = ((req.query.search as string) || '').trim().toLowerCase();
+  try {
+    let q = db('product_batches as b')
+      .leftJoin('products as p', 'p.id', 'b.product_id')
+      .where({ 'b.dealer_id': dealerId })
+      .orderBy('b.created_at', 'desc')
+      .limit(500)
+      .select(
+        'b.*',
+        'p.name as product_name', 'p.sku as product_sku',
+        'p.unit_type as product_unit_type', 'p.category as product_category',
+      );
+    if (status !== 'all') q = q.where('b.status', status);
+    let rows = (await q).map((r: any) => ({
+      ...r,
+      products: {
+        name: r.product_name, sku: r.product_sku,
+        unit_type: r.product_unit_type, category: r.product_category,
+      },
+    }));
+    if (search) {
+      rows = rows.filter((r: any) =>
+        r.products?.name?.toLowerCase().includes(search) ||
+        r.products?.sku?.toLowerCase().includes(search) ||
+        r.batch_no?.toLowerCase().includes(search) ||
+        r.shade_code?.toLowerCase().includes(search),
+      );
+    }
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.batches.stock]', err.message);
+    res.status(500).json({ error: 'Failed to load batch stock' });
+  }
+});
+
+// GET /api/reports/batches/mixed-sales?dealerId=
+router.get('/batches/mixed-sales', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const sibs = await db('sale_item_batches as sib')
+      .leftJoin('product_batches as pb', 'pb.id', 'sib.batch_id')
+      .where({ 'sib.dealer_id': dealerId })
+      .select(
+        'sib.sale_item_id', 'sib.batch_id', 'sib.allocated_qty',
+        'pb.batch_no', 'pb.shade_code', 'pb.caliber',
+      );
+
+    const grouped: Record<string, any[]> = {};
+    for (const sib of sibs as any[]) {
+      const key = sib.sale_item_id;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(sib);
+    }
+
+    const mixedSaleItemIds: string[] = [];
+    const mixedDetails: Record<string, { batches: any[]; mixedShade: boolean; mixedCaliber: boolean }> = {};
+    for (const [siId, batches] of Object.entries(grouped)) {
+      if (batches.length <= 1) continue;
+      const shades = new Set(batches.map((b: any) => b.shade_code).filter(Boolean));
+      const calibers = new Set(batches.map((b: any) => b.caliber).filter(Boolean));
+      const mixedShade = shades.size > 1;
+      const mixedCaliber = calibers.size > 1;
+      if (mixedShade || mixedCaliber) {
+        mixedSaleItemIds.push(siId);
+        mixedDetails[siId] = { batches, mixedShade, mixedCaliber };
+      }
+    }
+    if (mixedSaleItemIds.length === 0) return res.json({ rows: [] });
+
+    const saleItems = await db('sale_items as si')
+      .leftJoin('products as p', 'p.id', 'si.product_id')
+      .leftJoin('sales as s', 's.id', 'si.sale_id')
+      .leftJoin('customers as c', 'c.id', 's.customer_id')
+      .whereIn('si.id', mixedSaleItemIds)
+      .where({ 'si.dealer_id': dealerId })
+      .select(
+        'si.id', 'si.product_id', 'si.quantity', 'si.sale_id',
+        'p.name as product_name', 'p.sku as product_sku',
+        's.invoice_number', 's.sale_date',
+        'c.name as customer_name',
+      );
+
+    res.json({
+      rows: saleItems.map((si: any) => ({
+        saleItemId: si.id,
+        invoiceNo: si.invoice_number ?? '—',
+        saleDate: si.sale_date,
+        customer: si.customer_name ?? '—',
+        product: si.product_name ?? '—',
+        sku: si.product_sku ?? '—',
+        quantity: Number(si.quantity),
+        mixedShade: mixedDetails[si.id]?.mixedShade ?? false,
+        mixedCaliber: mixedDetails[si.id]?.mixedCaliber ?? false,
+        batches: (mixedDetails[si.id]?.batches ?? []).map((b: any) => ({
+          batch_no: b.batch_no,
+          shade: b.shade_code ?? '—',
+          caliber: b.caliber ?? '—',
+          qty: Number(b.allocated_qty),
+        })),
+      })),
+    });
+  } catch (err: any) {
+    console.error('[reports.batches.mixed-sales]', err.message);
+    res.status(500).json({ error: 'Failed to load mixed batch sales' });
+  }
+});
+
+// GET /api/reports/batches/aging?dealerId=
+router.get('/batches/aging', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const data = await db('product_batches as b')
+      .leftJoin('products as p', 'p.id', 'b.product_id')
+      .where({ 'b.dealer_id': dealerId, 'b.status': 'active' })
+      .orderBy('b.created_at', 'asc')
+      .select(
+        'b.id', 'b.batch_no', 'b.shade_code', 'b.caliber',
+        'b.box_qty', 'b.piece_qty', 'b.sft_qty', 'b.created_at',
+        'p.name as product_name', 'p.sku as product_sku', 'p.unit_type',
+      );
+    const now = Date.now();
+    const rows = data.map((r: any) => {
+      const days = Math.floor((now - new Date(r.created_at).getTime()) / 86_400_000);
+      const isBox = r.unit_type === 'box_sft';
+      const qty = isBox ? Number(r.box_qty) : Number(r.piece_qty);
+      return {
+        id: r.id,
+        product: r.product_name ?? '—',
+        sku: r.product_sku ?? '—',
+        batch_no: r.batch_no,
+        shade: r.shade_code ?? '—',
+        caliber: r.caliber ?? '—',
+        qty,
+        unit: isBox ? 'box' : 'pc',
+        sft: isBox ? Number(r.sft_qty ?? 0) : 0,
+        ageDays: days,
+        ageCategory: days > 180 ? '180+' : days > 90 ? '91-180' : days > 30 ? '31-90' : '0-30',
+        received: r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : null,
+      };
+    }).filter((r: any) => r.qty > 0).sort((a: any, b: any) => b.ageDays - a.ageDays);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.batches.aging]', err.message);
+    res.status(500).json({ error: 'Failed to load batch aging' });
+  }
+});
+
+// GET /api/reports/batches/movement?dealerId=&search=
+router.get('/batches/movement', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const search = ((req.query.search as string) || '').trim().toLowerCase();
+  try {
+    const [batches, sibs, dibs] = await Promise.all([
+      db('product_batches as b')
+        .leftJoin('products as p', 'p.id', 'b.product_id')
+        .where({ 'b.dealer_id': dealerId })
+        .orderBy('b.created_at', 'desc')
+        .limit(500)
+        .select(
+          'b.id', 'b.batch_no', 'b.shade_code', 'b.caliber',
+          'b.box_qty', 'b.piece_qty', 'b.status',
+          'p.name as product_name', 'p.sku as product_sku', 'p.unit_type',
+        ),
+      db('sale_item_batches').where({ dealer_id: dealerId }).select('batch_id', 'allocated_qty'),
+      db('delivery_item_batches').where({ dealer_id: dealerId }).select('batch_id', 'delivered_qty'),
+    ]);
+    const saleMap: Record<string, number> = {};
+    for (const sib of sibs as any[]) {
+      saleMap[sib.batch_id] = (saleMap[sib.batch_id] || 0) + Number(sib.allocated_qty);
+    }
+    const deliveryMap: Record<string, number> = {};
+    for (const dib of dibs as any[]) {
+      deliveryMap[dib.batch_id] = (deliveryMap[dib.batch_id] || 0) + Number(dib.delivered_qty);
+    }
+    let rows = batches.map((b: any) => {
+      const isBox = b.unit_type === 'box_sft';
+      const currentQty = isBox ? Number(b.box_qty) : Number(b.piece_qty);
+      const soldQty = saleMap[b.id] || 0;
+      const deliveredQty = deliveryMap[b.id] || 0;
+      const purchasedQty = currentQty + soldQty;
+      return {
+        id: b.id,
+        product: b.product_name ?? '—',
+        sku: b.product_sku ?? '—',
+        batch_no: b.batch_no,
+        shade: b.shade_code ?? '—',
+        caliber: b.caliber ?? '—',
+        unit: isBox ? 'box' : 'pc',
+        purchased: purchasedQty,
+        sold: soldQty,
+        delivered: deliveredQty,
+        current: currentQty,
+        status: b.status,
+      };
+    });
+    if (search) {
+      rows = rows.filter((r: any) =>
+        r.product.toLowerCase().includes(search) ||
+        r.sku.toLowerCase().includes(search) ||
+        r.batch_no.toLowerCase().includes(search),
+      );
+    }
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.batches.movement]', err.message);
+    res.status(500).json({ error: 'Failed to load batch movement' });
+  }
+});
+
+// ─── Approval Reports (Phase 3U-8) ────────────────────────────────────────
+
+// GET /api/reports/approvals/history?dealerId=&from=&to=&status=&type=
+router.get('/approvals/history', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const from = (req.query.from as string) || '1970-01-01';
+  const to = (req.query.to as string) || '9999-12-31';
+  const status = (req.query.status as string) || 'all';
+  const type = (req.query.type as string) || 'all';
+  try {
+    let q = db('approval_requests')
+      .where({ dealer_id: dealerId })
+      .where('created_at', '>=', `${from}T00:00:00`)
+      .where('created_at', '<=', `${to}T23:59:59`)
+      .orderBy('created_at', 'desc')
+      .limit(500);
+    if (status !== 'all') q = q.where('status', status);
+    if (type !== 'all') q = q.where('approval_type', type);
+    const rows = await q;
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.approvals.history]', err.message);
+    res.status(500).json({ error: 'Failed to load approval history' });
+  }
+});
+
+// GET /api/reports/approvals/type-summary?dealerId=&from=&to=
+router.get('/approvals/type-summary', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const from = (req.query.from as string) || '1970-01-01';
+  const to = (req.query.to as string) || '9999-12-31';
+  try {
+    const data = await db('approval_requests')
+      .where({ dealer_id: dealerId })
+      .where('created_at', '>=', `${from}T00:00:00`)
+      .where('created_at', '<=', `${to}T23:59:59`)
+      .select('approval_type', 'status');
+    const map = new Map<string, { total: number; approved: number; rejected: number; pending: number; auto: number }>();
+    for (const r of data as any[]) {
+      const t = r.approval_type;
+      const cur = map.get(t) ?? { total: 0, approved: 0, rejected: 0, pending: 0, auto: 0 };
+      cur.total++;
+      if (r.status === 'approved' || r.status === 'consumed') cur.approved++;
+      else if (r.status === 'rejected') cur.rejected++;
+      else if (r.status === 'pending') cur.pending++;
+      else if (r.status === 'auto_approved') cur.auto++;
+      map.set(t, cur);
+    }
+    const rows = Array.from(map.entries()).map(([type, stats]) => ({ type, ...stats })).sort((a, b) => b.total - a.total);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.approvals.type-summary]', err.message);
+    res.status(500).json({ error: 'Failed to load approval type summary' });
+  }
+});
+
+// GET /api/reports/approvals/user-stats?dealerId=&from=&to=
+router.get('/approvals/user-stats', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const from = (req.query.from as string) || '1970-01-01';
+  const to = (req.query.to as string) || '9999-12-31';
+  try {
+    const approvals = await db('approval_requests')
+      .where({ dealer_id: dealerId })
+      .where('created_at', '>=', `${from}T00:00:00`)
+      .where('created_at', '<=', `${to}T23:59:59`)
+      .select('requested_by', 'decided_by', 'status');
+    const userIds = new Set<string>();
+    for (const a of approvals as any[]) {
+      if (a.requested_by) userIds.add(a.requested_by);
+      if (a.decided_by) userIds.add(a.decided_by);
+    }
+    const profiles = userIds.size > 0
+      ? await db('profiles').whereIn('id', Array.from(userIds)).select('id', 'name', 'email')
+      : [];
+    const profileMap = new Map(profiles.map((p: any) => [p.id, p]));
+    const stats = new Map<string, { name: string; requested: number; approved: number; rejected: number }>();
+    const ensure = (id: string) => {
+      const cur = stats.get(id);
+      if (cur) return cur;
+      const u = profileMap.get(id);
+      const fresh = { name: u?.name ?? u?.email ?? 'Unknown', requested: 0, approved: 0, rejected: 0 };
+      stats.set(id, fresh);
+      return fresh;
+    };
+    for (const a of approvals as any[]) {
+      if (a.requested_by) ensure(a.requested_by).requested++;
+      if (a.decided_by && (a.status === 'approved' || a.status === 'consumed')) ensure(a.decided_by).approved++;
+      if (a.decided_by && a.status === 'rejected') ensure(a.decided_by).rejected++;
+    }
+    const rows = Array.from(stats.entries())
+      .map(([id, s]) => ({ id, ...s }))
+      .sort((a, b) => (b.requested + b.approved + b.rejected) - (a.requested + a.approved + a.rejected));
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.approvals.user-stats]', err.message);
+    res.status(500).json({ error: 'Failed to load user approval stats' });
+  }
+});
+
 export default router;
