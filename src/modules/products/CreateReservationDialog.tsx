@@ -11,7 +11,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+import { batchService } from "@/services/batchService";
 import { createReservation } from "@/services/reservationService";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -43,34 +44,23 @@ const CreateReservationDialog = ({
   const isTiles = product.category === "tiles";
   const unitLabel = product.unit_type === "box_sft" ? "Box" : "Pcs";
 
-  // Fetch customers
+  // Phase 3U-30: VPS GET /api/customers (active only).
   const { data: customers = [] } = useQuery({
     queryKey: ["reservation-customers", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("customers")
-        .select("id, name")
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("name");
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/customers?dealerId=${dealerId}&pageSize=500&orderBy=name&orderDir=asc&f.status=active`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      return ((body as any)?.rows ?? []) as { id: string; name: string }[];
     },
     enabled: open,
   });
 
-  // Fetch active batches for this product
+  // Phase 3U-30: batchService.getActiveBatches (already on VPS).
   const { data: batches = [] } = useQuery({
     queryKey: ["reservation-batches", product.id, dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("product_batches")
-        .select("id, batch_no, shade_code, caliber, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty")
-        .eq("product_id", product.id)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("created_at", { ascending: true });
-      return data ?? [];
-    },
+    queryFn: () => batchService.getActiveBatches(product.id, dealerId),
     enabled: open,
   });
 
