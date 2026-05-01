@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { exportToExcel } from "@/lib/exportUtils";
 import { usePermissions } from "@/hooks/usePermissions";
 import Pagination from "@/components/Pagination";
@@ -24,31 +24,11 @@ export function BatchStockReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-batch-stock", dealerId, search, statusFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("product_batches")
-        .select("*, products(name, sku, unit_type, category)")
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .limit(500);
-
-      if (statusFilter !== "all") {
-        query = query.eq("status", statusFilter);
-      }
-
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
-
-      let rows = (data ?? []) as any[];
-      if (search) {
-        const s = search.toLowerCase();
-        rows = rows.filter((r: any) =>
-          r.products?.name?.toLowerCase().includes(s) ||
-          r.products?.sku?.toLowerCase().includes(s) ||
-          r.batch_no?.toLowerCase().includes(s) ||
-          r.shade_code?.toLowerCase().includes(s)
-        );
-      }
-      return rows;
+      const params = new URLSearchParams({ dealerId, status: statusFilter, search });
+      const res = await vpsAuthedFetch(`/api/reports/batches/stock?${params.toString()}`);
+      if (!res.ok) throw new Error(`batch stock failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
   });
 
