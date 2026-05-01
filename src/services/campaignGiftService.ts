@@ -1,4 +1,7 @@
-import { supabase } from "@/integrations/supabase/client";
+/**
+ * Campaign Gift Service — VPS-backed (Phase 3U-14).
+ */
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export interface CampaignGift {
   id: string;
@@ -14,15 +17,23 @@ export interface CampaignGift {
   customers?: { name: string };
 }
 
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  if (res.status === 204) return undefined as unknown as T;
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+  return body as T;
+}
+
 export const campaignGiftService = {
   async list(dealerId: string): Promise<CampaignGift[]> {
-    const { data, error } = await supabase
-      .from("campaign_gifts" as any)
-      .select("*, customers(name)")
-      .eq("dealer_id", dealerId)
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (data ?? []) as unknown as CampaignGift[];
+    const body = await vpsJson<{ rows: CampaignGift[] }>(
+      `/api/campaign-gifts?dealerId=${encodeURIComponent(dealerId)}`,
+    );
+    return body.rows ?? [];
   },
 
   async create(gift: {
@@ -35,28 +46,33 @@ export const campaignGiftService = {
     payment_status?: string;
     created_by?: string;
   }) {
-    const { data, error } = await supabase
-      .from("campaign_gifts" as any)
-      .insert(gift as any)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return data;
+    const body = await vpsJson<{ row: CampaignGift }>(`/api/campaign-gifts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dealerId: gift.dealer_id,
+        customer_id: gift.customer_id,
+        campaign_name: gift.campaign_name,
+        description: gift.description,
+        gift_value: gift.gift_value,
+        paid_amount: gift.paid_amount,
+        payment_status: gift.payment_status,
+        created_by: gift.created_by,
+      }),
+    });
+    return body.row;
   },
 
-  async update(id: string, updates: { paid_amount?: number; payment_status?: string }) {
-    const { error } = await supabase
-      .from("campaign_gifts" as any)
-      .update(updates as any)
-      .eq("id", id);
-    if (error) throw new Error(error.message);
+  async update(id: string, updates: { paid_amount?: number; payment_status?: string }, dealerId?: string) {
+    await vpsJson<{ row: CampaignGift }>(`/api/campaign-gifts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dealerId, ...updates }),
+    });
   },
 
-  async delete(id: string) {
-    const { error } = await supabase
-      .from("campaign_gifts" as any)
-      .delete()
-      .eq("id", id);
-    if (error) throw new Error(error.message);
+  async delete(id: string, dealerId?: string) {
+    const qs = dealerId ? `?dealerId=${encodeURIComponent(dealerId)}` : "";
+    await vpsJson<{ ok: true }>(`/api/campaign-gifts/${id}${qs}`, { method: "DELETE" });
   },
 };

@@ -1,8 +1,8 @@
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 /**
- * Dealer-scoped Demand Planning thresholds.
- * Read-only by salesman; mutated only by dealer_admin (enforced via RLS).
+ * Dealer-scoped Demand Planning thresholds — VPS-backed (Phase 3U-14).
+ * Read-only by salesman; mutated only by dealer_admin (enforced server-side).
  * Settings are advisory — they only change how reports/widgets classify rows.
  * They do NOT touch stock, ledger, or purchase flow.
  */
@@ -43,64 +43,46 @@ export const DEMAND_PLANNING_LIMITS = {
   safety_stock_days: { min: 0, max: 90 },
 } as const;
 
-function withDefaults(dealerId: string, row: Partial<DemandPlanningSettings> | null): DemandPlanningSettings {
-  return {
-    dealer_id: dealerId,
-    ...DEMAND_PLANNING_DEFAULTS,
-    ...(row ?? {}),
-  } as DemandPlanningSettings;
-}
-
-function validate(s: Omit<DemandPlanningSettings, "dealer_id">): string | null {
-  for (const key of Object.keys(DEMAND_PLANNING_LIMITS) as Array<keyof typeof DEMAND_PLANNING_LIMITS>) {
-    const v = s[key];
-    const { min, max } = DEMAND_PLANNING_LIMITS[key];
-    if (!Number.isFinite(v) || !Number.isInteger(v) || v < min || v > max) {
-      return `${String(key).replace(/_/g, " ")} must be an integer between ${min} and ${max}`;
-    }
+async function vpsJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await vpsAuthedFetch(path, init);
+  if (res.status === 204) return undefined as unknown as T;
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (body as any)?.error || `Request failed (${res.status})`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
   }
-  if (s.stockout_cover_days >= s.reorder_cover_days) {
-    return "Stockout cover days must be less than reorder cover days";
-  }
-  if (s.reorder_cover_days > s.target_cover_days) {
-    return "Reorder cover days cannot exceed target cover days";
-  }
-  if (s.slow_moving_30d_max >= s.fast_moving_30d_qty) {
-    return "Slow-moving threshold must be less than fast-moving threshold";
-  }
-  return null;
+  return body as T;
 }
 
 async function get(dealerId: string): Promise<DemandPlanningSettings> {
-  // Untyped to avoid stale generated types blocking the build.
-  const { data, error } = await (supabase as any)
-    .from("demand_planning_settings")
-    .select("*")
-    .eq("dealer_id", dealerId)
-    .maybeSingle();
-  if (error && error.code !== "PGRST116") throw new Error(error.message);
-  return withDefaults(dealerId, data ?? null);
+  const body = await vpsJson<{ row: DemandPlanningSettings }>(
+    `/api/demand-planning-settings?dealerId=${encodeURIComponent(dealerId)}`,
+  );
+  return body.row;
 }
 
 async function upsert(
   dealerId: string,
   patch: Omit<DemandPlanningSettings, "dealer_id">,
 ): Promise<DemandPlanningSettings> {
-  const err = validate(patch);
-  if (err) throw new Error(err);
-
-  const payload = { dealer_id: dealerId, ...patch };
-  const { data, error } = await (supabase as any)
-    .from("demand_planning_settings")
-    .upsert(payload, { onConflict: "dealer_id" })
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return data as DemandPlanningSettings;
+  const body = await vpsJson<{ row: DemandPlanningSettings }>(`/api/demand-planning-settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dealerId, ...patch }),
+  });
+  return body.row;
 }
 
 async function reset(dealerId: string): Promise<DemandPlanningSettings> {
-  return upsert(dealerId, DEMAND_PLANNING_DEFAULTS);
+  const body = await vpsJson<{ row: DemandPlanningSettings }>(
+    `/api/demand-planning-settings/reset`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dealerId }),
+    },
+  );
+  return body.row;
 }
 
 export const demandPlanningSettingsService = { get, upsert, reset };
