@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,7 @@ import { recordSubscriptionPayment } from "@/services/subscriptionPaymentService
 import { Plus, CalendarPlus, Play, Pause, RefreshCw, Banknote, AlertCircle, CheckCircle2 } from "lucide-react";
 import { differenceInDays, parseISO, format, addMonths, addYears } from "date-fns";
 import { checkYearlyDiscountEligibility } from "@/services/subscriptionPaymentService";
-import { env } from "@/lib/env";
+
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 interface SubRow {
@@ -94,50 +94,24 @@ const SubscriptionManagement = () => {
   const { data: subscriptions = [], isLoading } = useQuery({
     queryKey: ["admin-subscriptions"],
     queryFn: async () => {
-      if (env.AUTH_BACKEND === "vps") {
-        const body = await vpsJson<{ subscriptions: SubRow[] }>("/api/subscriptions");
-        return body.subscriptions ?? [];
-      }
-      const { data, error } = await supabase
-        .from("subscriptions")
-        .select("*, dealers(name), subscription_plans!subscriptions_plan_id_fkey(name, id)")
-        .order("start_date", { ascending: false });
-      if (error) throw new Error(error.message);
-      // Map subscription_plans to plans key for compatibility
-      return (data ?? []).map((s: any) => ({
-        ...s,
-        plans: s.subscription_plans ?? s.plans ?? null,
-      })) as SubRow[];
+      const body = await vpsJson<{ subscriptions: SubRow[] }>("/api/subscriptions");
+      return body.subscriptions ?? [];
     },
   });
 
   const { data: dealers = [] } = useQuery({
     queryKey: ["admin-dealers-list"],
     queryFn: async () => {
-      if (env.AUTH_BACKEND === "vps") {
-        const body = await vpsJson<{ dealers: any[]; plans: any[] }>("/api/subscriptions/lookups");
-        return body.dealers ?? [];
-      }
-      const { data, error } = await supabase.from("dealers").select("id, name").order("name");
-      if (error) throw new Error(error.message);
-      return data;
+      const body = await vpsJson<{ dealers: any[]; plans: any[] }>("/api/subscriptions/lookups");
+      return body.dealers ?? [];
     },
   });
 
   const { data: plans = [] } = useQuery({
     queryKey: ["admin-plans-list"],
     queryFn: async () => {
-      if (env.AUTH_BACKEND === "vps") {
-        const body = await vpsJson<{ dealers: any[]; plans: any[] }>("/api/subscriptions/lookups");
-        return body.plans ?? [];
-      }
-      const { data, error } = await supabase
-        .from("subscription_plans")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("monthly_price");
-      if (error) throw new Error(error.message);
-      return data;
+      const body = await vpsJson<{ dealers: any[]; plans: any[] }>("/api/subscriptions/lookups");
+      return body.plans ?? [];
     },
   });
 
@@ -148,18 +122,7 @@ const SubscriptionManagement = () => {
   const assignMutation = useMutation({
     mutationFn: async () => {
       if (!assignForm.dealer_id || !assignForm.plan_id) throw new Error("Dealer and Plan are required");
-      if (env.AUTH_BACKEND === "vps") {
-        await vpsJson("/api/subscriptions", { method: "POST", body: JSON.stringify({ ...assignForm, status: "active" }) });
-        return;
-      }
-      const { error } = await supabase.from("subscriptions").insert({
-        dealer_id: assignForm.dealer_id,
-        plan_id: assignForm.plan_id,
-        start_date: assignForm.start_date || undefined,
-        end_date: assignForm.end_date || null,
-        status: "active" as any,
-      });
-      if (error) throw new Error(error.message);
+      await vpsJson("/api/subscriptions", { method: "POST", body: JSON.stringify({ ...assignForm, status: "active" }) });
     },
     onSuccess: () => {
       toast({ title: "Subscription assigned" });
@@ -252,26 +215,14 @@ const SubscriptionManagement = () => {
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editSub) return;
-      if (env.AUTH_BACKEND === "vps") {
-        await vpsJson(`/api/subscriptions/${editSub.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            end_date: editForm.end_date || null,
-            status: editForm.status,
-            plan_id: editForm.plan_id,
-          }),
-        });
-        return;
-      }
-      const { error } = await supabase
-        .from("subscriptions")
-        .update({
+      await vpsJson(`/api/subscriptions/${editSub.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
           end_date: editForm.end_date || null,
-          status: editForm.status as any,
+          status: editForm.status,
           plan_id: editForm.plan_id,
-        })
-        .eq("id", editSub.id);
-      if (error) throw new Error(error.message);
+        }),
+      });
     },
     onSuccess: () => {
       toast({ title: "Subscription updated" });
@@ -285,18 +236,10 @@ const SubscriptionManagement = () => {
   // Quick toggle status
   const toggleMutation = useMutation({
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: string }) => {
-      if (env.AUTH_BACKEND === "vps") {
-        await vpsJson(`/api/subscriptions/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ status: newStatus }),
-        });
-        return;
-      }
-      const { error } = await supabase
-        .from("subscriptions")
-        .update({ status: newStatus as any })
-        .eq("id", id);
-      if (error) throw new Error(error.message);
+      await vpsJson(`/api/subscriptions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      });
     },
     onSuccess: () => {
       toast({ title: "Status updated" });

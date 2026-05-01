@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -108,29 +108,32 @@ const DealerManagement = () => {
   const { data: dealers = [], isLoading } = useQuery({
     queryKey: ["admin-dealers-full"],
     queryFn: async () => {
-      const [dealersRes, subsRes, profilesRes] = await Promise.all([
-        supabase.from("dealers").select("*").order("created_at", { ascending: false }),
-        supabase.from("subscriptions").select("*, subscription_plans!subscriptions_plan_id_fkey(name)").order("start_date", { ascending: false }),
-        supabase.from("profiles").select("id, name, email, dealer_id, status"),
+      const [dealersRes, subsRes] = await Promise.all([
+        vpsAuthedFetch("/api/dealers"),
+        vpsAuthedFetch("/api/subscriptions"),
       ]);
-      if (dealersRes.error) throw new Error(dealersRes.error.message);
-      if (subsRes.error) throw new Error(subsRes.error.message);
+      const dealersBody = await dealersRes.json().catch(() => ({}));
+      const subsBody = await subsRes.json().catch(() => ({}));
+      if (!dealersRes.ok) throw new Error(dealersBody?.error || "Failed to load dealers");
+      if (!subsRes.ok) throw new Error(subsBody?.error || "Failed to load subscriptions");
 
-      const subs = subsRes.data ?? [];
-      const profiles = profilesRes.data ?? [];
+      const allDealers = dealersBody.dealers ?? [];
+      const subs = subsBody.subscriptions ?? [];
 
-      const mapped = (dealersRes.data ?? []).map((d: any) => {
+      const mapped = allDealers.map((d: any) => {
         const latestSub = subs.find((s: any) => s.dealer_id === d.id);
-        const dealerUsers = profiles.filter((p: any) => p.dealer_id === d.id);
         return {
           ...d,
-          subscription: latestSub ?? null,
-          userCount: dealerUsers.length,
-          users: dealerUsers,
+          subscription: latestSub
+            ? { ...latestSub, subscription_plans: latestSub.plans ?? null }
+            : null,
+          userCount: d.admin_user_id ? 1 : 0,
+          users: d.admin_user_id
+            ? [{ id: d.admin_user_id, name: d.admin_name, email: d.admin_email, status: d.admin_status }]
+            : [],
         };
       });
 
-      // Pending approvals float to the top so super admin sees them first.
       return mapped.sort((a: any, b: any) => {
         const aPending = a.status === "pending" ? 0 : 1;
         const bPending = b.status === "pending" ? 0 : 1;
@@ -142,9 +145,10 @@ const DealerManagement = () => {
   const { data: plans = [] } = useQuery({
     queryKey: ["admin-plans-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("subscription_plans").select("id, name, monthly_price, yearly_price").eq("is_active", true).order("monthly_price");
-      if (error) throw new Error(error.message);
-      return data;
+      const res = await vpsAuthedFetch("/api/plans");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "Failed to load plans");
+      return (body.plans ?? []).filter((p: any) => p.is_active !== false);
     },
   });
 
@@ -161,52 +165,51 @@ const DealerManagement = () => {
       if (!form.name.trim()) throw new Error("Dealer name is required");
 
       if (editId) {
-        const { error } = await supabase
-          .from("dealers")
-          .update({ name: form.name, phone: form.phone || null, address: form.address || null })
-          .eq("id", editId);
-        if (error) throw new Error(error.message);
+        const res = await vpsAuthedFetch(`/api/dealers/${editId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: form.name,
+            phone: form.phone || null,
+            address: form.address || null,
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || `Update failed (${res.status})`);
         return;
       }
 
-      // 1. Create dealer
-      const { data: newDealer, error: dealerErr } = await supabase
-        .from("dealers")
-        .insert({ name: form.name, phone: form.phone || null, address: form.address || null })
-        .select("id")
-        .single();
-      if (dealerErr) throw new Error(dealerErr.message);
+      // Atomic: create dealer + admin + subscription in one VPS call
+      const payload: any = {
+        name: form.name,
+        phone: form.phone || null,
+        address: form.address || null,
+      };
 
-      // 2. Create dealer_admin user
       if (createAdmin) {
         if (!adminForm.name.trim()) throw new Error("Admin name is required");
         if (!adminForm.email.trim()) throw new Error("Admin email is required");
         if (adminForm.password.length < 6) throw new Error("Password must be at least 6 characters");
-
-        const res = await supabase.functions.invoke("create-dealer-user", {
-          body: {
-            name: adminForm.name.trim(),
-            email: adminForm.email.trim().toLowerCase(),
-            password: adminForm.password,
-            dealer_id: newDealer.id,
-            role: "dealer_admin",
-          },
-        });
-        if (res.error) throw new Error(res.error.message || "Failed to create admin user");
-        if (res.data?.error) throw new Error(res.data.error);
+        payload.admin = {
+          name: adminForm.name.trim(),
+          email: adminForm.email.trim().toLowerCase(),
+          password: adminForm.password,
+        };
       }
 
-      // 3. Assign plan / create subscription
       if (assignPlan && subForm.plan_id) {
-        const { error: subErr } = await supabase.from("subscriptions").insert({
-          dealer_id: newDealer.id,
+        payload.subscription = {
           plan_id: subForm.plan_id,
           start_date: subForm.start_date || todayStr,
           end_date: subForm.end_date || null,
-          status: "active" as any,
-        });
-        if (subErr) throw new Error("Dealer created but subscription failed: " + subErr.message);
+        };
       }
+
+      const res = await vpsAuthedFetch("/api/dealers", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Create failed (${res.status})`);
     },
     onSuccess: () => {
       const parts = [];
@@ -232,17 +235,17 @@ const DealerManagement = () => {
       if (!addUserForm.email.trim()) throw new Error("Email is required");
       if (addUserForm.password.length < 6) throw new Error("Password must be at least 6 characters");
 
-      const res = await supabase.functions.invoke("create-dealer-user", {
-        body: {
+      const res = await vpsAuthedFetch(`/api/dealers/${addUserDealerId}/users`, {
+        method: "POST",
+        body: JSON.stringify({
           name: addUserForm.name.trim(),
           email: addUserForm.email.trim().toLowerCase(),
           password: addUserForm.password,
-          dealer_id: addUserDealerId,
           role: "dealer_admin",
-        },
+        }),
       });
-      if (res.error) throw new Error(res.error.message || "Failed to create user");
-      if (res.data?.error) throw new Error(res.data.error);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Add user failed (${res.status})`);
     },
     onSuccess: () => {
       toast({ title: "Dealer admin user created" });
@@ -257,11 +260,11 @@ const DealerManagement = () => {
 
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: string }) => {
-      const { error } = await supabase
-        .from("dealers")
-        .update({ status: newStatus } as any)
-        .eq("id", id);
-      if (error) throw new Error(error.message);
+      // VPS endpoints: /api/dealers/:id/suspend or /reactivate. Map 'suspended' -> suspend, others -> reactivate.
+      const action = newStatus === "suspended" ? "suspend" : "reactivate";
+      const res = await vpsAuthedFetch(`/api/dealers/${id}/${action}`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Status change failed (${res.status})`);
     },
     onSuccess: () => {
       toast({ title: "Dealer status updated" });
@@ -278,12 +281,13 @@ const DealerManagement = () => {
       if (deleteConfirmName.trim() !== deleteDealer.name.trim()) {
         throw new Error("Confirmation name does not match");
       }
-      const res = await supabase.functions.invoke("delete-dealer", {
-        body: { dealer_id: deleteDealer.id, confirm_name: deleteConfirmName.trim() },
-      });
-      if (res.error) throw new Error(res.error.message || "Failed to delete dealer");
-      if (res.data?.error) throw new Error(res.data.error);
-      return res.data;
+      const res = await vpsAuthedFetch(
+        `/api/dealers/${deleteDealer.id}?confirm=${encodeURIComponent(deleteConfirmName.trim())}`,
+        { method: "DELETE" }
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Delete failed (${res.status})`);
+      return { deleted_dealer: deleteDealer.name, deleted_auth_users: deleteDealer.userCount ?? 0 };
     },
     onSuccess: (data: any) => {
       toast({
