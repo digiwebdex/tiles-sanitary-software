@@ -97,11 +97,7 @@ export async function previewBatchAllocation(
   }>;
 }> {
   const productIds = items.map(i => i.product_id);
-  const { data: products } = await supabase
-    .from("products")
-    .select("id, name, unit_type")
-    .in("id", productIds);
-  const productMap = new Map((products ?? []).map(p => [p.id, p]));
+  const productMap = await fetchProductsByIds(dealerId, productIds);
 
   let globalMixedShade = false;
   let globalMixedCaliber = false;
