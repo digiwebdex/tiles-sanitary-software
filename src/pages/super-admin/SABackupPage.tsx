@@ -259,25 +259,8 @@ const SABackupPage = () => {
       return;
     }
 
-    try {
-      const { error } = await supabase.from("restore_logs").insert({
-        backup_log_id: restoreDialog.id,
-        backup_file_name: restoreDialog.file_name || "unknown",
-        backup_type: restoreDialog.backup_type,
-        database_name: restoreDialog.database_name,
-        app_name: restoreDialog.app_name,
-        initiated_by_name: "Super Admin (UI)",
-        status: "pending",
-        logs: `Restore requested for ${restoreDialog.file_name} at ${new Date().toISOString()}.`,
-      });
-      if (error) throw error;
-
-      toast.success("Restore request logged. Execute the restore command on VPS.");
-      setRestoreDialog(null);
-      refetchRestores();
-    } catch (err: any) {
-      toast.error("Failed to log restore: " + err.message);
-    }
+    toast.error("Restore not available on this host.");
+    setRestoreDialog(null);
   };
 
   const StatusBadge = ({ status }: { status: string }) => {
