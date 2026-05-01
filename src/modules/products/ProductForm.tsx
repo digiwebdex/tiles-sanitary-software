@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { productSchema, type ProductFormValues } from "@/modules/products/productSchema";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import {
   Form,
   FormControl,
@@ -50,23 +50,21 @@ const ProductForm = ({ defaultValues, onSubmit, isLoading, productId, dealerId }
   const [skuError, setSkuError] = useState<string | null>(null);
 
   // Fetch last purchase cost for this product (only in edit mode)
+  // Phase 3U-30b: VPS GET /api/products/:id/last-purchase
   const { data: lastPurchaseCost } = useQuery({
-    queryKey: ["product-last-cost", productId],
+    queryKey: ["product-last-cost", productId, dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("purchase_items")
-        .select("landed_cost, purchase_rate, purchases!inner(purchase_date)")
-        .eq("product_id", productId!)
-        .eq("dealer_id", dealerId!)
-        .order("purchases(purchase_date)", { ascending: false })
-        .limit(1);
-      if (data && data.length > 0) {
-        return {
-          landed_cost: Number(data[0].landed_cost) || 0,
-          purchase_rate: Number(data[0].purchase_rate) || 0,
-        };
-      }
-      return null;
+      const res = await vpsAuthedFetch(
+        `/api/products/${productId}/last-purchase?dealerId=${dealerId}`,
+      );
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => null as any);
+      const row = body?.row;
+      if (!row) return null;
+      return {
+        landed_cost: Number(row.landed_cost) || 0,
+        purchase_rate: Number(row.purchase_rate) || 0,
+      };
     },
     enabled: !!productId && !!dealerId,
   });
