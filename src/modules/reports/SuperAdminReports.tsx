@@ -37,25 +37,25 @@ export function RevenueCollectionReport() {
   const { data = [], isLoading } = useQuery({
     queryKey: ["sa-revenue-collection", fromDate, toDate],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("subscription_payments")
-        .select(`
-          id, payment_date, amount, payment_method, payment_status, note,
-          dealer_id, subscription_id
-        `)
-        .gte("payment_date", fromDate)
-        .lte("payment_date", toDate)
-        .order("payment_date", { ascending: false });
-      if (error) throw error;
-
-      // Get dealer names
-      const dealerIds = [...new Set((data ?? []).map((d) => d.dealer_id))];
-      const { data: dealers } = await supabase.from("dealers").select("id, name").in("id", dealerIds);
-      const dealerMap = new Map((dealers ?? []).map((d) => [d.id, d.name]));
-
-      return (data ?? []).map((p) => ({
-        ...p,
-        dealer_name: dealerMap.get(p.dealer_id) ?? "Unknown",
+      // /api/subscriptions/payments returns enriched rows incl. dealer_name.
+      // Filter by date client-side (server returns 500 most recent overall).
+      const { payments } = await vpsJson<{ payments: any[] }>(
+        "/api/subscriptions/payments"
+      );
+      const within = (payments ?? []).filter((p) => {
+        if (!p.payment_date) return false;
+        return p.payment_date >= fromDate && p.payment_date <= toDate;
+      });
+      return within.map((p) => ({
+        id: p.id,
+        payment_date: p.payment_date,
+        amount: Number(p.amount ?? 0),
+        payment_method: p.payment_method,
+        payment_status: p.payment_status,
+        note: p.note,
+        dealer_id: p.dealer_id,
+        subscription_id: p.subscription_id,
+        dealer_name: p.dealer_name ?? "Unknown",
       }));
     },
   });
