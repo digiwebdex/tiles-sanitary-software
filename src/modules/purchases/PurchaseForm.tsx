@@ -3,7 +3,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { purchaseSchema, type PurchaseFormValues } from "@/modules/purchases/purchaseSchema";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import {
   Form,
   FormControl,
@@ -71,71 +71,62 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
     name: "items",
   });
 
+  // Phase 3U-30: VPS GET /api/suppliers.
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("suppliers")
-        .select("id, name")
-        .eq("dealer_id", dealerId);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/suppliers?dealerId=${dealerId}&pageSize=500&orderBy=name&orderDir=asc`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      return ((body as any)?.rows ?? []) as { id: string; name: string }[];
     },
     enabled: !!dealerId,
   });
 
+  // Phase 3U-30: VPS GET /api/products (active).
   const { data: products = [] } = useQuery({
     queryKey: ["products-active", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, name, sku, unit_type, per_box_sft, category")
-        .eq("dealer_id", dealerId)
-        .eq("active", true);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/products?dealerId=${dealerId}&pageSize=500&orderBy=name&orderDir=asc&f.active=true`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      return ((body as any)?.rows ?? []) as Array<{
+        id: string;
+        name: string;
+        sku: string;
+        unit_type: string;
+        per_box_sft: number | null;
+        category: string;
+      }>;
     },
     enabled: !!dealerId,
   });
 
-  // Fetch last purchase info per product (upgraded query)
-  const { data: lastPurchaseMap = new Map<string, LastPurchaseInfo>() } = useQuery({
+  // Phase 3U-30: VPS GET /api/products/last-purchase-map (dealer_admin only —
+  // backend returns 403 for salesman, which we tolerate as an empty map).
+  const { data: lastPurchaseMap = {} as Record<string, LastPurchaseInfo> } = useQuery({
     queryKey: ["products-last-purchase-info", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("purchase_items")
-        .select("product_id, purchase_rate, landed_cost, purchases!inner(purchase_date, supplier_id, suppliers(name))")
-        .eq("dealer_id", dealerId)
-        .order("purchases(purchase_date)", { ascending: false });
-      const map = new Map<string, LastPurchaseInfo>();
-      for (const item of data ?? []) {
-        if (!map.has(item.product_id)) {
-          const purchase = item.purchases as any;
-          const supplierData = purchase?.suppliers as any;
-          map.set(item.product_id, {
-            purchase_rate: Number(item.purchase_rate) || 0,
-            landed_cost: Number(item.landed_cost) || 0,
-            purchase_date: purchase?.purchase_date ?? "",
-            supplier_name: supplierData?.name ?? "",
-          });
-        }
-      }
-      return map;
+      const res = await vpsAuthedFetch(
+        `/api/products/last-purchase-map?dealerId=${dealerId}`,
+      );
+      if (!res.ok) return {} as Record<string, LastPurchaseInfo>;
+      const body = await res.json().catch(() => ({} as any));
+      return (body ?? {}) as Record<string, LastPurchaseInfo>;
     },
     enabled: !!dealerId,
   });
 
-  // Fetch average cost from stock table
-  const { data: avgCostMap = new Map<string, number>() } = useQuery({
+  // Phase 3U-30: VPS GET /api/products/cost-map (dealer_admin only).
+  const { data: avgCostMap = {} as Record<string, number> } = useQuery({
     queryKey: ["products-avg-cost", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("stock")
-        .select("product_id, average_cost_per_unit")
-        .eq("dealer_id", dealerId);
-      const map = new Map<string, number>();
-      for (const row of data ?? []) {
-        map.set(row.product_id, Number(row.average_cost_per_unit) || 0);
-      }
-      return map;
+      const res = await vpsAuthedFetch(`/api/products/cost-map?dealerId=${dealerId}`);
+      if (!res.ok) return {} as Record<string, number>;
+      const body = await res.json().catch(() => ({} as any));
+      return (body ?? {}) as Record<string, number>;
     },
     enabled: !!dealerId,
   });
