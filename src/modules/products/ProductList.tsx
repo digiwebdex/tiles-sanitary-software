@@ -89,23 +89,21 @@ const ProductList = ({ dealerId }: ProductListProps) => {
     queryKey: ["products-summary", dealerId],
     enabled: !!dealerId,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, cost_price, reorder_level, unit_type")
-        .eq("dealer_id", dealerId);
-      return data ?? [];
+      const res = await vpsAuthedFetch(`/api/products/summary-rows?dealerId=${dealerId}`);
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return (body.rows ?? []) as any[];
     },
   });
 
   const { data: stockData } = useQuery({
     queryKey: ["products-stock-map", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("stock")
-        .select("product_id, box_qty, sft_qty, piece_qty, reserved_box_qty, reserved_piece_qty")
-        .eq("dealer_id", dealerId);
+      const res = await vpsAuthedFetch(`/api/products/stock-map?dealerId=${dealerId}`);
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
       const map = new Map<string, { total: number; box: number; sft: number; piece: number; reservedBox: number; reservedPiece: number }>();
-      for (const s of data ?? []) {
+      for (const s of (body.rows ?? []) as any[]) {
         const box = Number(s.box_qty) || 0;
         const sft = Number(s.sft_qty) || 0;
         const piece = Number(s.piece_qty) || 0;

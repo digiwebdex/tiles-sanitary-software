@@ -261,6 +261,39 @@ router.get('/tx-check', async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/products/summary-rows ────────────────────────────────────────
+// Lightweight per-product summary fields for dashboard math (no cost for salesman)
+router.get('/summary-rows', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const cols = hasRole(req, 'dealer_admin') || hasRole(req, 'super_admin')
+      ? ['id', 'cost_price', 'reorder_level', 'unit_type']
+      : ['id', 'reorder_level', 'unit_type'];
+    const rows = await db('products').where({ dealer_id: dealerId }).select(cols);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[products/summary-rows]', err.message);
+    res.status(500).json({ error: 'Failed to load product summary' });
+  }
+});
+
+// ── GET /api/products/stock-map ───────────────────────────────────────────
+// Returns dealer-wide stock per product, including reservation counters
+router.get('/stock-map', async (req: Request, res: Response) => {
+  try {
+    const dealerId = resolveDealerScope(req, res);
+    if (!dealerId) return;
+    const rows = await db('stock')
+      .where({ dealer_id: dealerId })
+      .select('product_id', 'box_qty', 'sft_qty', 'piece_qty', 'reserved_box_qty', 'reserved_piece_qty');
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[products/stock-map]', err.message);
+    res.status(500).json({ error: 'Failed to load stock map' });
+  }
+});
+
 // ── GET /api/products/:id ──────────────────────────────────────────────────
 router.get('/:id', async (req: Request, res: Response) => {
   try {
