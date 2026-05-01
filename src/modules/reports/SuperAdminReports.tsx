@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,15 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { exportToExcel } from "@/lib/exportUtils";
 import { Download } from "lucide-react";
+
+async function vpsJson<T>(path: string): Promise<T> {
+  const res = await vpsAuthedFetch(path);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any)?.error || `Request failed (${res.status})`);
+  }
+  return (await res.json()) as T;
+}
 
 // ─── Revenue Collection Report ────────────────────────────
 export function RevenueCollectionReport() {
