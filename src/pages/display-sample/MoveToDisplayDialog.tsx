@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { displayStockService } from "@/services/displayStockService";
 
 interface Product {
@@ -30,15 +30,24 @@ export function MoveToDisplayDialog({ open, onOpenChange, dealerId, onSuccess }:
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Phase 3U-30: VPS GET /api/products with active filter, ordered by name.
   useEffect(() => {
     if (!open) return;
-    supabase
-      .from("products")
-      .select("id, name, sku, unit_type")
-      .eq("dealer_id", dealerId)
-      .eq("active", true)
-      .order("name")
-      .then(({ data }) => setProducts((data ?? []) as Product[]));
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await vpsAuthedFetch(
+          `/api/products?dealerId=${dealerId}&pageSize=200&orderBy=name&orderDir=asc&f.active=true`,
+        );
+        const body = await res.json().catch(() => ({} as any));
+        if (!cancelled && res.ok) {
+          setProducts(((body as any)?.rows ?? []) as Product[]);
+        }
+      } catch {
+        if (!cancelled) setProducts([]);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [open, dealerId]);
 
   const reset = () => {

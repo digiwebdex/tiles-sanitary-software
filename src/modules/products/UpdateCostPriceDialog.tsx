@@ -8,8 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { logAudit } from "@/services/auditService";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { formatCurrency } from "@/lib/utils";
 
 interface Props {
@@ -17,10 +16,15 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   product: { id: string; name: string; sku: string } | null;
   currentCost: number;
+  /** Kept for backwards compatibility; backend infers tenancy from JWT. */
   dealerId: string;
 }
 
-const UpdateCostPriceDialog = ({ open, onOpenChange, product, currentCost, dealerId }: Props) => {
+/**
+ * Phase 3U-30: now calls POST /api/products/:id/cost-price, which performs
+ * the stock update + audit log atomically server-side.
+ */
+const UpdateCostPriceDialog = ({ open, onOpenChange, product, currentCost }: Props) => {
   const [newCost, setNewCost] = useState("");
   const [reason, setReason] = useState("");
   const qc = useQueryClient();
@@ -32,21 +36,14 @@ const UpdateCostPriceDialog = ({ open, onOpenChange, product, currentCost, deale
       if (!reason.trim()) throw new Error("Reason is required");
       if (!product) throw new Error("No product selected");
 
-      const { error } = await supabase
-        .from("stock")
-        .update({ average_cost_per_unit: cost })
-        .eq("product_id", product.id)
-        .eq("dealer_id", dealerId);
-      if (error) throw new Error(error.message);
-
-      await logAudit({
-        dealer_id: dealerId,
-        action: "cost_change",
-        table_name: "stock",
-        record_id: product.id,
-        old_data: { average_cost_per_unit: currentCost },
-        new_data: { average_cost_per_unit: cost, reason: reason.trim() },
+      const res = await vpsAuthedFetch(`/api/products/${product.id}/cost-price`, {
+        method: "POST",
+        body: JSON.stringify({ cost, reason: reason.trim() }),
       });
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        throw new Error((body as any)?.error || `Failed to update cost (${res.status})`);
+      }
     },
     onSuccess: () => {
       toast.success("Cost price updated");

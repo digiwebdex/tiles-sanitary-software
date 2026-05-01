@@ -3,7 +3,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { purchaseReturnSchema, type PurchaseReturnFormValues } from "./purchaseReturnSchema";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
@@ -40,29 +40,27 @@ const PurchaseReturnForm = ({ dealerId, onSubmit, isLoading }: PurchaseReturnFor
     name: "items",
   });
 
+  // Phase 3U-30: VPS GET /api/suppliers (active only).
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers-for-return", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("suppliers")
-        .select("id, name")
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("name");
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/suppliers?dealerId=${dealerId}&pageSize=500&orderBy=name&orderDir=asc&f.status=active`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      return ((body as any)?.rows ?? []) as { id: string; name: string }[];
     },
   });
 
+  // Phase 3U-30: VPS GET /api/products (active only).
   const { data: products = [] } = useQuery({
     queryKey: ["products-for-return", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, name, sku")
-        .eq("dealer_id", dealerId)
-        .eq("active", true)
-        .order("name");
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/products?dealerId=${dealerId}&pageSize=500&orderBy=name&orderDir=asc&f.active=true`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      return ((body as any)?.rows ?? []) as { id: string; name: string; sku: string }[];
     },
   });
 

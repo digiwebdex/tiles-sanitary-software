@@ -9,11 +9,16 @@ export interface DealerInfo {
   challan_template: string;
   enable_reservations: boolean;
   default_wastage_pct: number;
+  /** Phase 3U-30: surfaced from `/api/dealers/:id` so SaleForm can gate backorders without a separate Supabase round-trip. */
+  allow_backorder: boolean;
 }
 
 /**
  * Phase 3U-27: Migrated from Supabase `dealers` select to VPS GET /api/dealers/:id.
  * The endpoint returns { dealer, users, subscription }; we only consume `dealer`.
+ *
+ * Phase 3U-30: extended to surface `allow_backorder` so SaleForm can ditch its
+ * inline `supabase.from('dealers').select('allow_backorder')` query.
  */
 export function useDealerInfo() {
   const dealerId = useDealerId();
@@ -35,6 +40,7 @@ export function useDealerInfo() {
         challan_template: String(row.challan_template ?? "classic"),
         enable_reservations: Boolean(row.enable_reservations),
         default_wastage_pct: Number(row.default_wastage_pct ?? 10),
+        allow_backorder: Boolean(row.allow_backorder),
       };
     },
     enabled: !!dealerId,
