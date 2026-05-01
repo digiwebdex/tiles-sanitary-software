@@ -773,42 +773,16 @@ function DetailedSalesReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-detailed-sales", dealerId, page, search],
     queryFn: async () => {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      let query = supabase
-        .from("sales")
-        .select("id, created_at, invoice_number, sale_date, total_amount, paid_amount, due_amount, sale_status, customer_id, customers(name)", { count: "exact" })
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      if (search?.trim()) {
-        query = query.or(`invoice_number.ilike.%${search.trim()}%,customers.name.ilike.%${search.trim()}%`);
-      }
-
-      const { data: sales, error, count } = await query;
-      if (error) throw new Error(error.message);
-
-      // Fetch sale_items with product info for these sales
-      const saleIds = (sales ?? []).map((s: any) => s.id);
-      let itemsMap: Record<string, { name: string; qty: number }[]> = {};
-      if (saleIds.length > 0) {
-        const { data: items } = await supabase
-          .from("sale_items")
-          .select("sale_id, quantity, products(name, size, unit_type, category)")
-          .in("sale_id", saleIds);
-
-        for (const item of items ?? []) {
-          const sid = (item as any).sale_id;
-          if (!itemsMap[sid]) itemsMap[sid] = [];
-          const p = (item as any).products;
-          const label = p ? `${p.category === "tiles" ? (p.name?.includes("Wall") ? "Wall Tiles" : (p.name?.includes("Floor") ? "Floor Tiles" : p.name)) : p.name}${p.size ? ` (Size: ${p.size})` : ""} (${p.unit_type === "box_sft" ? "Box" : "Pcs"})` : "Product";
-          itemsMap[sid].push({ name: label, qty: Number((item as any).quantity) });
-        }
-      }
-
-      return { sales: sales ?? [], total: count ?? 0, itemsMap };
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const res = await vpsAuthedFetch(`/api/reports/page/detailed-sales?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return {
+        sales: body.sales ?? [],
+        total: body.total ?? 0,
+        itemsMap: (body.itemsMap ?? {}) as Record<string, { name: string; qty: number }[]>,
+      };
     },
   });
 
