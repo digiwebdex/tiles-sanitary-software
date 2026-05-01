@@ -202,8 +202,8 @@ export function SubscriptionStatusReport() {
 
         return {
           id: s.id,
-          dealer_name: dealerMap.get(s.dealer_id) ?? "Unknown",
-          plan_name: planMap.get(s.plan_id) ?? "Unknown",
+          dealer_name: s.dealers?.name ?? "Unknown",
+          plan_name: s.plans?.name ?? "Unknown",
           status: s.status,
           display_status: displayStatus,
           start_date: s.start_date,
