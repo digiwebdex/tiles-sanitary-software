@@ -350,4 +350,161 @@ router.get('/quotation-widgets', async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/dashboard/delivery-summary ───────────────────────────────────
+router.get('/delivery-summary', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0];
+
+    const rows = await db('challans')
+      .where({ dealer_id: dealerId })
+      .whereNot('status', 'cancelled')
+      .select('id', 'delivery_status', 'challan_date', 'status');
+
+    const pending = rows.filter((c: any) => c.delivery_status === 'pending').length;
+    const dispatchedToday = rows.filter(
+      (c: any) => c.delivery_status === 'dispatched' && String(c.challan_date).slice(0, 10) === today,
+    ).length;
+    const deliveredToday = rows.filter(
+      (c: any) => c.delivery_status === 'delivered' && String(c.challan_date).slice(0, 10) === today,
+    ).length;
+    const late = rows.filter(
+      (c: any) => c.delivery_status === 'pending' && String(c.challan_date).slice(0, 10) <= twoDaysAgo,
+    ).length;
+
+    res.json({ pending, dispatchedToday, deliveredToday, late });
+  } catch (err: any) {
+    console.error('[dashboard/delivery-summary]', err.message);
+    res.status(500).json({ error: 'Failed to load delivery summary' });
+  }
+});
+
+// ── GET /api/dashboard/top-overdue ────────────────────────────────────────
+router.get('/top-overdue', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  try {
+    const [custs, ledger] = await Promise.all([
+      db('customers')
+        .where({ dealer_id: dealerId, status: 'active' })
+        .select('id', 'name', 'phone', 'max_overdue_days'),
+      db('customer_ledger')
+        .where({ dealer_id: dealerId })
+        .select('customer_id', 'amount', 'type', 'entry_date'),
+    ]);
+
+    const dueMap = new Map<string, { outstanding: number; oldestSaleDate: string | null }>();
+    for (const e of ledger as any[]) {
+      const cur = dueMap.get(e.customer_id) ?? { outstanding: 0, oldestSaleDate: null };
+      const amt = Number(e.amount) || 0;
+      const dateStr = e.entry_date ? String(e.entry_date).slice(0, 10) : null;
+      if (e.type === 'sale') {
+        cur.outstanding += amt;
+        if (dateStr && (!cur.oldestSaleDate || dateStr < cur.oldestSaleDate)) cur.oldestSaleDate = dateStr;
+      } else if (e.type === 'payment' || e.type === 'refund') {
+        cur.outstanding -= amt;
+      } else if (e.type === 'adjustment') {
+        cur.outstanding += amt;
+      }
+      dueMap.set(e.customer_id, cur);
+    }
+
+    const today = new Date();
+    const out = (custs as any[])
+      .map((c) => {
+        const info = dueMap.get(c.id);
+        const outstanding = round2(info?.outstanding ?? 0);
+        const daysOverdue = info?.oldestSaleDate
+          ? Math.floor((today.getTime() - new Date(info.oldestSaleDate).getTime()) / 86400000)
+          : 0;
+        return { id: c.id, name: c.name, phone: c.phone, outstanding, daysOverdue };
+      })
+      .filter((c) => c.outstanding > 0)
+      .sort((a, b) => b.outstanding - a.outstanding)
+      .slice(0, 5);
+
+    res.json({ rows: out });
+  } catch (err: any) {
+    console.error('[dashboard/top-overdue]', err.message);
+    res.status(500).json({ error: 'Failed to load top overdue customers' });
+  }
+});
+
+// ── GET /api/dashboard/latest-suppliers ───────────────────────────────────
+router.get('/latest-suppliers', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  try {
+    const rows = await db('suppliers')
+      .where({ dealer_id: dealerId })
+      .select('id', 'name', 'phone', 'status', 'created_at')
+      .orderBy('created_at', 'desc')
+      .limit(5);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[dashboard/latest-suppliers]', err.message);
+    res.status(500).json({ error: 'Failed to load latest suppliers' });
+  }
+});
+
+// ── GET /api/dashboard/customer-due-balances?ids=a,b,c ────────────────────
+router.get('/customer-due-balances', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  try {
+    const idsParam = (req.query.ids as string | undefined) || '';
+    const ids = idsParam.split(',').map((s) => s.trim()).filter(Boolean);
+    if (!ids.length) {
+      res.json({ rows: {} });
+      return;
+    }
+
+    const [ledger, sales] = await Promise.all([
+      db('customer_ledger')
+        .where({ dealer_id: dealerId })
+        .whereIn('customer_id', ids)
+        .select('customer_id', 'amount', 'type'),
+      db('sales')
+        .where({ dealer_id: dealerId })
+        .whereIn('customer_id', ids)
+        .where('due_amount', '>', 0)
+        .orderBy('sale_date', 'asc')
+        .select('customer_id', 'sale_date', 'due_amount'),
+    ]);
+
+    const sums: Record<string, { due: number; daysOverdue: number }> = {};
+    for (const r of ledger as any[]) {
+      const amt = Number(r.amount) || 0;
+      if (!sums[r.customer_id]) sums[r.customer_id] = { due: 0, daysOverdue: 0 };
+      if (r.type === 'sale') sums[r.customer_id].due += amt;
+      else if (r.type === 'payment' || r.type === 'refund') sums[r.customer_id].due -= amt;
+      else if (r.type === 'adjustment') sums[r.customer_id].due += amt;
+    }
+
+    const today = new Date();
+    const oldest = new Map<string, string>();
+    for (const s of sales as any[]) {
+      if (!oldest.has(s.customer_id)) oldest.set(s.customer_id, String(s.sale_date).slice(0, 10));
+    }
+    for (const [cid, date] of oldest) {
+      if (sums[cid]) {
+        sums[cid].daysOverdue = Math.max(0, Math.floor((today.getTime() - new Date(date).getTime()) / 86400000));
+      }
+    }
+    // round dues
+    for (const k of Object.keys(sums)) sums[k].due = round2(sums[k].due);
+
+    res.json({ rows: sums });
+  } catch (err: any) {
+    console.error('[dashboard/customer-due-balances]', err.message);
+    res.status(500).json({ error: 'Failed to load customer due balances' });
+  }
+});
+
 export default router;
