@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { saleSchema, type SaleFormValues } from "@/modules/sales/saleSchema";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { pricingTierService } from "@/services/pricingTierService";
 import RateSourceBadge from "@/components/RateSourceBadge";
 import { ProjectSitePicker } from "@/components/project/ProjectSitePicker";
@@ -196,26 +197,18 @@ const SaleForm = ({ dealerId, onSubmit, isLoading, defaultValues: dv, submitLabe
     queryKey: ["sale-overdue-check", matchedCustomer?.id],
     queryFn: async () => {
       if (!matchedCustomer) return null;
-      const [ledgerRes, salesRes] = await Promise.all([
-        supabase.from("customer_ledger").select("amount, type").eq("customer_id", matchedCustomer.id).eq("dealer_id", dealerId),
-        supabase.from("sales").select("sale_date, due_amount").eq("customer_id", matchedCustomer.id).eq("dealer_id", dealerId).gt("due_amount", 0).order("sale_date", { ascending: true }).limit(1),
-      ]);
-      let outstanding = 0;
-      for (const row of ledgerRes.data ?? []) {
-        const amt = Number(row.amount);
-        if (row.type === "sale") outstanding += amt;
-        else if (row.type === "payment" || row.type === "refund") outstanding -= amt;
-        else if (row.type === "adjustment") outstanding += amt;
-      }
-      const oldestDate = salesRes.data?.[0]?.sale_date ?? null;
-      const daysOverdue = oldestDate ? Math.max(0, Math.floor((Date.now() - new Date(oldestDate).getTime()) / 86400000)) : 0;
-      return {
-        outstanding: Math.round(outstanding * 100) / 100,
-        daysOverdue,
-        maxOverdueDays: Number(matchedCustomer.max_overdue_days ?? 0),
-        creditLimit: Number(matchedCustomer.credit_limit ?? 0),
-        isOverdueViolated: Number(matchedCustomer.max_overdue_days ?? 0) > 0 && daysOverdue > Number(matchedCustomer.max_overdue_days ?? 0),
-        isCreditExceeded: Number(matchedCustomer.credit_limit ?? 0) > 0 && outstanding > Number(matchedCustomer.credit_limit ?? 0),
+      const res = await vpsAuthedFetch(
+        `/api/reports/sale-overdue-check?dealerId=${dealerId}&customerId=${matchedCustomer.id}`,
+      );
+      if (!res.ok) return null;
+      const body = await res.json();
+      return body as {
+        outstanding: number;
+        daysOverdue: number;
+        maxOverdueDays: number;
+        creditLimit: number;
+        isOverdueViolated: boolean;
+        isCreditExceeded: boolean;
       };
     },
     enabled: !!matchedCustomer,
