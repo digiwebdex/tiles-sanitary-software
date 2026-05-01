@@ -401,82 +401,31 @@ export function StockMovementReport({ dealerId }: { dealerId: string }) {
   const { data: products } = useQuery({
     queryKey: ["products-list-movement", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("products")
-        .select("id, name, sku")
-        .eq("dealer_id", dealerId)
-        .eq("active", true)
-        .order("name");
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/products?dealerId=${dealerId}&pageSize=200&f.active=true&orderBy=name&orderDir=asc`,
+      );
+      if (!res.ok) return [] as Array<{ id: string; name: string; sku: string }>;
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{ id: string; name: string; sku: string }>;
     },
   });
 
   const { data, isLoading } = useQuery({
     queryKey: ["report-stock-movement", dealerId, productId, page],
     queryFn: async () => {
-      if (!productId) return { rows: [], total: 0 };
-
-      const [purchaseRes, saleRes, returnRes] = await Promise.all([
-        supabase
-          .from("purchase_items")
-          .select("id, quantity, purchase_rate, total, purchases(purchase_date, invoice_number)")
-          .eq("dealer_id", dealerId)
-          .eq("product_id", productId),
-        supabase
-          .from("sale_items")
-          .select("id, quantity, sale_rate, total, sales(sale_date, invoice_number)")
-          .eq("dealer_id", dealerId)
-          .eq("product_id", productId),
-        supabase
-          .from("sales_returns")
-          .select("id, qty, refund_amount, return_date, is_broken, sales(invoice_number)")
-          .eq("dealer_id", dealerId)
-          .eq("product_id", productId),
-      ]);
-
-      type MovementRow = { id: string; date: string; type: string; reference: string; qtyIn: number; qtyOut: number; rate: number; total: number };
-      const movements: MovementRow[] = [];
-
-      for (const pi of purchaseRes.data ?? []) {
-        const p = (pi as any).purchases;
-        movements.push({
-          id: pi.id, date: p?.purchase_date ?? "", type: "Purchase",
-          reference: p?.invoice_number ?? "—",
-          qtyIn: Number(pi.quantity), qtyOut: 0,
-          rate: Number(pi.purchase_rate), total: Number(pi.total),
-        });
-      }
-      for (const si of saleRes.data ?? []) {
-        const s = (si as any).sales;
-        movements.push({
-          id: si.id, date: s?.sale_date ?? "", type: "Sale",
-          reference: s?.invoice_number ?? "—",
-          qtyIn: 0, qtyOut: Number(si.quantity),
-          rate: Number(si.sale_rate), total: Number(si.total),
-        });
-      }
-      for (const sr of returnRes.data ?? []) {
-        const s = (sr as any).sales;
-        movements.push({
-          id: sr.id, date: sr.return_date, type: sr.is_broken ? "Return (Broken)" : "Return",
-          reference: s?.invoice_number ?? "—",
-          qtyIn: sr.is_broken ? 0 : Number(sr.qty), qtyOut: sr.is_broken ? Number(sr.qty) : 0,
-          rate: 0, total: Number(sr.refund_amount),
-        });
-      }
-
-      movements.sort((a, b) => a.date.localeCompare(b.date));
-
-      // Calculate running balance
-      let balance = 0;
-      const withBalance = movements.map(m => {
-        balance += m.qtyIn - m.qtyOut;
-        return { ...m, balance };
-      });
-
-      const total = withBalance.length;
-      const paged = withBalance.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-      return { rows: paged, total, allRows: withBalance };
+      if (!productId) return { rows: [], total: 0, allRows: [] as any[] };
+      const res = await vpsAuthedFetch(
+        `/api/reports/stock-movement?dealerId=${dealerId}&productId=${productId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      const allRows = (body.rows ?? []) as Array<{
+        id: string; date: string; type: string; reference: string;
+        qtyIn: number; qtyOut: number; rate: number; total: number; balance: number;
+      }>;
+      const total = allRows.length;
+      const paged = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+      return { rows: paged, total, allRows };
     },
     enabled: !!productId,
   });
