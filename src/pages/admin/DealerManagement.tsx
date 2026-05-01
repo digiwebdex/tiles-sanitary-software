@@ -108,29 +108,32 @@ const DealerManagement = () => {
   const { data: dealers = [], isLoading } = useQuery({
     queryKey: ["admin-dealers-full"],
     queryFn: async () => {
-      const [dealersRes, subsRes, profilesRes] = await Promise.all([
-        supabase.from("dealers").select("*").order("created_at", { ascending: false }),
-        supabase.from("subscriptions").select("*, subscription_plans!subscriptions_plan_id_fkey(name)").order("start_date", { ascending: false }),
-        supabase.from("profiles").select("id, name, email, dealer_id, status"),
+      const [dealersRes, subsRes] = await Promise.all([
+        vpsAuthedFetch("/api/dealers"),
+        vpsAuthedFetch("/api/subscriptions"),
       ]);
-      if (dealersRes.error) throw new Error(dealersRes.error.message);
-      if (subsRes.error) throw new Error(subsRes.error.message);
+      const dealersBody = await dealersRes.json().catch(() => ({}));
+      const subsBody = await subsRes.json().catch(() => ({}));
+      if (!dealersRes.ok) throw new Error(dealersBody?.error || "Failed to load dealers");
+      if (!subsRes.ok) throw new Error(subsBody?.error || "Failed to load subscriptions");
 
-      const subs = subsRes.data ?? [];
-      const profiles = profilesRes.data ?? [];
+      const allDealers = dealersBody.dealers ?? [];
+      const subs = subsBody.subscriptions ?? [];
 
-      const mapped = (dealersRes.data ?? []).map((d: any) => {
+      const mapped = allDealers.map((d: any) => {
         const latestSub = subs.find((s: any) => s.dealer_id === d.id);
-        const dealerUsers = profiles.filter((p: any) => p.dealer_id === d.id);
         return {
           ...d,
-          subscription: latestSub ?? null,
-          userCount: dealerUsers.length,
-          users: dealerUsers,
+          subscription: latestSub
+            ? { ...latestSub, subscription_plans: latestSub.plans ?? null }
+            : null,
+          userCount: d.admin_user_id ? 1 : 0,
+          users: d.admin_user_id
+            ? [{ id: d.admin_user_id, name: d.admin_name, email: d.admin_email, status: d.admin_status }]
+            : [],
         };
       });
 
-      // Pending approvals float to the top so super admin sees them first.
       return mapped.sort((a: any, b: any) => {
         const aPending = a.status === "pending" ? 0 : 1;
         const bPending = b.status === "pending" ? 0 : 1;
@@ -142,9 +145,10 @@ const DealerManagement = () => {
   const { data: plans = [] } = useQuery({
     queryKey: ["admin-plans-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("subscription_plans").select("id, name, monthly_price, yearly_price").eq("is_active", true).order("monthly_price");
-      if (error) throw new Error(error.message);
-      return data;
+      const res = await vpsAuthedFetch("/api/plans");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "Failed to load plans");
+      return (body.plans ?? []).filter((p: any) => p.is_active !== false);
     },
   });
 
