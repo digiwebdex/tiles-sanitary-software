@@ -33,6 +33,11 @@ function isKind(k: string): k is Kind {
   return k in TABLES;
 }
 
+function getKind(req: Request): string {
+  const value = req.params.kind;
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function resolveDealerScope(req: Request, res: Response): string | null {
   const isSuperAdmin = req.user?.roles.includes('super_admin');
   const claimed =
@@ -62,7 +67,7 @@ router.use(authenticate, tenantGuard);
 // ── GET /api/ledger/:kind ──────────────────────────────────────────────
 router.get('/:kind', async (req: Request, res: Response) => {
   try {
-    const { kind } = req.params;
+    const kind = getKind(req);
     if (!isKind(kind)) {
       res.status(400).json({ error: 'Unknown ledger kind' });
       return;
@@ -97,7 +102,7 @@ router.get('/:kind', async (req: Request, res: Response) => {
 // ── GET /api/ledger/:kind/monthly-summary?year= ────────────────────────
 router.get('/:kind/monthly-summary', async (req: Request, res: Response) => {
   try {
-    const { kind } = req.params;
+    const kind = getKind(req);
     if (!isKind(kind)) {
       res.status(400).json({ error: 'Unknown ledger kind' });
       return;
@@ -165,7 +170,7 @@ const entrySchema = z.object({
 
 router.post('/:kind', requireRole('dealer_admin', 'salesman'), async (req: Request, res: Response) => {
   try {
-    const { kind } = req.params;
+    const kind = getKind(req);
     if (!isKind(kind)) {
       res.status(400).json({ error: 'Unknown ledger kind' });
       return;

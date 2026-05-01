@@ -76,7 +76,7 @@ function clientMeta(req: Request) {
 async function generateDeliveryNo(trx: any, dealerId: string): Promise<string> {
   const row = await trx('deliveries')
     .where({ dealer_id: dealerId })
-    .count<{ count: string }[]>('id as count');
+    .count('id as count');
   const seq = Number(row?.[0]?.count ?? 0) + 1;
   return `DL-${String(seq).padStart(5, '0')}`;
 }

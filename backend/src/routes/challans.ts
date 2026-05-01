@@ -200,7 +200,7 @@ async function generateChallanNo(trx: any, dealerId: string): Promise<string> {
   }
   const row = await trx('challans')
     .where({ dealer_id: dealerId })
-    .count<{ count: string }[]>('id as count');
+    .count('id as count');
   const next = Number(row?.[0]?.count ?? 0) + 1;
   return `CH-${String(next).padStart(5, '0')}`;
 }
