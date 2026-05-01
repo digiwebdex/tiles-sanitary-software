@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Gift, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 const CampaignGiftList = () => {
   const dealerId = useDealerId();
@@ -48,13 +48,17 @@ const CampaignGiftList = () => {
   const { data: customers = [] } = useQuery({
     queryKey: ["customers-for-gifts", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("customers")
-        .select("id, name, type")
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("name");
-      return data ?? [];
+      const params = new URLSearchParams({
+        dealerId,
+        pageSize: "200",
+        orderBy: "name",
+        orderDir: "asc",
+        "f.status": "active",
+      });
+      const res = await vpsAuthedFetch(`/api/customers?${params.toString()}`);
+      if (!res.ok) return [];
+      const body = await res.json();
+      return (body.rows ?? []).map((c: any) => ({ id: c.id, name: c.name, type: c.type }));
     },
     enabled: !!dealerId,
   });
