@@ -839,4 +839,212 @@ router.get('/low-stock', async (req, res) => {
   }
 });
 
+// ─── Free vs Reserved Stock (Phase 3U-4) ──────────────────────────────────
+router.get('/free-vs-reserved', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+  try {
+    const [products, stock] = await Promise.all([
+      db('products')
+        .where({ dealer_id: dealerId, active: true })
+        .select('id', 'name', 'sku', 'unit_type')
+        .orderBy('sku'),
+      db('stock')
+        .where({ dealer_id: dealerId })
+        .select('product_id', 'box_qty', 'piece_qty', 'reserved_box_qty', 'reserved_piece_qty'),
+    ]);
+    const stockMap = new Map<string, any>((stock as any[]).map((s) => [s.product_id, s]));
+    const rows = (products as any[])
+      .map((p) => {
+        const s = stockMap.get(p.id);
+        const total =
+          p.unit_type === 'box_sft' ? Number(s?.box_qty ?? 0) : Number(s?.piece_qty ?? 0);
+        const reserved =
+          p.unit_type === 'box_sft'
+            ? Number(s?.reserved_box_qty ?? 0)
+            : Number(s?.reserved_piece_qty ?? 0);
+        return {
+          name: p.name,
+          sku: p.sku,
+          unitType: p.unit_type,
+          total,
+          reserved,
+          free: total - reserved,
+        };
+      })
+      .filter((r) => r.total > 0 || r.reserved > 0);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.free-vs-reserved]', err.message);
+    res.status(500).json({ error: 'Failed to load free vs reserved report' });
+  }
+});
+
+// ─── Sales by Salesman (Phase 3U-4) ───────────────────────────────────────
+router.get('/sales-by-salesman', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+  const year = parseInt((req.query.year as string) || `${new Date().getFullYear()}`, 10);
+  const month = parseInt((req.query.month as string) || `${new Date().getMonth() + 1}`, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    res.status(400).json({ error: 'Invalid year/month' });
+    return;
+  }
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+  try {
+    const sales = await db('sales')
+      .where({ dealer_id: dealerId })
+      .andWhere('sale_date', '>=', startDate)
+      .andWhere('sale_date', '<=', endDate)
+      .select('id', 'total_amount', 'paid_amount', 'due_amount', 'discount', 'created_by');
+
+    const userIds = Array.from(
+      new Set((sales as any[]).map((s) => s.created_by).filter(Boolean)),
+    );
+    const profileMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const profiles = await db('profiles').whereIn('id', userIds).select('id', 'name');
+      for (const p of profiles as any[]) profileMap[p.id] = p.name;
+    }
+
+    const map: Record<
+      string,
+      { name: string; count: number; total: number; paid: number; due: number; discount: number }
+    > = {};
+    for (const s of sales as any[]) {
+      const uid = s.created_by ?? 'unknown';
+      if (!map[uid]) {
+        map[uid] = {
+          name: profileMap[uid] ?? 'Unknown',
+          count: 0,
+          total: 0,
+          paid: 0,
+          due: 0,
+          discount: 0,
+        };
+      }
+      map[uid].count += 1;
+      map[uid].total += Number(s.total_amount);
+      map[uid].paid += Number(s.paid_amount);
+      map[uid].due += Number(s.due_amount);
+      map[uid].discount += Number(s.discount);
+    }
+
+    const rows = Object.values(map).sort((a, b) => b.total - a.total);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.sales-by-salesman]', err.message);
+    res.status(500).json({ error: 'Failed to load sales-by-salesman report' });
+  }
+});
+
+// ─── Supplier Outstanding (Phase 3U-4) ────────────────────────────────────
+router.get('/supplier-outstanding', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+  try {
+    const [ledger, suppliers] = await Promise.all([
+      db('supplier_ledger')
+        .where({ dealer_id: dealerId })
+        .select('supplier_id', 'amount', 'type'),
+      db('suppliers')
+        .where({ dealer_id: dealerId })
+        .select('id', 'name', 'phone', 'status'),
+    ]);
+    const suppMap = new Map<string, any>((suppliers as any[]).map((s) => [s.id, s]));
+    const balances: Record<string, { debit: number; credit: number; paymentCount: number }> = {};
+    for (const e of ledger as any[]) {
+      const sid = e.supplier_id;
+      if (!balances[sid]) balances[sid] = { debit: 0, credit: 0, paymentCount: 0 };
+      const amt = Number(e.amount);
+      if (amt >= 0) balances[sid].debit += amt;
+      else balances[sid].credit += Math.abs(amt);
+      if (e.type === 'payment') balances[sid].paymentCount += 1;
+    }
+    const rows = Object.entries(balances)
+      .map(([sid, b]) => {
+        const s = suppMap.get(sid);
+        return {
+          supplierId: sid,
+          name: s?.name ?? '—',
+          phone: s?.phone ?? '—',
+          totalPurchase: round2(b.debit),
+          totalPaid: round2(b.credit),
+          outstanding: round2(b.debit - b.credit),
+          payments: b.paymentCount,
+        };
+      })
+      .filter((r) => r.outstanding > 0)
+      .sort((a, b) => b.outstanding - a.outstanding);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[reports.supplier-outstanding]', err.message);
+    res.status(500).json({ error: 'Failed to load supplier outstanding report' });
+  }
+});
+
+// ─── Sale overdue check for a single customer (Phase 3U-4) ────────────────
+router.get('/sale-overdue-check', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const customerId = (req.query.customerId as string | undefined) || '';
+  if (!customerId) {
+    res.status(400).json({ error: 'customerId is required' });
+    return;
+  }
+  try {
+    const [customer, ledger, oldestSale] = await Promise.all([
+      db('customers')
+        .where({ id: customerId, dealer_id: dealerId })
+        .select('credit_limit', 'max_overdue_days')
+        .first(),
+      db('customer_ledger')
+        .where({ customer_id: customerId, dealer_id: dealerId })
+        .select('amount', 'type'),
+      db('sales')
+        .where({ customer_id: customerId, dealer_id: dealerId })
+        .andWhere('due_amount', '>', 0)
+        .orderBy('sale_date', 'asc')
+        .select('sale_date')
+        .first(),
+    ]);
+    if (!customer) {
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+    let outstanding = 0;
+    for (const row of ledger as any[]) {
+      const amt = Number(row.amount);
+      if (row.type === 'sale') outstanding += amt;
+      else if (row.type === 'payment' || row.type === 'refund') outstanding -= amt;
+      else if (row.type === 'adjustment') outstanding += amt;
+    }
+    const oldestDate = (oldestSale as any)?.sale_date ?? null;
+    const daysOverdue = oldestDate
+      ? Math.max(
+          0,
+          Math.floor((Date.now() - new Date(oldestDate).getTime()) / 86400000),
+        )
+      : 0;
+    const maxOverdueDays = Number(customer.max_overdue_days ?? 0);
+    const creditLimit = Number(customer.credit_limit ?? 0);
+    res.json({
+      outstanding: round2(outstanding),
+      daysOverdue,
+      maxOverdueDays,
+      creditLimit,
+      isOverdueViolated: maxOverdueDays > 0 && daysOverdue > maxOverdueDays,
+      isCreditExceeded: creditLimit > 0 && outstanding > creditLimit,
+    });
+  } catch (err: any) {
+    console.error('[reports.sale-overdue-check]', err.message);
+    res.status(500).json({ error: 'Failed to load overdue check' });
+  }
+});
+
 export default router;
