@@ -354,20 +354,12 @@ export function BatchReservedStockReport({ dealerId }: { dealerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ["report-batch-reserved", dealerId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stock_reservations")
-        .select(`
-          reserved_qty, fulfilled_qty, released_qty,
-          products:product_id (name, sku, unit_type),
-          customers:customer_id (name),
-          product_batches:batch_id (id, batch_no, shade_code, caliber, box_qty, piece_qty, reserved_box_qty, reserved_piece_qty)
-        `)
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .not("batch_id", "is", null)
-        .order("created_at", { ascending: false });
-      if (error) throw new Error(error.message);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/reports/reservations-by-batch?dealerId=${dealerId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as any[];
     },
   });
 
