@@ -390,4 +390,22 @@ router.post(
   },
 );
 
+// GET /api/notifications/settings — fetch this dealer's notification preferences
+router.get(
+  '/settings',
+  requireDealer,
+  requireRole('dealer_admin', 'salesman'),
+  async (req: Request, res: Response) => {
+    try {
+      const row = await db('notification_settings')
+        .where({ dealer_id: req.dealerId! })
+        .first();
+      res.json(row ?? null);
+    } catch (err: any) {
+      console.error('[notify/settings]', err.message);
+      res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+  },
+);
+
 export default router;
