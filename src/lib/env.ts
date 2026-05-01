@@ -30,7 +30,7 @@ const isSanitilesHost =
 const isLovableHost =
   typeof window !== "undefined" &&
   (/\.lovableproject\.com$/i.test(window.location.hostname) || /\.lovable\.app$/i.test(window.location.hostname));
-const AUTH_BACKEND: AuthBackend = rawBackend === "vps" || (!rawBackend && (isSanitilesHost || isLovableHost)) ? "vps" : "supabase";
+const AUTH_BACKEND: AuthBackend = rawBackend === "vps" || isSanitilesHost || isLovableHost ? "vps" : "supabase";
 
 /**
  * Phase 2 per-resource data backend toggles.
