@@ -422,4 +422,243 @@ router.delete('/:id', requireRole('dealer_admin'), async (req: Request, res: Res
   }
 });
 
+// ─── Product History / Stock Summary endpoints (Phase 3U-7) ───────────────
+
+/** Block salesman from cost / margin data. */
+function requireFinancialRole(req: Request, res: Response): boolean {
+  if (hasRole(req, 'dealer_admin') || hasRole(req, 'super_admin')) return true;
+  res.status(403).json({ error: 'Requires dealer_admin role' });
+  return false;
+}
+
+// GET /api/products/:id/purchase-history?dealerId=
+router.get('/:id/purchase-history', async (req: Request, res: Response) => {
+  const dealerId = resolveDealerScope(req, res);
+  if (!dealerId) return;
+  if (!requireFinancialRole(req, res)) return;
+  try {
+    const rows = await db('purchase_items as pi')
+      .innerJoin('purchases as p', 'p.id', 'pi.purchase_id')
+      .leftJoin('suppliers as s', 's.id', 'p.supplier_id')
+      .where({ 'pi.product_id': req.params.id, 'pi.dealer_id': dealerId })
+      .orderBy('p.purchase_date', 'desc')
+      .limit(50)
+      .select(
+        'pi.quantity', 'pi.purchase_rate', 'pi.landed_cost', 'pi.total', 'pi.purchase_id',
+        'p.purchase_date', 's.name as supplier_name',
+      );
+    res.json({
+      rows: rows.map((r: any) => ({
+        quantity: Number(r.quantity),
+        purchase_rate: Number(r.purchase_rate),
+        landed_cost: Number(r.landed_cost),
+        total: Number(r.total),
+        purchase_id: r.purchase_id,
+        purchases: { purchase_date: r.purchase_date, suppliers: { name: r.supplier_name } },
+      })),
+    });
+  } catch (err: any) {
+    console.error('[products/:id/purchase-history]', err.message);
+    res.status(500).json({ error: 'Failed to load purchase history' });
+  }
+});
+
+// GET /api/products/:id/sales-history?dealerId=
+router.get('/:id/sales-history', async (req: Request, res: Response) => {
+  const dealerId = resolveDealerScope(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('sale_items as si')
+      .innerJoin('sales as s', 's.id', 'si.sale_id')
+      .leftJoin('customers as c', 'c.id', 's.customer_id')
+      .where({ 'si.product_id': req.params.id, 'si.dealer_id': dealerId })
+      .orderBy('s.sale_date', 'desc')
+      .limit(50)
+      .select(
+        'si.quantity', 'si.sale_rate', 'si.total', 'si.total_sft', 'si.sale_id',
+        's.sale_date', 'c.name as customer_name',
+      );
+    res.json({
+      rows: rows.map((r: any) => ({
+        quantity: Number(r.quantity),
+        sale_rate: Number(r.sale_rate),
+        total: Number(r.total),
+        total_sft: r.total_sft != null ? Number(r.total_sft) : null,
+        sale_id: r.sale_id,
+        sales: { sale_date: r.sale_date, customers: { name: r.customer_name } },
+      })),
+    });
+  } catch (err: any) {
+    console.error('[products/:id/sales-history]', err.message);
+    res.status(500).json({ error: 'Failed to load sales history' });
+  }
+});
+
+// GET /api/products/:id/stock-summary?dealerId=
+// Aggregates: stock row, total purchased, sold, returned, last purchase rate, batches.
+router.get('/:id/stock-summary', async (req: Request, res: Response) => {
+  const dealerId = resolveDealerScope(req, res);
+  if (!dealerId) return;
+  const productId = req.params.id;
+  const isFinancial = hasRole(req, 'dealer_admin') || hasRole(req, 'super_admin');
+  try {
+    const [stock, purchSum, soldSum, returnSum, lastPurch, batches] = await Promise.all([
+      db('stock')
+        .where({ product_id: productId, dealer_id: dealerId })
+        .first(['box_qty', 'piece_qty', 'sft_qty', 'reserved_box_qty', 'reserved_piece_qty', 'average_cost_per_unit']),
+      db('purchase_items')
+        .where({ product_id: productId, dealer_id: dealerId })
+        .sum({ s: 'quantity' })
+        .first(),
+      db('sale_items')
+        .where({ product_id: productId, dealer_id: dealerId })
+        .sum({ s: 'quantity' })
+        .first(),
+      db('sales_returns')
+        .where({ product_id: productId, dealer_id: dealerId })
+        .sum({ s: 'qty' })
+        .first(),
+      isFinancial
+        ? db('purchase_items as pi')
+            .innerJoin('purchases as p', 'p.id', 'pi.purchase_id')
+            .where({ 'pi.product_id': productId, 'pi.dealer_id': dealerId })
+            .orderBy('p.purchase_date', 'desc')
+            .limit(1)
+            .first(['pi.landed_cost'])
+        : Promise.resolve(null),
+      db('product_batches')
+        .where({ product_id: productId, dealer_id: dealerId })
+        .orderBy('created_at', 'asc'),
+    ]);
+
+    res.json({
+      stock: stock
+        ? {
+            box_qty: Number(stock.box_qty ?? 0),
+            piece_qty: Number(stock.piece_qty ?? 0),
+            sft_qty: Number(stock.sft_qty ?? 0),
+            reserved_box_qty: Number(stock.reserved_box_qty ?? 0),
+            reserved_piece_qty: Number(stock.reserved_piece_qty ?? 0),
+            average_cost_per_unit: isFinancial ? Number(stock.average_cost_per_unit ?? 0) : 0,
+          }
+        : null,
+      totalPurchased: Number((purchSum as any)?.s ?? 0),
+      totalSold: Number((soldSum as any)?.s ?? 0),
+      totalReturned: Number((returnSum as any)?.s ?? 0),
+      lastPurchaseRate: lastPurch ? Number((lastPurch as any).landed_cost ?? 0) : 0,
+      batches,
+    });
+  } catch (err: any) {
+    console.error('[products/:id/stock-summary]', err.message);
+    res.status(500).json({ error: 'Failed to load stock summary' });
+  }
+});
+
+// GET /api/products/:id/stock-movement?dealerId=&from=&to=
+// Returns 5 grouped movement arrays for the date range.
+router.get('/:id/stock-movement', async (req: Request, res: Response) => {
+  const dealerId = resolveDealerScope(req, res);
+  if (!dealerId) return;
+  const productId = req.params.id;
+  const from = (req.query.from as string) || '1970-01-01';
+  const to = (req.query.to as string) || '9999-12-31';
+  try {
+    const [purchases, sales, salesReturns, purchaseReturns, audits] = await Promise.all([
+      db('purchase_items as pi')
+        .innerJoin('purchases as p', 'p.id', 'pi.purchase_id')
+        .leftJoin('suppliers as s', 's.id', 'p.supplier_id')
+        .where({ 'pi.product_id': productId, 'pi.dealer_id': dealerId })
+        .whereBetween('p.purchase_date', [from, to])
+        .select('pi.quantity', 'p.purchase_date', 'p.invoice_number', 's.name as supplier_name'),
+      db('sale_items as si')
+        .innerJoin('sales as s', 's.id', 'si.sale_id')
+        .leftJoin('customers as c', 'c.id', 's.customer_id')
+        .where({ 'si.product_id': productId, 'si.dealer_id': dealerId })
+        .whereBetween('s.sale_date', [from, to])
+        .select('si.quantity', 's.sale_date', 's.invoice_number', 'c.name as customer_name'),
+      db('sales_returns as sr')
+        .leftJoin('sales as s', 's.id', 'sr.sale_id')
+        .leftJoin('customers as c', 'c.id', 's.customer_id')
+        .where({ 'sr.product_id': productId, 'sr.dealer_id': dealerId })
+        .whereBetween('sr.return_date', [from, to])
+        .select('sr.qty', 'sr.return_date', 'sr.is_broken', 'sr.sale_id', 's.invoice_number', 'c.name as customer_name'),
+      db('purchase_return_items as pri')
+        .innerJoin('purchase_returns as pr', 'pr.id', 'pri.purchase_return_id')
+        .leftJoin('suppliers as s', 's.id', 'pr.supplier_id')
+        .where({ 'pri.product_id': productId, 'pri.dealer_id': dealerId })
+        .whereBetween('pr.return_date', [from, to])
+        .select('pri.quantity', 'pr.return_date', 'pr.return_no', 's.name as supplier_name'),
+      db('audit_logs')
+        .where({ dealer_id: dealerId, table_name: 'stock' })
+        .whereIn('action', ['stock_manual_add', 'stock_manual_deduct', 'stock_broken', 'stock_add', 'stock_deduct'])
+        .where('created_at', '>=', `${from}T00:00:00`)
+        .where('created_at', '<=', `${to}T23:59:59`)
+        .select('action', 'new_data', 'created_at'),
+    ]);
+
+    const adjustments = audits
+      .filter((d: any) => {
+        const nd = d.new_data ?? {};
+        return nd.product_id === productId || nd.adjustment_type;
+      })
+      .map((d: any) => {
+        const nd = d.new_data ?? {};
+        const qty = Number(nd.quantity) || 0;
+        const isAdd = String(d.action).includes('add') || String(d.action).includes('restore');
+        return {
+          date: new Date(d.created_at).toISOString().slice(0, 10),
+          type: 'adjustment' as const,
+          label: nd.reason || nd.adjustment_type || String(d.action).replace('stock_', ''),
+          party: '—',
+          qtyIn: isAdd ? qty : 0,
+          qtyOut: !isAdd ? qty : 0,
+          reference: 'Manual',
+        };
+      });
+
+    res.json({
+      purchases: purchases.map((d: any) => ({
+        date: d.purchase_date,
+        type: 'purchase' as const,
+        label: 'Purchase',
+        party: d.supplier_name ?? '—',
+        qtyIn: Number(d.quantity),
+        qtyOut: 0,
+        reference: d.invoice_number ?? '—',
+      })),
+      sales: sales.map((d: any) => ({
+        date: d.sale_date,
+        type: 'sale' as const,
+        label: 'Sale',
+        party: d.customer_name ?? '—',
+        qtyIn: 0,
+        qtyOut: Number(d.quantity),
+        reference: d.invoice_number ?? '—',
+      })),
+      salesReturns: salesReturns.map((d: any) => ({
+        date: d.return_date,
+        type: 'sales_return' as const,
+        label: d.is_broken ? 'Sales Return (Broken)' : 'Sales Return',
+        party: d.customer_name ?? '—',
+        qtyIn: d.is_broken ? 0 : Number(d.qty),
+        qtyOut: 0,
+        reference: d.invoice_number ?? '—',
+      })),
+      purchaseReturns: purchaseReturns.map((d: any) => ({
+        date: d.return_date,
+        type: 'purchase_return' as const,
+        label: 'Purchase Return',
+        party: d.supplier_name ?? '—',
+        qtyIn: 0,
+        qtyOut: Number(d.quantity),
+        reference: d.return_no ?? '—',
+      })),
+      adjustments,
+    });
+  } catch (err: any) {
+    console.error('[products/:id/stock-movement]', err.message);
+    res.status(500).json({ error: 'Failed to load stock movement' });
+  }
+});
+
 export default router;

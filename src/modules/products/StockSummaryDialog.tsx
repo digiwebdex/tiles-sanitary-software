@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Box, Layers, TrendingUp, TrendingDown, RotateCcw, DollarSign, BarChart3, Package, Lock, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,88 +31,35 @@ const StockSummaryDialog = ({ open, onOpenChange, product, dealerId }: StockSumm
   const isBoxSft = product?.unit_type === "box_sft";
   const perBoxSft = Number(product?.per_box_sft) || 0;
 
-  const { data: stock, isLoading: loadStock } = useQuery({
-    queryKey: ["stock-summary-stock", productId, dealerId],
+  const { data: summary, isLoading: loadSummary } = useQuery({
+    queryKey: ["stock-summary", productId, dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("stock")
-        .select("box_qty, piece_qty, sft_qty, reserved_box_qty, reserved_piece_qty, average_cost_per_unit")
-        .eq("product_id", productId!)
-        .eq("dealer_id", dealerId)
-        .maybeSingle();
-      return data;
+      const res = await vpsAuthedFetch(
+        `/api/products/${productId}/stock-summary?dealerId=${encodeURIComponent(dealerId)}`,
+      );
+      if (!res.ok) throw new Error(`stock-summary failed: ${res.status}`);
+      return res.json() as Promise<{
+        stock: {
+          box_qty: number; piece_qty: number; sft_qty: number;
+          reserved_box_qty: number; reserved_piece_qty: number;
+          average_cost_per_unit: number;
+        } | null;
+        totalPurchased: number;
+        totalSold: number;
+        totalReturned: number;
+        lastPurchaseRate: number;
+        batches: any[];
+      }>;
     },
     enabled: open && !!productId,
   });
 
-  const { data: totalPurchased, isLoading: loadPurch } = useQuery({
-    queryKey: ["stock-summary-purchased", productId, dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("purchase_items")
-        .select("quantity")
-        .eq("product_id", productId!)
-        .eq("dealer_id", dealerId);
-      return (data ?? []).reduce((s, r) => s + Number(r.quantity), 0);
-    },
-    enabled: open && !!productId,
-  });
-
-  const { data: totalSold, isLoading: loadSold } = useQuery({
-    queryKey: ["stock-summary-sold", productId, dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("sale_items")
-        .select("quantity")
-        .eq("product_id", productId!)
-        .eq("dealer_id", dealerId);
-      return (data ?? []).reduce((s, r) => s + Number(r.quantity), 0);
-    },
-    enabled: open && !!productId,
-  });
-
-  const { data: totalReturned, isLoading: loadRet } = useQuery({
-    queryKey: ["stock-summary-returned", productId, dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("sales_returns")
-        .select("qty")
-        .eq("product_id", productId!)
-        .eq("dealer_id", dealerId);
-      return (data ?? []).reduce((s, r) => s + Number(r.qty), 0);
-    },
-    enabled: open && !!productId,
-  });
-
-  const { data: lastPurchaseRate, isLoading: loadLast } = useQuery({
-    queryKey: ["stock-summary-last-rate", productId, dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("purchase_items")
-        .select("landed_cost, purchase_id, purchases!inner(purchase_date)")
-        .eq("product_id", productId!)
-        .eq("dealer_id", dealerId)
-        .order("purchases(purchase_date)", { ascending: false })
-        .limit(1);
-      return data && data.length > 0 ? Number(data[0].landed_cost) : 0;
-    },
-    enabled: open && !!productId,
-  });
-
-  // Batch data
-  const { data: batches = [], isLoading: loadBatches } = useQuery({
-    queryKey: ["stock-summary-batches", productId, dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("product_batches")
-        .select("*")
-        .eq("product_id", productId!)
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: true });
-      return data ?? [];
-    },
-    enabled: open && !!productId,
-  });
+  const stock = summary?.stock;
+  const totalPurchased = summary?.totalPurchased ?? 0;
+  const totalSold = summary?.totalSold ?? 0;
+  const totalReturned = summary?.totalReturned ?? 0;
+  const lastPurchaseRate = summary?.lastPurchaseRate ?? 0;
+  const batches = summary?.batches ?? [];
 
   // Active reservations for this product
   const { data: reservations = [], isLoading: loadRes } = useQuery({
@@ -121,7 +68,7 @@ const StockSummaryDialog = ({ open, onOpenChange, product, dealerId }: StockSumm
     enabled: open && !!productId,
   });
 
-  const isLoading = loadStock || loadPurch || loadSold || loadRet || loadLast || loadBatches || loadRes;
+  const isLoading = loadSummary || loadRes;
 
   if (!product) return null;
 

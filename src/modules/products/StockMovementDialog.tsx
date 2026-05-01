@@ -14,7 +14,7 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn, formatCurrency } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { CalendarIcon } from "lucide-react";
 
 interface StockMovementDialogProps {
@@ -61,156 +61,38 @@ const StockMovementDialog = ({
   const fromStr = format(fromDate, "yyyy-MM-dd");
   const toStr = format(toDate, "yyyy-MM-dd");
 
-  // Fetch all movement sources in parallel
-  const { data: purchases, isLoading: loadPurch } = useQuery({
-    queryKey: ["stock-mov-purchases", productId, dealerId, fromStr, toStr],
+  const { data: movement, isLoading } = useQuery({
+    queryKey: ["stock-mov", productId, dealerId, fromStr, toStr],
     queryFn: async () => {
-      if (!productId) return [];
-      const { data, error } = await supabase
-        .from("purchase_items")
-        .select("quantity, purchase_rate, purchases!inner(purchase_date, invoice_number, supplier_id, suppliers:supplier_id(name))")
-        .eq("product_id", productId)
-        .eq("dealer_id", dealerId)
-        .gte("purchases.purchase_date", fromStr)
-        .lte("purchases.purchase_date", toStr);
-      if (error) throw error;
-      return (data ?? []).map((d: any) => ({
-        date: d.purchases.purchase_date,
-        type: "purchase" as const,
-        label: "Purchase",
-        party: d.purchases.suppliers?.name ?? "—",
-        qtyIn: Number(d.quantity),
-        qtyOut: 0,
-        reference: d.purchases.invoice_number ?? "—",
-      }));
+      if (!productId) return null;
+      const params = new URLSearchParams({ dealerId, from: fromStr, to: toStr });
+      const res = await vpsAuthedFetch(
+        `/api/products/${productId}/stock-movement?${params.toString()}`,
+      );
+      if (!res.ok) throw new Error(`stock-movement failed: ${res.status}`);
+      return res.json() as Promise<{
+        purchases: MovementEntry[];
+        sales: MovementEntry[];
+        salesReturns: MovementEntry[];
+        purchaseReturns: MovementEntry[];
+        adjustments: MovementEntry[];
+      }>;
     },
     enabled: open && !!productId,
   });
-
-  const { data: sales, isLoading: loadSales } = useQuery({
-    queryKey: ["stock-mov-sales", productId, dealerId, fromStr, toStr],
-    queryFn: async () => {
-      if (!productId) return [];
-      const { data, error } = await supabase
-        .from("sale_items")
-        .select("quantity, sales!inner(sale_date, invoice_number, customer_id, customers:customer_id(name))")
-        .eq("product_id", productId)
-        .eq("dealer_id", dealerId)
-        .gte("sales.sale_date", fromStr)
-        .lte("sales.sale_date", toStr);
-      if (error) throw error;
-      return (data ?? []).map((d: any) => ({
-        date: d.sales.sale_date,
-        type: "sale" as const,
-        label: "Sale",
-        party: d.sales.customers?.name ?? "—",
-        qtyIn: 0,
-        qtyOut: Number(d.quantity),
-        reference: d.sales.invoice_number ?? "—",
-      }));
-    },
-    enabled: open && !!productId,
-  });
-
-  const { data: salesReturns, isLoading: loadSR } = useQuery({
-    queryKey: ["stock-mov-sales-returns", productId, dealerId, fromStr, toStr],
-    queryFn: async () => {
-      if (!productId) return [];
-      const { data, error } = await supabase
-        .from("sales_returns")
-        .select("qty, return_date, is_broken, sale_id, sales!inner(invoice_number, customer_id, customers:customer_id(name))")
-        .eq("product_id", productId)
-        .eq("dealer_id", dealerId)
-        .gte("return_date", fromStr)
-        .lte("return_date", toStr);
-      if (error) throw error;
-      return (data ?? []).map((d: any) => ({
-        date: d.return_date,
-        type: "sales_return" as const,
-        label: d.is_broken ? "Sales Return (Broken)" : "Sales Return",
-        party: d.sales?.customers?.name ?? "—",
-        qtyIn: d.is_broken ? 0 : Number(d.qty),
-        qtyOut: 0,
-        reference: d.sales?.invoice_number ?? "—",
-      }));
-    },
-    enabled: open && !!productId,
-  });
-
-  const { data: purchaseReturns, isLoading: loadPR } = useQuery({
-    queryKey: ["stock-mov-purchase-returns", productId, dealerId, fromStr, toStr],
-    queryFn: async () => {
-      if (!productId) return [];
-      const { data, error } = await supabase
-        .from("purchase_return_items")
-        .select("quantity, purchase_return_id, purchase_returns!inner(return_date, return_no, supplier_id, suppliers:supplier_id(name))")
-        .eq("product_id", productId)
-        .eq("dealer_id", dealerId)
-        .gte("purchase_returns.return_date", fromStr)
-        .lte("purchase_returns.return_date", toStr);
-      if (error) throw error;
-      return (data ?? []).map((d: any) => ({
-        date: d.purchase_returns.return_date,
-        type: "purchase_return" as const,
-        label: "Purchase Return",
-        party: d.purchase_returns.suppliers?.name ?? "—",
-        qtyIn: 0,
-        qtyOut: Number(d.quantity),
-        reference: d.purchase_returns.return_no ?? "—",
-      }));
-    },
-    enabled: open && !!productId,
-  });
-
-  const { data: adjustments, isLoading: loadAdj } = useQuery({
-    queryKey: ["stock-mov-adjustments", productId, dealerId, fromStr, toStr],
-    queryFn: async () => {
-      if (!productId) return [];
-      const { data, error } = await supabase
-        .from("audit_logs")
-        .select("action, new_data, created_at")
-        .eq("dealer_id", dealerId)
-        .eq("table_name", "stock")
-        .in("action", ["stock_manual_add", "stock_manual_deduct", "stock_broken", "stock_add", "stock_deduct"])
-        .gte("created_at", `${fromStr}T00:00:00`)
-        .lte("created_at", `${toStr}T23:59:59`);
-      if (error) throw error;
-      return (data ?? [])
-        .filter((d: any) => {
-          const nd = d.new_data as any;
-          return nd?.product_id === productId || nd?.adjustment_type;
-        })
-        .map((d: any) => {
-          const nd = d.new_data as any;
-          const qty = Number(nd?.quantity) || 0;
-          const isAdd = d.action.includes("add") || d.action.includes("restore");
-          return {
-            date: format(new Date(d.created_at), "yyyy-MM-dd"),
-            type: "adjustment" as const,
-            label: nd?.reason || nd?.adjustment_type || d.action.replace("stock_", ""),
-            party: "—",
-            qtyIn: isAdd ? qty : 0,
-            qtyOut: !isAdd ? qty : 0,
-            reference: "Manual",
-          };
-        });
-    },
-    enabled: open && !!productId,
-  });
-
-  const isLoading = loadPurch || loadSales || loadSR || loadPR || loadAdj;
 
   const allMovements = useMemo(() => {
+    if (!movement) return [];
     const entries: MovementEntry[] = [
-      ...(purchases ?? []),
-      ...(sales ?? []),
-      ...(salesReturns ?? []),
-      ...(purchaseReturns ?? []),
-      ...(adjustments ?? []),
+      ...movement.purchases,
+      ...movement.sales,
+      ...movement.salesReturns,
+      ...movement.purchaseReturns,
+      ...movement.adjustments,
     ];
     entries.sort((a, b) => a.date.localeCompare(b.date));
     return entries;
-  }, [purchases, sales, salesReturns, purchaseReturns, adjustments]);
+  }, [movement]);
 
   // Calculate running balance
   const movementsWithBalance = useMemo(() => {

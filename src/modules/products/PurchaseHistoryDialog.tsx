@@ -6,7 +6,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { format } from "date-fns";
 
 interface PurchaseHistoryDialogProps {
@@ -22,15 +22,12 @@ const PurchaseHistoryDialog = ({ open, onOpenChange, productId, productName, dea
     queryKey: ["product-purchase-history", productId, dealerId],
     queryFn: async () => {
       if (!productId) return [];
-      const { data, error } = await supabase
-        .from("purchase_items")
-        .select("quantity, purchase_rate, landed_cost, total, purchase_id, purchases!inner(purchase_date, supplier_id, suppliers:supplier_id(name))")
-        .eq("product_id", productId)
-        .eq("dealer_id", dealerId)
-        .order("purchases(purchase_date)", { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/products/${productId}/purchase-history?dealerId=${encodeURIComponent(dealerId)}`,
+      );
+      if (!res.ok) throw new Error(`purchase-history failed: ${res.status}`);
+      const json = await res.json();
+      return (json.rows ?? []) as any[];
     },
     enabled: open && !!productId,
   });
