@@ -68,7 +68,7 @@ const StockSummaryDialog = ({ open, onOpenChange, product, dealerId }: StockSumm
     enabled: open && !!productId,
   });
 
-  const isLoading = loadStock || loadPurch || loadSold || loadRet || loadLast || loadBatches || loadRes;
+  const isLoading = loadSummary || loadRes;
 
   if (!product) return null;
 
