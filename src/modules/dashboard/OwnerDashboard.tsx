@@ -3,7 +3,7 @@ import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { useNavigate } from "react-router-dom";
 import { dashboardService } from "@/services/dashboardService";
 import { backorderAllocationService } from "@/services/backorderAllocationService";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { useDealerInfo } from "@/hooks/useDealerInfo";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -163,22 +163,17 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
   const { data: deliverySummary } = useQuery({
     queryKey: ["dashboard-delivery-summary", dealerId],
     queryFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
-      const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split("T")[0];
-
-      const { data: challans } = await supabase
-        .from("challans")
-        .select("id, delivery_status, challan_date, status")
-        .eq("dealer_id", dealerId)
-        .neq("status", "cancelled");
-
-      const all = challans ?? [];
-      const pending = all.filter((c: any) => c.delivery_status === "pending").length;
-      const dispatchedToday = all.filter((c: any) => c.delivery_status === "dispatched" && c.challan_date === today).length;
-      const deliveredToday = all.filter((c: any) => c.delivery_status === "delivered" && c.challan_date === today).length;
-      const late = all.filter((c: any) => c.delivery_status === "pending" && c.challan_date <= twoDaysAgo).length;
-
-      return { pending, dispatchedToday, deliveredToday, late };
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/delivery-summary?dealerId=${dealerId}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return {
+        pending: Number(body.pending ?? 0),
+        dispatchedToday: Number(body.dispatchedToday ?? 0),
+        deliveredToday: Number(body.deliveredToday ?? 0),
+        late: Number(body.late ?? 0),
+      };
     },
     enabled: !!dealerId,
   });
@@ -187,41 +182,14 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
   const { data: topOverdue = [] } = useQuery({
     queryKey: ["dashboard-top-overdue", dealerId],
     queryFn: async () => {
-      const [custRes, ledgerRes] = await Promise.all([
-        supabase.from("customers").select("id, name, phone, max_overdue_days").eq("dealer_id", dealerId).eq("status", "active"),
-        supabase.from("customer_ledger").select("customer_id, amount, type, entry_date").eq("dealer_id", dealerId),
-      ]);
-      const custs = custRes.data ?? [];
-      const ledger = ledgerRes.data ?? [];
-      
-      const dueMap = new Map<string, { outstanding: number; oldestSaleDate: string | null }>();
-      for (const entry of ledger) {
-        const cur = dueMap.get(entry.customer_id) ?? { outstanding: 0, oldestSaleDate: null };
-        const amt = Number(entry.amount);
-        if (entry.type === "sale") {
-          cur.outstanding += amt;
-          if (!cur.oldestSaleDate || entry.entry_date < cur.oldestSaleDate) cur.oldestSaleDate = entry.entry_date;
-        } else if (entry.type === "payment" || entry.type === "refund") {
-          cur.outstanding -= amt;
-        } else if (entry.type === "adjustment") {
-          cur.outstanding += amt;
-        }
-        dueMap.set(entry.customer_id, cur);
-      }
-
-      const today = new Date();
-      return custs
-        .map((c) => {
-          const info = dueMap.get(c.id);
-          const outstanding = Math.round((info?.outstanding ?? 0) * 100) / 100;
-          const daysOverdue = info?.oldestSaleDate 
-            ? Math.floor((today.getTime() - new Date(info.oldestSaleDate).getTime()) / 86400000)
-            : 0;
-          return { id: c.id, name: c.name, phone: c.phone, outstanding, daysOverdue };
-        })
-        .filter((c) => c.outstanding > 0)
-        .sort((a, b) => b.outstanding - a.outstanding)
-        .slice(0, 5);
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/top-overdue?dealerId=${dealerId}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return (body.rows ?? []) as Array<{
+        id: string; name: string; phone: string | null; outstanding: number; daysOverdue: number;
+      }>;
     },
     enabled: !!dealerId,
   });
@@ -229,13 +197,12 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
   const { data: latestSuppliers } = useQuery({
     queryKey: ["latest-suppliers", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("suppliers")
-        .select("id, name, phone, status, created_at")
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/latest-suppliers?dealerId=${dealerId}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return (body.rows ?? []) as any[];
     },
     enabled: !!dealerId,
   });
