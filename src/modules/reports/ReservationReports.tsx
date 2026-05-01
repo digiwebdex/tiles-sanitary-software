@@ -8,7 +8,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { formatCurrency } from "@/lib/utils";
 import { exportToExcel } from "@/lib/exportUtils";
 import { Button } from "@/components/ui/button";
