@@ -1538,58 +1538,17 @@ function PurchasesReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-purchases-v2", dealerId, page, search],
     queryFn: async () => {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      let query = supabase
-        .from("purchases")
-        .select("id, created_at, invoice_number, purchase_date, total_amount, supplier_id, suppliers(name)", { count: "exact" })
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      if (search?.trim()) {
-        query = query.or(`invoice_number.ilike.%${search.trim()}%,suppliers.name.ilike.%${search.trim()}%`);
-      }
-
-      const { data: purchases, error, count } = await query;
-      if (error) throw new Error(error.message);
-
-      // Fetch purchase_items with product info
-      const purchaseIds = (purchases ?? []).map((p: any) => p.id);
-      let itemsMap: Record<string, { name: string; qty: number }[]> = {};
-      if (purchaseIds.length > 0) {
-        const { data: items } = await supabase
-          .from("purchase_items")
-          .select("purchase_id, quantity, products(name, size, unit_type, category)")
-          .in("purchase_id", purchaseIds);
-
-        for (const item of items ?? []) {
-          const pid = (item as any).purchase_id;
-          if (!itemsMap[pid]) itemsMap[pid] = [];
-          const p = (item as any).products;
-          const label = p ? `${p.name}${p.size ? ` (Size: ${p.size})` : ""} (${p.unit_type === "box_sft" ? "Box" : "Pcs"})` : "Product";
-          itemsMap[pid].push({ name: label, qty: Number((item as any).quantity) });
-        }
-      }
-
-      // Fetch supplier_ledger payments for these purchases
-      let paidMap: Record<string, number> = {};
-      if (purchaseIds.length > 0) {
-        const { data: ledger } = await supabase
-          .from("supplier_ledger")
-          .select("purchase_id, amount, type")
-          .in("purchase_id", purchaseIds)
-          .in("type", ["payment"]);
-
-        for (const entry of ledger ?? []) {
-          const pid = (entry as any).purchase_id;
-          if (!paidMap[pid]) paidMap[pid] = 0;
-          paidMap[pid] += Number((entry as any).amount);
-        }
-      }
-
-      return { purchases: purchases ?? [], total: count ?? 0, itemsMap, paidMap };
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const res = await vpsAuthedFetch(`/api/reports/page/purchases?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return {
+        purchases: body.purchases ?? [],
+        total: body.total ?? 0,
+        itemsMap: (body.itemsMap ?? {}) as Record<string, { name: string; qty: number }[]>,
+        paidMap: (body.paidMap ?? {}) as Record<string, number>,
+      };
     },
   });
 
