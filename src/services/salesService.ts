@@ -1,4 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
 import { assertDealerId } from "@/lib/tenancy";
 import { rateLimits } from "@/lib/rateLimit";
 import { notificationService } from "@/services/notificationService";
@@ -13,6 +12,35 @@ async function vpsRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new Error(msg);
   }
   return body as T;
+}
+
+/** Fetch a single product row via VPS (preview helper). */
+async function fetchProductRow(
+  dealerId: string,
+  productId: string,
+): Promise<{ id: string; name: string; unit_type: "box_sft" | "piece" } | null> {
+  try {
+    const params = new URLSearchParams({ dealerId });
+    const res = await vpsAuthedFetch(`/api/products/${productId}?${params.toString()}`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => ({} as any));
+    const row = (body as any)?.row;
+    return row ? { id: row.id, name: row.name, unit_type: row.unit_type } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch many products in parallel via VPS GET-by-id calls. */
+async function fetchProductsByIds(
+  dealerId: string,
+  ids: string[],
+): Promise<Map<string, { id: string; name: string; unit_type: "box_sft" | "piece" }>> {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  const results = await Promise.all(unique.map((id) => fetchProductRow(dealerId, id)));
+  const map = new Map<string, { id: string; name: string; unit_type: "box_sft" | "piece" }>();
+  for (const r of results) if (r) map.set(r.id, r);
+  return map;
 }
 
 export interface SaleItemInput {
