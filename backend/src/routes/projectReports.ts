@@ -545,4 +545,87 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+// ── 9. Project history (panel) ───────────────────────────────
+// GET /api/reports/projects/history?projectId=...
+// Used by the per-project history panel. NOT financial-gated — visible to salesman as well
+// (mirrors the prior direct supabase reads from ProjectHistoryPanel).
+router.get('/history', async (req, res) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  const projectId = (req.query.projectId as string | undefined) || undefined;
+  if (!projectId) { res.status(400).json({ error: 'projectId required' }); return; }
+
+  try {
+    const [salesRows, challanRows, deliveryRows, quoteRows] = await Promise.all([
+      db('sales as s')
+        .leftJoin('project_sites as ps', 'ps.id', 's.site_id')
+        .where('s.dealer_id', dealerId).andWhere('s.project_id', projectId)
+        .orderBy('s.sale_date', 'desc')
+        .limit(50)
+        .select('s.id', 's.invoice_number', 's.sale_date', 's.total_amount',
+                's.paid_amount', 's.due_amount', 's.sale_status',
+                'ps.site_name as site_name'),
+      db('challans as c')
+        .leftJoin('project_sites as ps', 'ps.id', 'c.site_id')
+        .where('c.dealer_id', dealerId).andWhere('c.project_id', projectId)
+        .orderBy('c.challan_date', 'desc')
+        .limit(50)
+        .select('c.id', 'c.challan_no', 'c.challan_date', 'c.status',
+                'c.delivery_status', 'ps.site_name as site_name'),
+      db('deliveries as d')
+        .leftJoin('project_sites as ps', 'ps.id', 'd.site_id')
+        .where('d.dealer_id', dealerId).andWhere('d.project_id', projectId)
+        .orderBy('d.delivery_date', 'desc')
+        .limit(50)
+        .select('d.id', 'd.delivery_no', 'd.delivery_date', 'd.status',
+                'ps.site_name as site_name'),
+      db('quotations as q')
+        .leftJoin('project_sites as ps', 'ps.id', 'q.site_id')
+        .where('q.dealer_id', dealerId).andWhere('q.project_id', projectId)
+        .orderBy('q.quote_date', 'desc')
+        .limit(50)
+        .select('q.id', 'q.quotation_no', 'q.quote_date', 'q.status',
+                'q.total_amount', 'ps.site_name as site_name'),
+    ]);
+
+    const wrapSite = (rows: any[]) => rows.map((r) => ({
+      ...r,
+      project_sites: r.site_name ? { site_name: r.site_name } : null,
+    }));
+
+    const sales = wrapSite(salesRows as any[]);
+    const challans = wrapSite(challanRows as any[]);
+    const deliveries = wrapSite(deliveryRows as any[]);
+    const quotations = wrapSite(quoteRows as any[]);
+
+    const dates = [
+      ...sales.map((s: any) => s.sale_date),
+      ...challans.map((c: any) => c.challan_date),
+      ...deliveries.map((d: any) => d.delivery_date),
+    ]
+      .filter(Boolean)
+      .map((d: any) => (typeof d === 'string' ? d : new Date(d).toISOString().split('T')[0]));
+    const latest = dates.length ? dates.sort().reverse()[0] : null;
+
+    res.json({
+      sales, challans, deliveries, quotations,
+      quotation_count: quotations.length,
+      summary: {
+        sales_count: sales.length,
+        total_sales: sales.reduce((s: number, r: any) => s + toNum(r.total_amount), 0),
+        total_paid: sales.reduce((s: number, r: any) => s + toNum(r.paid_amount), 0),
+        outstanding: sales.reduce((s: number, r: any) => s + toNum(r.due_amount), 0),
+        challan_count: challans.length,
+        delivery_count: deliveries.length,
+        pending_deliveries: deliveries.filter((d: any) => d.status !== 'delivered').length,
+        latest_activity: latest,
+      },
+    });
+  } catch (err) {
+    console.error('[projects.history]', err);
+    res.status(500).json({ error: 'Failed to load project history' });
+  }
+});
+
 export default router;
