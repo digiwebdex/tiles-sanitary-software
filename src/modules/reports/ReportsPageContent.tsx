@@ -1639,58 +1639,24 @@ function PaymentsReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-payments-v2", dealerId, page, search],
     queryFn: async () => {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      // Fetch customer_ledger entries (sale payments, receipts, refunds)
-      let clQuery = supabase
-        .from("customer_ledger")
-        .select("id, created_at, entry_date, type, amount, description, sale_id, sales_return_id, customer_id", { count: "exact" })
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      if (search?.trim()) {
-        clQuery = clQuery.ilike("description", `%${search.trim()}%`);
-      }
-
-      const { data: ledgerRows, error, count } = await clQuery;
-      if (error) throw new Error(error.message);
-
-      // Gather sale_ids to fetch invoice_numbers
-      const saleIds = (ledgerRows ?? []).map((r: any) => r.sale_id).filter(Boolean);
-      let saleMap: Record<string, string> = {};
-      if (saleIds.length > 0) {
-        const { data: sales } = await supabase
-          .from("sales")
-          .select("id, invoice_number, payment_mode")
-          .in("id", saleIds);
-        for (const s of sales ?? []) {
-          saleMap[s.id] = s.invoice_number ?? "";
-        }
-      }
-
-      // Build payment reference from description or type
-      const rows = (ledgerRows ?? []).map((r: any) => {
-        const isReturn = r.type === "refund" || r.sales_return_id;
-        const saleRef = r.sale_id ? (saleMap[r.sale_id] || r.sale_id.substring(0, 12)) : "";
-        const payRef = r.description || r.type;
-        const paidBy = "Cash"; // default
-        const entryType = r.type === "receipt" || r.type === "payment" ? "Received" : r.type === "refund" ? "Return Paid" : r.type === "sale" ? "Received" : r.type;
-
-        return {
-          id: r.id,
-          created_at: r.created_at,
-          paymentRef: isReturn ? "Return Paid" : (payRef ?? "—"),
-          saleRef: saleRef ? `SALE${saleRef}` : "—",
-          purchaseRef: "",
-          paidBy,
-          amount: Number(r.amount),
-          type: entryType,
-        };
-      });
-
-      return { rows, total: count ?? 0 };
+      const params = new URLSearchParams({ dealerId, page: String(page) });
+      if (search?.trim()) params.set("search", search.trim());
+      const res = await vpsAuthedFetch(`/api/reports/page/payments?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return {
+        rows: (body.rows ?? []) as Array<{
+          id: string;
+          created_at: string;
+          paymentRef: string;
+          saleRef: string;
+          purchaseRef: string;
+          paidBy: string;
+          amount: number;
+          type: string;
+        }>,
+        total: body.total ?? 0,
+      };
     },
   });
 
