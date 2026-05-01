@@ -121,13 +121,12 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
   const { data: latestSales } = useQuery({
     queryKey: ["latest-sales", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("sales")
-        .select("id, sale_date, invoice_number, total_amount, paid_amount, due_amount, sale_status, customers(name)")
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/latest-sales?dealerId=${dealerId}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return (body.rows ?? []) as any[];
     },
     enabled: !!dealerId,
   });
@@ -135,13 +134,12 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
   const { data: latestPurchases } = useQuery({
     queryKey: ["latest-purchases", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("purchases")
-        .select("id, purchase_date, invoice_number, total_amount, suppliers(name)")
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/latest-purchases?dealerId=${dealerId}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return (body.rows ?? []) as any[];
     },
     enabled: !!dealerId,
   });
@@ -149,13 +147,12 @@ const OwnerDashboard = ({ dealerId }: OwnerDashboardProps) => {
   const { data: latestCustomers } = useQuery({
     queryKey: ["latest-customers", dealerId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("customers")
-        .select("id, name, phone, type, created_at")
-        .eq("dealer_id", dealerId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-      return data ?? [];
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/latest-customers?dealerId=${dealerId}`,
+      );
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((body as any)?.error || "Failed to load");
+      return (body.rows ?? []) as any[];
     },
     enabled: !!dealerId,
   });

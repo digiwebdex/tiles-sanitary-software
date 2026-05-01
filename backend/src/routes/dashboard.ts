@@ -507,4 +507,72 @@ router.get('/customer-due-balances', async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/dashboard/latest-sales ───────────────────────────────────────
+router.get('/latest-sales', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('sales')
+      .leftJoin('customers', 'customers.id', 'sales.customer_id')
+      .where('sales.dealer_id', dealerId)
+      .select(
+        'sales.id',
+        'sales.sale_date',
+        'sales.invoice_number',
+        'sales.total_amount',
+        'sales.paid_amount',
+        'sales.due_amount',
+        'sales.sale_status',
+        db.raw("json_build_object('name', customers.name) AS customers"),
+      )
+      .orderBy('sales.created_at', 'desc')
+      .limit(5);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[dashboard/latest-sales]', err.message);
+    res.status(500).json({ error: 'Failed to load latest sales' });
+  }
+});
+
+// ── GET /api/dashboard/latest-purchases ───────────────────────────────────
+router.get('/latest-purchases', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('purchases')
+      .leftJoin('suppliers', 'suppliers.id', 'purchases.supplier_id')
+      .where('purchases.dealer_id', dealerId)
+      .select(
+        'purchases.id',
+        'purchases.purchase_date',
+        'purchases.invoice_number',
+        'purchases.total_amount',
+        db.raw("json_build_object('name', suppliers.name) AS suppliers"),
+      )
+      .orderBy('purchases.created_at', 'desc')
+      .limit(5);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[dashboard/latest-purchases]', err.message);
+    res.status(500).json({ error: 'Failed to load latest purchases' });
+  }
+});
+
+// ── GET /api/dashboard/latest-customers ───────────────────────────────────
+router.get('/latest-customers', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('customers')
+      .where({ dealer_id: dealerId })
+      .select('id', 'name', 'phone', 'type', 'created_at')
+      .orderBy('created_at', 'desc')
+      .limit(5);
+    res.json({ rows });
+  } catch (err: any) {
+    console.error('[dashboard/latest-customers]', err.message);
+    res.status(500).json({ error: 'Failed to load latest customers' });
+  }
+});
+
 export default router;
