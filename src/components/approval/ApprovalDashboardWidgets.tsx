@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,70 +11,39 @@ interface Props {
   dealerId: string;
 }
 
+interface PendingRow {
+  id: string;
+  approval_type: string;
+  created_at: string;
+  context_data: Record<string, any> | null;
+  requested_by: string | null;
+}
+
+interface WidgetsResponse {
+  pending: PendingRow[];
+  todayDecisions: { approved: number; rejected: number; auto: number; total: number };
+  typeSummary: { type: string; count: number }[];
+}
+
 export function ApprovalDashboardWidgets({ dealerId }: Props) {
   const navigate = useNavigate();
 
-  const { data: pending = [] } = useQuery({
-    queryKey: ["dashboard-approvals-pending", dealerId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("approval_requests")
-        .select("id, approval_type, created_at, context_data, requested_by")
-        .eq("dealer_id", dealerId)
-        .eq("status", "pending")
-        .gt("expires_at", new Date().toISOString())
-        .order("created_at", { ascending: false })
-        .limit(5);
-      return data ?? [];
+  const { data } = useQuery({
+    queryKey: ["dashboard-approval-widgets", dealerId],
+    queryFn: async (): Promise<WidgetsResponse> => {
+      const res = await vpsAuthedFetch(
+        `/api/dashboard/approval-widgets?dealerId=${encodeURIComponent(dealerId)}`,
+      );
+      if (!res.ok) throw new Error(`approval-widgets failed: ${res.status}`);
+      return res.json();
     },
     enabled: !!dealerId,
     refetchInterval: 30_000,
   });
 
-  const { data: todayDecisions } = useQuery({
-    queryKey: ["dashboard-approvals-today", dealerId],
-    queryFn: async () => {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-
-      const { data } = await supabase
-        .from("approval_requests")
-        .select("status")
-        .eq("dealer_id", dealerId)
-        .gte("decided_at", startOfDay.toISOString());
-
-      const approved = (data ?? []).filter((r) => r.status === "approved" || r.status === "consumed").length;
-      const rejected = (data ?? []).filter((r) => r.status === "rejected").length;
-      const auto = (data ?? []).filter((r) => r.status === "auto_approved").length;
-      return { approved, rejected, auto, total: (data ?? []).length };
-    },
-    enabled: !!dealerId,
-    refetchInterval: 60_000,
-  });
-
-  const { data: typeSummary = [] } = useQuery({
-    queryKey: ["dashboard-approvals-type-summary", dealerId],
-    queryFn: async () => {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-      const { data } = await supabase
-        .from("approval_requests")
-        .select("approval_type")
-        .eq("dealer_id", dealerId)
-        .gte("created_at", sevenDaysAgo);
-
-      const counts = new Map<ApprovalType, number>();
-      for (const r of data ?? []) {
-        const t = r.approval_type as ApprovalType;
-        counts.set(t, (counts.get(t) ?? 0) + 1);
-      }
-      return Array.from(counts.entries())
-        .map(([type, count]) => ({ type, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-    },
-    enabled: !!dealerId,
-    refetchInterval: 60_000,
-  });
+  const pending = data?.pending ?? [];
+  const todayDecisions = data?.todayDecisions;
+  const typeSummary = data?.typeSummary ?? [];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -98,7 +67,7 @@ export function ApprovalDashboardWidgets({ dealerId }: Props) {
           ) : (
             <div className="space-y-1">
               {pending.slice(0, 3).map((req) => {
-                const ctx = req.context_data as Record<string, any>;
+                const ctx = (req.context_data ?? {}) as Record<string, any>;
                 return (
                   <div
                     key={req.id}
@@ -174,7 +143,7 @@ export function ApprovalDashboardWidgets({ dealerId }: Props) {
               {typeSummary.map((row) => (
                 <div key={row.type} className="flex items-center justify-between text-xs">
                   <span className="text-foreground truncate">
-                    {APPROVAL_TYPE_LABELS[row.type]}
+                    {APPROVAL_TYPE_LABELS[row.type as ApprovalType]}
                   </span>
                   <Badge variant="outline" className="text-[10px]">
                     {row.count}
