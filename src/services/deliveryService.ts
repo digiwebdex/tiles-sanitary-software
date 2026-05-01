@@ -95,28 +95,9 @@ export const deliveryService = {
 
   async updateStatus(id: string, status: string, dealerId: string) {
     await assertDealerId(dealerId);
-
-    if (USE_VPS) {
-      await vpsRequest<{ ok: boolean }>(`/api/deliveries/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status, dealer_id: dealerId }),
-      });
-      return;
-    }
-
-    const { error } = await supabase
-      .from("deliveries")
-      .update({ status } as any)
-      .eq("id", id)
-      .eq("dealer_id", dealerId);
-    if (error) throw new Error(error.message);
-
-    await logAudit({
-      dealer_id: dealerId,
-      action: "delivery_status_update",
-      table_name: "deliveries",
-      record_id: id,
-      new_data: { status },
+    await vpsRequest<{ ok: boolean }>(`/api/deliveries/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, dealer_id: dealerId }),
     });
   },
 
