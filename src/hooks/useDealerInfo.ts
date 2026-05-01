@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useDealerId } from "@/hooks/useDealerId";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 
 export interface DealerInfo {
   name: string;
@@ -11,19 +11,23 @@ export interface DealerInfo {
   default_wastage_pct: number;
 }
 
+/**
+ * Phase 3U-27: Migrated from Supabase `dealers` select to VPS GET /api/dealers/:id.
+ * The endpoint returns { dealer, users, subscription }; we only consume `dealer`.
+ */
 export function useDealerInfo() {
   const dealerId = useDealerId();
 
   return useQuery({
     queryKey: ["dealer-info", dealerId],
     queryFn: async (): Promise<DealerInfo> => {
-      const { data, error } = await supabase
-        .from("dealers")
-        .select("name, phone, address, challan_template, enable_reservations, default_wastage_pct")
-        .eq("id", dealerId)
-        .single();
-      if (error) throw new Error(error.message);
-      const row = data as Record<string, unknown>;
+      const res = await vpsAuthedFetch(`/api/dealers/${dealerId}`);
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        const msg = (body as any)?.error || `Failed to load dealer info (${res.status})`;
+        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+      }
+      const row = (body as any)?.dealer ?? {};
       return {
         name: String(row.name ?? ""),
         phone: (row.phone as string | null) ?? null,
