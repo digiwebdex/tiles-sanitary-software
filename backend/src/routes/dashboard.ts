@@ -271,4 +271,83 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/dashboard/onboarding-counts ──────────────────────────────────
+router.get('/onboarding-counts', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  try {
+    const [products, customers, suppliers, sales] = await Promise.all([
+      db('products').where({ dealer_id: dealerId }).count<{ count: string }[]>('* as count').first(),
+      db('customers').where({ dealer_id: dealerId }).count<{ count: string }[]>('* as count').first(),
+      db('suppliers').where({ dealer_id: dealerId }).count<{ count: string }[]>('* as count').first(),
+      db('sales').where({ dealer_id: dealerId }).count<{ count: string }[]>('* as count').first(),
+    ]);
+    res.json({
+      products: Number(products?.count ?? 0),
+      customers: Number(customers?.count ?? 0),
+      suppliers: Number(suppliers?.count ?? 0),
+      sales: Number(sales?.count ?? 0),
+    });
+  } catch (err: any) {
+    console.error('[dashboard/onboarding-counts]', err.message);
+    res.status(500).json({ error: 'Failed to load onboarding counts' });
+  }
+});
+
+// ── GET /api/dashboard/quotation-widgets ──────────────────────────────────
+router.get('/quotation-widgets', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+
+  try {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
+    const in7Str = in7.toISOString().split('T')[0];
+    const ago30 = new Date(today); ago30.setDate(ago30.getDate() - 30);
+    const ago30Str = ago30.toISOString().split('T')[0];
+
+    const activeRow = await db('quotations')
+      .where({ dealer_id: dealerId, status: 'active' })
+      .sum({ s: 'total_amount' })
+      .first();
+
+    const expiringRows = await db('quotations')
+      .where({ dealer_id: dealerId, status: 'active' })
+      .whereBetween('valid_until', [todayStr, in7Str])
+      .select('total_amount');
+
+    const convertedRows = await db('quotations')
+      .where({ dealer_id: dealerId, status: 'converted' })
+      .where('converted_at', '>=', `${ago30Str}T00:00:00`)
+      .select('total_amount');
+
+    const recentRows = await db('quotations')
+      .where({ dealer_id: dealerId })
+      .where('quote_date', '>=', ago30Str)
+      .select('status');
+
+    const expiringCount = expiringRows.length;
+    const expiringValue = expiringRows.reduce((s, r: any) => s + Number(r.total_amount || 0), 0);
+    const convertedCount = convertedRows.length;
+    const convertedValue = convertedRows.reduce((s, r: any) => s + Number(r.total_amount || 0), 0);
+    const finalized = recentRows.filter((r: any) => r.status !== 'draft' && r.status !== 'cancelled').length;
+    const convertedRecent = recentRows.filter((r: any) => r.status === 'converted').length;
+    const conversionPct = finalized > 0 ? (convertedRecent / finalized) * 100 : 0;
+
+    res.json({
+      activeValue: round2(activeRow?.s),
+      expiringCount,
+      expiringValue: round2(expiringValue),
+      convertedCount,
+      convertedValue: round2(convertedValue),
+      conversionPct: round2(conversionPct),
+    });
+  } catch (err: any) {
+    console.error('[dashboard/quotation-widgets]', err.message);
+    res.status(500).json({ error: 'Failed to load quotation widgets' });
+  }
+});
+
 export default router;
