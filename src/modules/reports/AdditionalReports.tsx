@@ -203,29 +203,15 @@ export function PendingDeliveryReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-pending-delivery", dealerId],
     queryFn: async () => {
-      const { data: challans, error } = await supabase
-        .from("challans")
-        .select("id, challan_no, challan_date, delivery_status, transport_name, vehicle_no, driver_name, sale_id, sales(invoice_number, customers(name))")
-        .eq("dealer_id", dealerId)
-        .neq("delivery_status", "delivered")
-        .order("challan_date", { ascending: true });
-      if (error) throw new Error(error.message);
-
-      const today = new Date();
-      return (challans ?? []).map((c: any) => {
-        const days = Math.floor((today.getTime() - new Date(c.challan_date).getTime()) / 86_400_000);
-        return {
-          challanNo: c.challan_no,
-          challanDate: c.challan_date,
-          invoiceNo: c.sales?.invoice_number ?? "—",
-          customer: c.sales?.customers?.name ?? "—",
-          status: c.delivery_status,
-          transport: c.transport_name ?? "—",
-          vehicle: c.vehicle_no ?? "—",
-          daysPending: days,
-          isLate: days > 2,
-        };
-      });
+      const res = await vpsAuthedFetch(
+        `/api/reports/pending-deliveries?dealerId=${dealerId}`,
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        challanNo: string; challanDate: string; invoiceNo: string; customer: string;
+        status: string; transport: string; vehicle: string; daysPending: number; isLate: boolean;
+      }>;
     },
   });
 
