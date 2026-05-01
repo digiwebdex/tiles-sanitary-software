@@ -18,7 +18,7 @@ import { db } from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { tenantGuard, requireDealer } from '../middleware/tenant';
 import { requireRole } from '../middleware/roles';
-import { sendSms } from '../services/notificationService';
+import { sendSms, sendEmail } from '../services/notificationService';
 
 const router = Router();
 router.use(authenticate, tenantGuard);
@@ -182,6 +182,228 @@ router.post(
     } catch (err: any) {
       console.error('[notify/whatsapp]', err.message);
       res.status(500).json({ error: 'Failed to log WhatsApp send' });
+    }
+  },
+);
+
+// ─── Dispatch endpoint (replaces send-notification edge function) ───────────
+//
+// Mirrors the templating + plan-gating + status-tracking that previously
+// lived in supabase/functions/send-notification.
+//
+// Body: { channel, type, recipient, payload }
+//   channel:    'sms' | 'email'
+//   type:       'sale_created' | 'daily_summary' | 'payment_reminder'
+//   recipient:  phone (for sms) or email address
+//   payload:    template inputs; may contain `_custom_message` to bypass templating
+//
+// Behavior (best-effort, never throws to caller):
+//   1. Validate body
+//   2. Insert a row into `notifications` with status='pending'
+//   3. Check the dealer's active subscription plan for sms/email/daily_summary flags
+//   4. Render the message body (or use `_custom_message` if provided)
+//   5. Dispatch via SMTP / BulkSMSBD
+//   6. Update the row status to sent / failed / skipped
+const PUBLISHED_URL = 'https://app.sanitileserp.com';
+
+function buildSaleMessage(payload: Record<string, unknown>, recipient: string): string {
+  const inv = payload.invoice_number ?? 'N/A';
+  const customer = payload.customer_name ?? 'Customer';
+  const amount = payload.total_amount ?? 0;
+  const paid = payload.paid_amount ?? 0;
+  const due = payload.due_amount ?? 0;
+  const saleId = payload.sale_id as string | undefined;
+  const dealerName = payload.dealer_name as string | undefined;
+  const items = payload.items as Array<{ name: string; quantity: number; unit: string; rate: number; total: number }> | undefined;
+  const customerPhone = (payload.customer_phone as string | null) ?? null;
+  const invoiceLink = saleId ? `\n\nInvoice: ${PUBLISHED_URL}/sales/${saleId}/invoice` : '';
+  let itemsSummary = '';
+  if (items && items.length > 0) {
+    itemsSummary = '\n\nItems:\n' + items.map((it, i) =>
+      `${i + 1}. ${it.name} - ${it.quantity} ${it.unit} x ${it.rate} = ${it.total} BDT`,
+    ).join('\n');
+  }
+  if (customerPhone && recipient === customerPhone) {
+    return `${dealerName ? dealerName + '\n' : ''}Dear ${customer},\nThank you for your purchase!\n\nInvoice: ${inv}\nDate: ${payload.sale_date ?? ''}${itemsSummary}\n\nTotal: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT${invoiceLink}`;
+  }
+  return `Sale Alert!\nInvoice: ${inv}\nCustomer: ${customer}${itemsSummary}\n\nAmount: ${amount} BDT\nPaid: ${paid} BDT\nDue: ${due} BDT${invoiceLink}`;
+}
+
+function buildPaymentReminderMessage(payload: Record<string, unknown>): string {
+  const customer = payload.customer_name ?? 'Customer';
+  const outstanding = payload.outstanding ?? 0;
+  const dealerName = payload.dealer_name ?? '';
+  const dealerPhone = payload.dealer_phone ?? '';
+  const lastPayment = payload.last_payment_date ?? '';
+  let msg = `${dealerName ? dealerName + '\n' : ''}`;
+  msg += `প্রিয় ${customer},\n`;
+  msg += `আপনার বকেয়া পরিমাণ: ${outstanding} BDT।\n`;
+  if (lastPayment) msg += `সর্বশেষ পেমেন্ট: ${lastPayment}\n`;
+  msg += `অনুগ্রহ করে যত তাড়াতাড়ি সম্ভব পেমেন্ট করুন।\n`;
+  if (dealerPhone) msg += `যোগাযোগ: ${dealerPhone}`;
+  return msg;
+}
+
+function buildDailySummaryMessage(payload: Record<string, unknown>): string {
+  const date = payload.date ?? new Date().toISOString().split('T')[0];
+  const sales = payload.total_sales ?? 0;
+  const revenue = payload.total_revenue ?? 0;
+  const profit = payload.total_profit ?? 0;
+  return `Daily Summary (${date})\nTotal Sales: ${sales}\nRevenue: ${revenue} BDT\nProfit: ${profit} BDT`;
+}
+
+function buildEmailSubjectAndBody(
+  type: string,
+  payload: Record<string, unknown>,
+  recipient: string,
+): { subject: string; body: string } {
+  if (type === 'sale_created') {
+    const inv = payload.invoice_number ?? 'N/A';
+    return { subject: `Invoice ${inv} - Sale Confirmation`, body: buildSaleMessage(payload, recipient) };
+  }
+  if (type === 'daily_summary') {
+    const date = payload.date ?? new Date().toISOString().split('T')[0];
+    return { subject: `Daily Business Summary - ${date}`, body: buildDailySummaryMessage(payload) };
+  }
+  if (type === 'payment_reminder') {
+    const customer = payload.customer_name ?? 'Customer';
+    return { subject: `Payment Reminder - ${customer}`, body: buildPaymentReminderMessage(payload) };
+  }
+  return { subject: 'Notification', body: JSON.stringify(payload) };
+}
+
+const dispatchSchema = z.object({
+  channel: z.enum(['sms', 'email']),
+  type: z.enum(['sale_created', 'daily_summary', 'payment_reminder']),
+  recipient: z.string().trim().min(3).max(200),
+  payload: z.record(z.unknown()).default({}),
+});
+
+router.post(
+  '/dispatch',
+  requireDealer,
+  requireRole('dealer_admin', 'salesman'),
+  async (req: Request, res: Response) => {
+    const parsed = dispatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid payload', issues: parsed.error.flatten() });
+      return;
+    }
+    const dealerId = req.dealerId!;
+    const { channel, type, recipient, payload } = parsed.data;
+
+    // 1. Queue the row
+    let notifId: string | null = null;
+    try {
+      const [row] = await db('notifications')
+        .insert({
+          dealer_id: dealerId,
+          channel,
+          type,
+          payload,
+          status: 'pending',
+        })
+        .returning('id');
+      notifId = row.id;
+    } catch (err: any) {
+      console.warn('[notify/dispatch] queue insert failed:', err.message);
+      // Continue anyway — dispatch is best-effort
+    }
+
+    // 2. Plan gating
+    try {
+      const sub = await db('subscriptions as s')
+        .leftJoin('subscription_plans as p', 'p.id', 's.plan_id')
+        .where('s.dealer_id', dealerId)
+        .where('s.status', 'active')
+        .orderBy('s.start_date', 'desc')
+        .select('p.sms_enabled', 'p.email_enabled', 'p.daily_summary_enabled')
+        .first();
+
+      if (sub) {
+        let blockedReason: string | null = null;
+        if (channel === 'sms' && sub.sms_enabled === false) blockedReason = 'Plan does not include SMS';
+        else if (channel === 'email' && sub.email_enabled === false) blockedReason = 'Plan does not include Email';
+        else if (type === 'daily_summary' && sub.daily_summary_enabled === false) blockedReason = 'Plan does not include daily summary';
+
+        if (blockedReason) {
+          if (notifId) {
+            await db('notifications').where({ id: notifId }).update({ status: 'failed', error_message: blockedReason });
+          }
+          res.json({ success: false, skipped: true, error: blockedReason });
+          return;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[notify/dispatch] plan check failed (proceeding):', err.message);
+    }
+
+    // 3. Render + dispatch
+    let success = false;
+    let errorMessage: string | undefined;
+
+    try {
+      if (channel === 'sms') {
+        let message = '';
+        if (typeof payload._custom_message === 'string') message = payload._custom_message;
+        else if (type === 'sale_created') message = buildSaleMessage(payload, recipient);
+        else if (type === 'daily_summary') message = buildDailySummaryMessage(payload);
+        else if (type === 'payment_reminder') message = buildPaymentReminderMessage(payload);
+        else message = JSON.stringify(payload);
+        success = await sendSms({ to: recipient, message });
+        if (!success) errorMessage = 'SMS dispatch failed';
+      } else {
+        let subject: string;
+        let body: string;
+        if (typeof payload._custom_message === 'string') {
+          const date = payload.date ?? new Date().toISOString().split('T')[0];
+          subject = (payload._subject as string | undefined)
+            || (type === 'daily_summary' ? `Daily Business Summary - ${date}` : 'Notification');
+          body = payload._custom_message;
+        } else {
+          const r = buildEmailSubjectAndBody(type, payload, recipient);
+          subject = r.subject;
+          body = r.body;
+        }
+        success = await sendEmail({ to: recipient, subject, text: body });
+        if (!success) errorMessage = 'Email dispatch failed';
+      }
+    } catch (err: any) {
+      errorMessage = err.message;
+      console.error('[notify/dispatch] send error:', err.message);
+    }
+
+    // 4. Update status
+    if (notifId) {
+      try {
+        await db('notifications').where({ id: notifId }).update({
+          status: success ? 'sent' : 'failed',
+          error_message: errorMessage ?? null,
+          sent_at: success ? new Date() : null,
+        });
+      } catch (err: any) {
+        console.warn('[notify/dispatch] status update failed:', err.message);
+      }
+    }
+
+    res.json({ success, id: notifId, error: errorMessage });
+  },
+);
+
+// GET /api/notifications/settings — fetch this dealer's notification preferences
+router.get(
+  '/settings',
+  requireDealer,
+  requireRole('dealer_admin', 'salesman'),
+  async (req: Request, res: Response) => {
+    try {
+      const row = await db('notification_settings')
+        .where({ dealer_id: req.dealerId! })
+        .first();
+      res.json(row ?? null);
+    } catch (err: any) {
+      console.error('[notify/settings]', err.message);
+      res.status(500).json({ error: 'Failed to fetch settings' });
     }
   },
 );
