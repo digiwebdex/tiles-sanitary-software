@@ -1727,60 +1727,23 @@ function DueAgingReport({ dealerId }: { dealerId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["report-due-aging", dealerId],
     queryFn: async () => {
-      // Get all customers
-      const { data: customers, error: cErr } = await supabase
-        .from("customers")
-        .select("id, name, phone, type")
-        .eq("dealer_id", dealerId)
-        .eq("status", "active")
-        .order("name");
-      if (cErr) throw new Error(cErr.message);
-
-      // Get all unpaid sales
-      const { data: sales, error: sErr } = await supabase
-        .from("sales")
-        .select("id, customer_id, sale_date, due_amount, total_amount, invoice_number")
-        .eq("dealer_id", dealerId)
-        .gt("due_amount", 0);
-      if (sErr) throw new Error(sErr.message);
-
-      const today = new Date();
-      const msPerDay = 86_400_000;
-
-      // Build per-customer aging
-      const customerMap = new Map<string, {
-        name: string; phone: string | null; type: string;
-        current: number; d30: number; d60: number; d90: number; d90plus: number;
-        total: number; invoices: { id: string; invoice_number: string | null; sale_date: string; due_amount: number; days: number }[];
-      }>();
-
-      for (const c of customers ?? []) {
-        customerMap.set(c.id, { name: c.name, phone: c.phone, type: c.type, current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0, total: 0, invoices: [] });
-      }
-
-      for (const s of sales ?? []) {
-        const cust = customerMap.get(s.customer_id);
-        if (!cust) continue;
-        const due = Number(s.due_amount);
-        const days = Math.max(0, Math.floor((today.getTime() - new Date(s.sale_date).getTime()) / msPerDay));
-
-        if (days <= 0) cust.current += due;
-        else if (days <= 30) cust.d30 += due;
-        else if (days <= 60) cust.d60 += due;
-        else if (days <= 90) cust.d90 += due;
-        else cust.d90plus += due;
-
-        cust.total += due;
-        cust.invoices.push({ id: s.id, invoice_number: s.invoice_number, sale_date: s.sale_date, due_amount: due, days });
-      }
-
-      // Filter out customers with zero due
-      const results = Array.from(customerMap.entries())
-        .filter(([, v]) => v.total > 0)
-        .map(([id, v]) => ({ id, ...v, invoices: v.invoices.sort((a, b) => b.days - a.days) }))
-        .sort((a, b) => b.total - a.total);
-
-      return results;
+      const params = new URLSearchParams({ dealerId });
+      const res = await vpsAuthedFetch(`/api/reports/page/due-aging?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.rows ?? []) as Array<{
+        id: string;
+        name: string;
+        phone: string | null;
+        type: string;
+        current: number;
+        d30: number;
+        d60: number;
+        d90: number;
+        d90plus: number;
+        total: number;
+        invoices: { id: string; invoice_number: string | null; sale_date: string; due_amount: number; days: number }[];
+      }>;
     },
   });
 
