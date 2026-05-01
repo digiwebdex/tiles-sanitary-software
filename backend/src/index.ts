@@ -48,6 +48,9 @@ import demandPlanningSettingsRoutes from './routes/demandPlanningSettings';
 import displayStockRoutes from './routes/displayStock';
 import sampleIssuesRoutes from './routes/sampleIssues';
 import purchasePlanningRoutes from './routes/purchasePlanning';
+import quotationsRoutes from './routes/quotations';
+import whatsappRoutes from './routes/whatsapp';
+import demandPlanningRoutes from './routes/demandPlanning';
 import path from 'path';
 
 const app = express();
@@ -173,6 +176,9 @@ app.use('/api/demand-planning-settings', demandPlanningSettingsRoutes);
 app.use('/api/display-stock', displayStockRoutes);
 app.use('/api/sample-issues', sampleIssuesRoutes);
 app.use('/api/purchase-planning', purchasePlanningRoutes);
+app.use('/api/quotations', quotationsRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/demand-planning', demandPlanningRoutes);
 
 // Static file serving for uploaded product images, etc.
 app.use(
