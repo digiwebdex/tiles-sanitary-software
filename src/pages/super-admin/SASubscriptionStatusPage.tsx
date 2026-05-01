@@ -14,7 +14,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { parseLocalDate, formatCurrency } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -180,30 +180,41 @@ const SASubscriptionStatusPage = () => {
   const { data: rows = [], isLoading } = useQuery<DealerRow[]>({
     queryKey: ["sa-subscription-status"],
     queryFn: async () => {
-      const [dealersRes, subsRes] = await Promise.all([
-        supabase.from("dealers").select("id, name, status").order("name"),
-        supabase
-          .from("subscriptions")
-          .select("id, dealer_id, status, start_date, end_date, subscription_plans!subscriptions_plan_id_fkey(name, monthly_price)")
-          .order("start_date", { ascending: false }),
+      // VPS data sources (super_admin only). Fan-out three parallel calls.
+      const [dealersRes, subsRes, lookupsRes] = await Promise.all([
+        vpsAuthedFetch("/api/dealers"),
+        vpsAuthedFetch("/api/subscriptions"),
+        vpsAuthedFetch("/api/subscriptions/lookups"),
       ]);
 
-      if (dealersRes.error) throw new Error(dealersRes.error.message);
-      if (subsRes.error) throw new Error(subsRes.error.message);
+      if (!dealersRes.ok) throw new Error(`Failed to load dealers (${dealersRes.status})`);
+      if (!subsRes.ok) throw new Error(`Failed to load subscriptions (${subsRes.status})`);
+      if (!lookupsRes.ok) throw new Error(`Failed to load lookups (${lookupsRes.status})`);
 
-      const dealers = dealersRes.data ?? [];
-      const subs = subsRes.data ?? [];
+      const { dealers = [] } = await dealersRes.json();
+      const { subscriptions = [] } = await subsRes.json();
+      const { plans = [] } = await lookupsRes.json();
 
-      // Map latest subscription per dealer
+      const planMap = new Map<string, { name: string; monthly_price: number }>();
+      for (const p of plans) {
+        planMap.set(p.id, { name: p.name, monthly_price: Number(p.monthly_price ?? 0) });
+      }
+
+      // Newest subscription per dealer
+      const sorted = [...subscriptions].sort(
+        (a: any, b: any) =>
+          new Date(b.start_date ?? 0).getTime() - new Date(a.start_date ?? 0).getTime()
+      );
       const latestSubByDealer = new Map<string, any>();
-      for (const sub of subs) {
+      for (const sub of sorted) {
         if (!latestSubByDealer.has(sub.dealer_id)) {
           latestSubByDealer.set(sub.dealer_id, sub);
         }
       }
 
-      return dealers.map((d): DealerRow => {
+      return dealers.map((d: any): DealerRow => {
         const sub = latestSubByDealer.get(d.id) ?? null;
+        const planInfo = sub?.plan_id ? planMap.get(sub.plan_id) : null;
         const { stage, daysLeft } = computeStage(
           sub?.status ?? null,
           sub?.end_date ?? null
@@ -213,8 +224,8 @@ const SASubscriptionStatusPage = () => {
           dealerName: d.name,
           dealerStatus: d.status,
           subId: sub?.id ?? null,
-          planName: (sub?.subscription_plans as any)?.name ?? null,
-          planMonthly: sub ? Number((sub?.subscription_plans as any)?.monthly_price ?? 0) : null,
+          planName: planInfo?.name ?? null,
+          planMonthly: planInfo?.monthly_price ?? null,
           subStatus: sub?.status ?? null,
           startDate: sub?.start_date ?? null,
           endDate: sub?.end_date ?? null,

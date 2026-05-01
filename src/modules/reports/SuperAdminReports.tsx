@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,15 @@ import { formatCurrency } from "@/lib/utils";
 import { exportToExcel } from "@/lib/exportUtils";
 import { Download } from "lucide-react";
 
+async function vpsJson<T>(path: string): Promise<T> {
+  const res = await vpsAuthedFetch(path);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any)?.error || `Request failed (${res.status})`);
+  }
+  return (await res.json()) as T;
+}
+
 // ─── Revenue Collection Report ────────────────────────────
 export function RevenueCollectionReport() {
   const [fromDate, setFromDate] = useState(() => {
@@ -28,25 +37,25 @@ export function RevenueCollectionReport() {
   const { data = [], isLoading } = useQuery({
     queryKey: ["sa-revenue-collection", fromDate, toDate],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("subscription_payments")
-        .select(`
-          id, payment_date, amount, payment_method, payment_status, note,
-          dealer_id, subscription_id
-        `)
-        .gte("payment_date", fromDate)
-        .lte("payment_date", toDate)
-        .order("payment_date", { ascending: false });
-      if (error) throw error;
-
-      // Get dealer names
-      const dealerIds = [...new Set((data ?? []).map((d) => d.dealer_id))];
-      const { data: dealers } = await supabase.from("dealers").select("id, name").in("id", dealerIds);
-      const dealerMap = new Map((dealers ?? []).map((d) => [d.id, d.name]));
-
-      return (data ?? []).map((p) => ({
-        ...p,
-        dealer_name: dealerMap.get(p.dealer_id) ?? "Unknown",
+      // /api/subscriptions/payments returns enriched rows incl. dealer_name.
+      // Filter by date client-side (server returns 500 most recent overall).
+      const { payments } = await vpsJson<{ payments: any[] }>(
+        "/api/subscriptions/payments"
+      );
+      const within = (payments ?? []).filter((p) => {
+        if (!p.payment_date) return false;
+        return p.payment_date >= fromDate && p.payment_date <= toDate;
+      });
+      return within.map((p) => ({
+        id: p.id,
+        payment_date: p.payment_date,
+        amount: Number(p.amount ?? 0),
+        payment_method: p.payment_method,
+        payment_status: p.payment_status,
+        note: p.note,
+        dealer_id: p.dealer_id,
+        subscription_id: p.subscription_id,
+        dealer_name: p.dealer_name ?? "Unknown",
       }));
     },
   });
@@ -170,34 +179,21 @@ export function SubscriptionStatusReport() {
   const { data = [], isLoading } = useQuery({
     queryKey: ["sa-subscription-status-report"],
     queryFn: async () => {
-      const { data: subs, error } = await supabase
-        .from("subscriptions")
-        .select(`
-          id, status, start_date, end_date, billing_cycle,
-          dealer_id, plan_id
-        `)
-        .order("start_date", { ascending: false });
-      if (error) throw error;
-
-      const dealerIds = [...new Set((subs ?? []).map((s) => s.dealer_id))];
-      const planIds = [...new Set((subs ?? []).map((s) => s.plan_id))];
-
-      const [dealersRes, plansRes, paymentsRes] = await Promise.all([
-        supabase.from("dealers").select("id, name").in("id", dealerIds),
-        supabase.from("subscription_plans").select("id, name").in("id", planIds),
-        supabase.from("subscription_payments").select("subscription_id, payment_date, amount, payment_status").order("payment_date", { ascending: false }),
+      const [subsBody, paymentsBody] = await Promise.all([
+        vpsJson<{ subscriptions: any[] }>("/api/subscriptions"),
+        vpsJson<{ payments: any[] }>("/api/subscriptions/payments"),
       ]);
+      const subs = subsBody.subscriptions ?? [];
+      const payments = paymentsBody.payments ?? [];
 
-      const dealerMap = new Map((dealersRes.data ?? []).map((d) => [d.id, d.name]));
-      const planMap = new Map((plansRes.data ?? []).map((p) => [p.id, p.name]));
       const paymentMap = new Map<string, { date: string; amount: number }>();
-      for (const p of paymentsRes.data ?? []) {
+      for (const p of payments) {
         if (!paymentMap.has(p.subscription_id)) {
           paymentMap.set(p.subscription_id, { date: p.payment_date, amount: Number(p.amount) });
         }
       }
 
-      return (subs ?? []).map((s) => {
+      return subs.map((s: any) => {
         const daysRemaining = s.end_date ? Math.ceil((new Date(s.end_date).getTime() - Date.now()) / 86400000) : null;
         const lastPayment = paymentMap.get(s.id);
         let displayStatus = s.status as string;
