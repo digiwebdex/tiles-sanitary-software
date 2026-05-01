@@ -45,7 +45,7 @@ export function SupplierNotesPanel({ dealerId, supplierId }: Props) {
 
   const updateMut = useMutation({
     mutationFn: () =>
-      supplierNotesService.update(editingId!, { dealerId, note: editingText }),
+      supplierNotesService.update(editingId!, { dealerId, supplierId, note: editingText }),
     onSuccess: () => {
       setEditingId(null);
       setEditingText("");
@@ -56,7 +56,7 @@ export function SupplierNotesPanel({ dealerId, supplierId }: Props) {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id: string) => supplierNotesService.delete(id, dealerId),
+    mutationFn: (id: string) => supplierNotesService.delete(id, dealerId, supplierId),
     onSuccess: () => {
       invalidate();
       toast.success("Note deleted");
