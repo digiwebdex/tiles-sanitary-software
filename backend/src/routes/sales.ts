@@ -113,6 +113,131 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/sales/delivery-flags ──────────────────────────────────────────
+// Returns lightweight maps used by SaleList to render delivery / challan
+// status badges without scanning every sale row. Two payloads in one trip:
+//   - deliveredSaleIds: sales that already have at least one delivery row
+//   - challanDeliveryStatuses: { saleId → delivery_status } for active challans
+router.get('/delivery-flags', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const [deliveries, challans] = await Promise.all([
+      db('deliveries').where({ dealer_id: dealerId }).whereNotNull('sale_id').select('sale_id'),
+      db('challans')
+        .where({ dealer_id: dealerId })
+        .whereNot('status', 'cancelled')
+        .select('sale_id', 'delivery_status'),
+    ]);
+    const deliveredSaleIds = Array.from(new Set(deliveries.map((d: any) => d.sale_id).filter(Boolean)));
+    const challanDeliveryStatuses: Record<string, string> = {};
+    for (const c of challans) {
+      if (c.sale_id) challanDeliveryStatuses[c.sale_id] = c.delivery_status ?? 'pending';
+    }
+    res.json({ deliveredSaleIds, challanDeliveryStatuses });
+  } catch (err: any) {
+    console.error('[sales.delivery-flags]', err.message);
+    res.status(500).json({ error: 'Failed to load delivery flags' });
+  }
+});
+
+// ── GET /api/sales/:id/returns ─────────────────────────────────────────────
+// Returns the sales_returns rows linked to a sale, hydrated with the
+// product display name (for the InvoicePage "Returns" panel).
+router.get('/:id/returns', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  try {
+    const rows = await db('sales_returns as sr')
+      .leftJoin('products as p', 'p.id', 'sr.product_id')
+      .where({ 'sr.sale_id': req.params.id, 'sr.dealer_id': dealerId })
+      .select(
+        'sr.id', 'sr.qty', 'sr.refund_amount', 'sr.return_date',
+        'sr.reason', 'sr.is_broken', 'sr.product_id',
+        db.raw(`json_build_object('name', p.name) as products`),
+      )
+      .orderBy('sr.return_date', 'desc');
+    res.json(rows);
+  } catch (err: any) {
+    console.error('[sales.returns]', err.message);
+    res.status(500).json({ error: 'Failed to load returns' });
+  }
+});
+
+// ── POST /api/sales/:id/payment ────────────────────────────────────────────
+// Atomic payment recording for an existing sale.
+//   Body: { amount, note?, payment_mode? }
+// Side effects (one transaction):
+//   1. Insert customer_ledger row (type='payment')
+//   2. Insert cash_ledger row (type='receipt')
+//   3. UPDATE sales.paid_amount + due_amount
+// Replaces the previous unsafe inline supabase update from InvoicePage.
+const paymentSchema = z.object({
+  amount: z.coerce.number().positive(),
+  note: z.string().trim().max(500).optional(),
+  payment_mode: z.string().trim().max(50).optional(),
+});
+router.post('/:id/payment', async (req: Request, res: Response) => {
+  const dealerId = resolveDealer(req, res);
+  if (!dealerId) return;
+  const parsed = paymentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid payload', issues: parsed.error.flatten() });
+    return;
+  }
+  const { amount, note, payment_mode } = parsed.data;
+
+  try {
+    await db.transaction(async (trx) => {
+      const sale = await trx('sales').where({ id: req.params.id, dealer_id: dealerId }).forUpdate().first();
+      if (!sale) throw new Error('Sale not found');
+      if (!sale.customer_id) throw new Error('Sale has no customer linked');
+
+      const total = Number(sale.total_amount) || 0;
+      const discount = Number(sale.discount) || 0;
+      const currentPaid = Number(sale.paid_amount) || 0;
+      const newPaid = currentPaid + amount;
+      const maxPayable = Math.max(0, total - discount);
+      if (newPaid > maxPayable + 0.01) {
+        throw new Error(`Payment exceeds outstanding amount (max ${(maxPayable - currentPaid).toFixed(2)})`);
+      }
+      const newDue = Math.max(0, maxPayable - newPaid);
+
+      const customer = await trx('customers').where({ id: sale.customer_id }).first('name');
+      const description = note || `Payment for Invoice #${sale.invoice_number ?? req.params.id}`;
+
+      await trx('customer_ledger').insert({
+        dealer_id: dealerId,
+        customer_id: sale.customer_id,
+        sale_id: req.params.id,
+        type: 'payment',
+        amount,
+        description,
+        entry_date: new Date().toISOString().slice(0, 10),
+      });
+
+      await trx('cash_ledger').insert({
+        dealer_id: dealerId,
+        type: 'receipt',
+        amount,
+        description: `Payment from ${customer?.name ?? 'Customer'}: ${note || 'Collection'}`,
+        reference_type: 'customer_payment',
+        reference_id: req.params.id,
+        entry_date: new Date().toISOString().slice(0, 10),
+        ...(payment_mode ? { payment_mode } : {}),
+      });
+
+      await trx('sales')
+        .where({ id: req.params.id, dealer_id: dealerId })
+        .update({ paid_amount: newPaid, due_amount: newDue });
+    });
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[sales.payment]', err.message);
+    res.status(400).json({ error: err.message || 'Failed to record payment' });
+  }
+});
+
 router.get('/:id', async (req: Request, res: Response) => {
   const dealerId = resolveDealer(req, res);
   if (!dealerId) return;
