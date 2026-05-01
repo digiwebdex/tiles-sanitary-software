@@ -783,4 +783,132 @@ router.delete('/:id', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/dealers — create a new dealer (super admin only).
+ * Optionally creates a dealer_admin user and assigns a subscription in one atomic call.
+ * Body: { name, phone?, address?, admin?: { name, email, password }, subscription?: { plan_id, start_date?, end_date? } }
+ */
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    if (!name) {
+      res.status(400).json({ error: 'Dealer name is required' });
+      return;
+    }
+
+    const admin = body.admin && typeof body.admin === 'object' ? body.admin : null;
+    const subscription = body.subscription && typeof body.subscription === 'object' ? body.subscription : null;
+
+    if (admin) {
+      if (!admin.name?.trim()) { res.status(400).json({ error: 'Admin name is required' }); return; }
+      if (!admin.email?.trim()) { res.status(400).json({ error: 'Admin email is required' }); return; }
+      if (!admin.password || admin.password.length < 6) {
+        res.status(400).json({ error: 'Password must be at least 6 characters' }); return;
+      }
+      const lower = admin.email.toLowerCase().trim();
+      const clash = await db('users').whereRaw('LOWER(email) = ?', [lower]).first();
+      if (clash) { res.status(409).json({ error: 'That email is already registered' }); return; }
+    }
+
+    const { authService } = await import('../services/authService');
+    const passwordHash = admin ? await authService.hashPassword(admin.password) : null;
+
+    const result = await db.transaction(async (trx) => {
+      const [dealer] = await trx('dealers')
+        .insert({
+          name,
+          phone: body.phone?.trim() || null,
+          address: body.address?.trim() || null,
+          status: 'active',
+        })
+        .returning('*');
+
+      let adminUser: any = null;
+      if (admin && passwordHash) {
+        const [u] = await trx('users')
+          .insert({
+            email: admin.email.toLowerCase().trim(),
+            password_hash: passwordHash,
+            name: admin.name.trim(),
+            status: 'active',
+          })
+          .returning('*');
+        await trx('profiles').insert({
+          id: u.id,
+          name: admin.name.trim(),
+          email: admin.email.toLowerCase().trim(),
+          dealer_id: dealer.id,
+        });
+        await trx('user_roles')
+          .insert({ user_id: u.id, role: 'dealer_admin' })
+          .onConflict(['user_id', 'role'])
+          .ignore();
+        await trx('invoice_sequences')
+          .insert({ dealer_id: dealer.id, next_invoice_no: 1, next_challan_no: 1 })
+          .onConflict('dealer_id')
+          .ignore();
+        adminUser = u;
+      }
+
+      let sub: any = null;
+      if (subscription && subscription.plan_id) {
+        const today = new Date().toISOString().slice(0, 10);
+        const [s] = await trx('subscriptions')
+          .insert({
+            dealer_id: dealer.id,
+            plan_id: subscription.plan_id,
+            start_date: subscription.start_date || today,
+            end_date: subscription.end_date || null,
+            status: 'active',
+          })
+          .returning('*');
+        sub = s;
+      }
+
+      return { dealer, adminUser, sub };
+    });
+
+    res.json({ success: true, dealer: result.dealer, admin_user: result.adminUser, subscription: result.sub });
+  } catch (err: any) {
+    console.error('[dealers:create] failed:', err);
+    res.status(500).json({ error: err.message || 'Create failed' });
+  }
+});
+
+/**
+ * POST /api/dealers/:id/users — add an extra dealer_admin or salesman user
+ * to an existing dealer. Body: { name, email, password, role? }
+ */
+router.post('/:id/users', async (req: Request, res: Response) => {
+  try {
+    const dealerId = req.params.id;
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    const email = String(body.email || '').toLowerCase().trim();
+    const password = String(body.password || '');
+    const role = body.role === 'salesman' ? 'salesman' : 'dealer_admin';
+
+    if (!name) { res.status(400).json({ error: 'Name is required' }); return; }
+    if (!email) { res.status(400).json({ error: 'Email is required' }); return; }
+    if (password.length < 6) { res.status(400).json({ error: 'Password must be at least 6 characters' }); return; }
+
+    const dealer = await db('dealers').where({ id: dealerId }).first();
+    if (!dealer) { res.status(404).json({ error: 'Dealer not found' }); return; }
+
+    const clash = await db('users').whereRaw('LOWER(email) = ?', [email]).first();
+    if (clash) { res.status(409).json({ error: 'That email is already registered' }); return; }
+
+    const { authService } = await import('../services/authService');
+    const user = await authService.createUser({
+      email, password, name, dealerId, role: role as any,
+    });
+
+    res.json({ success: true, user: { id: user.id, email: user.email, name: user.name } });
+  } catch (err: any) {
+    console.error('[dealers:add-user] failed:', err);
+    res.status(500).json({ error: err.message || 'Add user failed' });
+  }
+});
+
 export default router;
