@@ -520,28 +520,11 @@ function DailySalesCalendar({ dealerId }: { dealerId: string }) {
   const { data: salesData, isLoading } = useQuery({
     queryKey: ["report-daily-sales-calendar", dealerId, year, month],
     queryFn: async () => {
-      const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
-      const lastDay = new Date(year, month + 1, 0).getDate();
-      const endDate = `${year}-${String(month + 1).padStart(2, "0")}-${lastDay}`;
-
-      const { data, error } = await supabase
-        .from("sales")
-        .select("sale_date, total_amount, discount, paid_amount, due_amount")
-        .eq("dealer_id", dealerId)
-        .gte("sale_date", startDate)
-        .lte("sale_date", endDate);
-
-      if (error) throw new Error(error.message);
-
-      // Aggregate by day
-      const dayMap: Record<number, { discount: number; total: number }> = {};
-      for (const row of data ?? []) {
-        const day = new Date(row.sale_date).getDate();
-        if (!dayMap[day]) dayMap[day] = { discount: 0, total: 0 };
-        dayMap[day].discount += Number(row.discount);
-        dayMap[day].total += Number(row.total_amount);
-      }
-      return dayMap;
+      const params = new URLSearchParams({ dealerId, year: String(year), month: String(month + 1) });
+      const res = await vpsAuthedFetch(`/api/reports/page/daily-sales-calendar?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      return (body.dayMap ?? {}) as Record<number, { discount: number; total: number }>;
     },
   });
 
