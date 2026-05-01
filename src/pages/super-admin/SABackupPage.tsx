@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+
 import { env } from "@/lib/env";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,26 +68,16 @@ const SABackupPage = () => {
   const { data: backups, isLoading: backupsLoading, refetch: refetchBackups } = useQuery({
     queryKey: ["sa-backups"],
     queryFn: async () => {
-      if (isVps) {
-        const r = await vpsJson<{ backups: any[] }>("/api/backups");
-        return r.backups || [];
-      }
-      const { data, error } = await supabase.from("backup_logs").select("*").order("created_at", { ascending: false }).limit(200);
-      if (error) throw error;
-      return data || [];
+      const r = await vpsJson<{ backups: any[] }>("/api/backups");
+      return r.backups || [];
     },
   });
 
   const { data: restores, isLoading: restoresLoading, refetch: refetchRestores } = useQuery({
     queryKey: ["sa-restores"],
     queryFn: async () => {
-      if (isVps) {
-        const r = await vpsJson<{ restores: any[] }>("/api/backups/restores");
-        return r.restores || [];
-      }
-      const { data, error } = await supabase.from("restore_logs").select("*").order("created_at", { ascending: false }).limit(100);
-      if (error) throw error;
-      return data || [];
+      const r = await vpsJson<{ restores: any[] }>("/api/backups/restores");
+      return r.restores || [];
     },
   });
 
@@ -269,25 +259,8 @@ const SABackupPage = () => {
       return;
     }
 
-    try {
-      const { error } = await supabase.from("restore_logs").insert({
-        backup_log_id: restoreDialog.id,
-        backup_file_name: restoreDialog.file_name || "unknown",
-        backup_type: restoreDialog.backup_type,
-        database_name: restoreDialog.database_name,
-        app_name: restoreDialog.app_name,
-        initiated_by_name: "Super Admin (UI)",
-        status: "pending",
-        logs: `Restore requested for ${restoreDialog.file_name} at ${new Date().toISOString()}.`,
-      });
-      if (error) throw error;
-
-      toast.success("Restore request logged. Execute the restore command on VPS.");
-      setRestoreDialog(null);
-      refetchRestores();
-    } catch (err: any) {
-      toast.error("Failed to log restore: " + err.message);
-    }
+    toast.error("Restore not available on this host.");
+    setRestoreDialog(null);
   };
 
   const StatusBadge = ({ status }: { status: string }) => {
