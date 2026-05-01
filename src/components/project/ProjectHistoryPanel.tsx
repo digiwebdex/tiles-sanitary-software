@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { Receipt, Truck, PackageCheck, FileText, FileSignature } from "lucide-react";
@@ -9,8 +9,6 @@ interface Props {
   dealerId: string;
   projectId: string;
 }
-
-const sb = supabase as any;
 
 interface ProjectActivity {
   sales: any[];
@@ -28,58 +26,17 @@ interface ProjectActivity {
   };
 }
 
-const toNum = (v: any) => Number(v ?? 0) || 0;
-
-async function loadProjectHistory(dealerId: string, projectId: string): Promise<ProjectActivity & { quotations: any[]; quotation_count: number }> {
-  const [salesRes, challanRes, delivRes, quoteRes] = await Promise.all([
-    sb.from("sales")
-      .select("id, invoice_number, sale_date, total_amount, paid_amount, due_amount, sale_status, project_sites:project_sites(site_name)")
-      .eq("dealer_id", dealerId).eq("project_id", projectId)
-      .order("sale_date", { ascending: false }).limit(50),
-    sb.from("challans")
-      .select("id, challan_no, challan_date, status, delivery_status, project_sites:project_sites(site_name)")
-      .eq("dealer_id", dealerId).eq("project_id", projectId)
-      .order("challan_date", { ascending: false }).limit(50),
-    sb.from("deliveries")
-      .select("id, delivery_no, delivery_date, status, project_sites:project_sites(site_name)")
-      .eq("dealer_id", dealerId).eq("project_id", projectId)
-      .order("delivery_date", { ascending: false }).limit(50),
-    sb.from("quotations")
-      .select("id, quotation_no, quote_date, status, total_amount, project_sites:project_sites(site_name)")
-      .eq("dealer_id", dealerId).eq("project_id", projectId)
-      .order("quote_date", { ascending: false }).limit(50),
-  ]);
-  if (salesRes.error) throw new Error(salesRes.error.message);
-  if (challanRes.error) throw new Error(challanRes.error.message);
-  if (delivRes.error) throw new Error(delivRes.error.message);
-  if (quoteRes.error) throw new Error(quoteRes.error.message);
-
-  const sales = salesRes.data ?? [];
-  const challans = challanRes.data ?? [];
-  const deliveries = delivRes.data ?? [];
-  const quotations = quoteRes.data ?? [];
-
-  const dates = [
-    ...sales.map((s: any) => s.sale_date),
-    ...challans.map((c: any) => c.challan_date),
-    ...deliveries.map((d: any) => d.delivery_date),
-  ].filter(Boolean) as string[];
-  const latest = dates.length ? dates.sort().reverse()[0] : null;
-
-  return {
-    sales, challans, deliveries, quotations,
-    quotation_count: quotations.length,
-    summary: {
-      sales_count: sales.length,
-      total_sales: sales.reduce((s: number, r: any) => s + toNum(r.total_amount), 0),
-      total_paid: sales.reduce((s: number, r: any) => s + toNum(r.paid_amount), 0),
-      outstanding: sales.reduce((s: number, r: any) => s + toNum(r.due_amount), 0),
-      challan_count: challans.length,
-      delivery_count: deliveries.length,
-      pending_deliveries: deliveries.filter((d: any) => d.status !== "delivered").length,
-      latest_activity: latest,
-    },
-  };
+async function loadProjectHistory(
+  dealerId: string,
+  projectId: string,
+): Promise<ProjectActivity & { quotations: any[]; quotation_count: number }> {
+  const params = new URLSearchParams({ dealerId, projectId });
+  const res = await vpsAuthedFetch(`/api/reports/projects/history?${params.toString()}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `Failed to load project history (${res.status})`);
+  }
+  return res.json();
 }
 
 const statusColor = (s: string) => {
