@@ -20,6 +20,7 @@ export interface VpsUser {
   email: string;
   dealerId: string | null;
   roles: string[];
+  isDemo?: boolean;
   subscription?: {
     id: string;
     planId: string;
