@@ -39,6 +39,7 @@ interface AuthContextType {
   accessLevel: AccessLevel;
   isSuperAdmin: boolean;
   isDealerAdmin: boolean;
+  isDemo: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -262,6 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Keep a ref of loaded roles so we can compute access synchronously
@@ -381,6 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(vpsUser ? toProfile(vpsUser) : null);
         setRoles(vpsUser ? toRoles(vpsUser) : []);
         setSubscription(vpsUser ? toSubscription(vpsUser) : null);
+        setIsDemo(!!vpsUser?.isDemo);
       };
 
       const initializeVps = async () => {
@@ -541,6 +544,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setRoles([]);
     setSubscription(null);
+    setIsDemo(false);
   };
 
   return (
@@ -554,6 +558,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessLevel,
         isSuperAdmin,
         isDealerAdmin,
+        isDemo,
         loading,
         signOut,
       }}

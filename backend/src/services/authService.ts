@@ -25,6 +25,7 @@ export interface JwtPayload {
   email: string;
   dealerId: string | null;
   roles: string[];
+  isDemo?: boolean;
   subscription?: {
     id: string;
     planId: string;
@@ -81,8 +82,12 @@ async function buildJwtPayload(userId: string): Promise<JwtPayload> {
   const roles = await db('user_roles').where({ user_id: userId }).select('role');
   const roleNames = roles.map((r: any) => r.role);
   let subscription: JwtPayload['subscription'] = null;
+  let isDemo = false;
 
   if (profile?.dealer_id && roleNames.some((r: string) => r === 'dealer_admin' || r === 'salesman')) {
+    const dealer = await db('dealers').where({ id: profile.dealer_id }).first();
+    isDemo = !!dealer?.is_demo;
+
     const sub = await db('subscriptions')
       .where({ dealer_id: profile.dealer_id })
       .orderBy('start_date', 'desc')
@@ -105,6 +110,7 @@ async function buildJwtPayload(userId: string): Promise<JwtPayload> {
     email: profile?.email ?? '',
     dealerId: profile?.dealer_id ?? null,
     roles: roleNames,
+    isDemo,
     subscription,
   };
 }
