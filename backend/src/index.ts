@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { checkDbConnection } from './db/connection';
+import { optionalAuth } from './middleware/auth';
+import { demoReadOnly } from './middleware/demoReadOnly';
 
 // Routes
 import authRoutes from './routes/auth';
