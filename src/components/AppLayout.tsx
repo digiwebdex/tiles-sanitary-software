@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useDealerId } from "@/hooks/useDealerId";
 import { PendingApprovalsBadge } from "@/components/approval/PendingApprovalsBadge";
 import SAImpersonationBanner from "@/components/SAImpersonationBanner";
+import { DemoBanner } from "@/components/DemoBanner";
 
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, readonlyAllowed: true },
@@ -153,6 +154,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         </nav>
 
         <SAImpersonationBanner />
+        <DemoBanner />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>
