@@ -137,6 +137,11 @@ const authLimiter = rateLimit({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// ── Demo read-only guard ──
+// optionalAuth decodes the JWT (if present) so demoReadOnly can inspect
+// req.user.isDemo. Routes still run their own `authenticate` for hard auth.
+app.use('/api', optionalAuth, demoReadOnly);
+
 // ── Routes ──
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
