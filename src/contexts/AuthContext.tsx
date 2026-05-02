@@ -39,6 +39,7 @@ interface AuthContextType {
   accessLevel: AccessLevel;
   isSuperAdmin: boolean;
   isDealerAdmin: boolean;
+  isDemo: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
 }
