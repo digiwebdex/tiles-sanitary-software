@@ -383,6 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(vpsUser ? toProfile(vpsUser) : null);
         setRoles(vpsUser ? toRoles(vpsUser) : []);
         setSubscription(vpsUser ? toSubscription(vpsUser) : null);
+        setIsDemo(!!vpsUser?.isDemo);
       };
 
       const initializeVps = async () => {
@@ -543,6 +544,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setRoles([]);
     setSubscription(null);
+    setIsDemo(false);
   };
 
   return (
@@ -556,6 +558,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessLevel,
         isSuperAdmin,
         isDealerAdmin,
+        isDemo,
         loading,
         signOut,
       }}
