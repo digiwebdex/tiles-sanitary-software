@@ -259,10 +259,10 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
               render={({ field }) => (
                 <FormItem className="max-w-sm">
                   <FormLabel>Supplier <span className="text-destructive">*</span></FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={suppliers.length === 0}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select Supplier" />
+                        <SelectValue placeholder={suppliers.length === 0 ? "No suppliers available" : "Select Supplier"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -271,6 +271,15 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
                       ))}
                     </SelectContent>
                   </Select>
+                  {suppliers.length === 0 && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      No suppliers found.{" "}
+                      <Link to="/suppliers" className="font-medium text-primary underline">
+                        Add a supplier
+                      </Link>{" "}
+                      first to create a purchase.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
