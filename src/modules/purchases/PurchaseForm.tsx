@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { purchaseSchema, type PurchaseFormValues } from "@/modules/purchases/purchaseSchema";
 import { useQuery } from "@tanstack/react-query";
 import { vpsAuthedFetch } from "@/lib/vpsAuthClient";
+import { supplierService } from "@/services/supplierService";
 import {
   Form,
   FormControl,
