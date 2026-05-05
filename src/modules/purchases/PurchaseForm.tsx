@@ -73,15 +73,25 @@ const PurchaseForm = ({ dealerId, showOfferPrice, onSubmit, isLoading }: Purchas
     name: "items",
   });
 
-  // Phase 3U-30: VPS GET /api/suppliers.
+  // Use the same supplierService.list that the Suppliers page uses, so this
+  // dropdown stays in lockstep with the Supplier list (any auth/scoping fix
+  // applied there flows here automatically).
   const { data: suppliers = [] } = useQuery({
-    queryKey: ["suppliers", dealerId],
+    queryKey: ["suppliers-picker", dealerId],
     queryFn: async () => {
-      const res = await vpsAuthedFetch(
-        `/api/suppliers?dealerId=${dealerId}&pageSize=500&orderBy=name&orderDir=asc`,
-      );
-      const body = await res.json().catch(() => ({} as any));
-      return ((body as any)?.rows ?? []) as { id: string; name: string }[];
+      // Page size 200 is the backend's hard cap; pull all by paginating if needed.
+      const pages: { id: string; name: string }[] = [];
+      let page = 1;
+      // Most dealers have <200 suppliers; loop just in case.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { data, total } = await supplierService.list(dealerId, "", page);
+        pages.push(...data.map((s) => ({ id: s.id, name: s.name })));
+        if (pages.length >= total || data.length === 0) break;
+        page += 1;
+        if (page > 20) break; // safety
+      }
+      return pages;
     },
     enabled: !!dealerId,
   });
